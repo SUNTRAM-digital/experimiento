@@ -69,6 +69,8 @@ def _build_status() -> dict:
         "last_scan":           bot.state.last_scan,
         "error_count":         bot.state.error_count,
         "opportunities_count": len(bot.state.opportunities),
+        "btc_price":           bot.state.btc_price,
+        "btc_opportunities_count": len(bot.state.btc_opportunities),
     }
 
 
@@ -263,6 +265,16 @@ async def get_opportunities():
     return bot.state.opportunities
 
 
+@app.get("/api/btc-opportunities")
+async def get_btc_opportunities():
+    return bot.state.btc_opportunities
+
+
+@app.get("/api/btc-price")
+async def get_btc_price_endpoint():
+    return {"price": bot.state.btc_price}
+
+
 @app.get("/api/positions")
 async def get_positions():
     return bot.state.active_positions
@@ -323,6 +335,19 @@ def _build_chat_context() -> str:
                 f"• {o.get('market','')} | {o.get('side')} @ {o.get('price'):.3f} | "
                 f"Pendientes: {o.get('size_remaining')} shares (${o.get('cost_usdc'):.2f})"
             )
+    if s.btc_price:
+        lines += ["", f"=== BITCOIN ===", f"Precio actual: ${s.btc_price:,.2f} USD"]
+        if s.btc_opportunities:
+            lines += [f"Oportunidades BTC detectadas: {len(s.btc_opportunities)}"]
+            for o in s.btc_opportunities[:5]:
+                lines.append(
+                    f"• [condition_id:{o.get('condition_id','')}] "
+                    f"{o.get('side')} {'>' if o.get('direction')=='above' else '<'}"
+                    f"${o.get('threshold',0):,.0f} | "
+                    f"EV: {o.get('ev_pct')}% | "
+                    f"Nuestra P: {o.get('our_prob',0)*100:.1f}% | "
+                    f"Cierra en: {o.get('minutes_to_close',0):.0f}m"
+                )
     if s.portfolio_analysis:
         lines += ["", "=== ÚLTIMO ANÁLISIS DE PORTAFOLIO (Claude) ===", s.portfolio_analysis[:800]]
     return "\n".join(lines)

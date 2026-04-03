@@ -12,6 +12,9 @@ from markets import fetch_weather_markets, get_live_price, get_order_book_depth,
 from weather import get_forecast_high
 from strategy import evaluate_market
 from claude_analyst import analyze_opportunity, analyze_portfolio
+from price_feed import get_btc_price, get_btc_volatility
+from markets_btc import fetch_btc_markets
+from strategy_btc import evaluate_btc_market
 
 logger = logging.getLogger("weatherbot")
 
@@ -47,6 +50,9 @@ class BotState:
         self.last_portfolio_analysis: Optional[datetime] = None  # timestamp ultimo analisis
         self.last_scan: Optional[str] = None
         self.error_count = 0
+        # Bitcoin
+        self.btc_price: Optional[float] = None       # precio actual BTC en USD
+        self.btc_opportunities: list[dict] = []       # oportunidades detectadas en mercados BTC
 
 
 state = BotState()
@@ -644,8 +650,90 @@ async def _scan_cycle():
         if success:
             await asyncio.sleep(2)  # Pausa entre trades
 
+    # ── Ciclo BTC ──────────────────────────────────────────────────────────
+    if bot_params.btc_enabled:
+        await _scan_btc_markets()
+
     # Guardar estado al final de cada ciclo
     _save_state()
+
+
+async def _scan_btc_markets():
+    """Escanea mercados de precio de BTC en Polymarket y ejecuta trades si hay edge."""
+    _log("INFO", "BTC | Obteniendo precio y volatilidad...")
+
+    btc_price = await get_btc_price()
+    if not btc_price:
+        _log("WARN", "BTC | No se pudo obtener precio de BTC — saltando ciclo BTC")
+        return
+
+    state.btc_price = btc_price
+
+    vol_per_minute = await get_btc_volatility(interval="15m", candles=bot_params.btc_vol_candles)
+    _log(
+        "INFO",
+        f"BTC | Precio: ${btc_price:,.2f} | "
+        f"Volatilidad 15m: {vol_per_minute * 100:.3f}% por minuto",
+    )
+
+    markets = await fetch_btc_markets()
+    _log("INFO", f"BTC | Mercados encontrados: {len(markets)}")
+
+    btc_opps = []
+    for market in markets:
+        live_price = await get_live_price(market["yes_token_id"])
+        if live_price:
+            market["yes_price"] = live_price
+
+        opp = evaluate_btc_market(market, btc_price, vol_per_minute, state.balance_usdc)
+        if opp:
+            btc_opps.append(opp)
+            _log(
+                "INFO",
+                f"BTC OPP | {opp['side']} {'>' if opp['direction']=='above' else '<'}"
+                f"${opp['threshold']:,.0f} | "
+                f"Precio actual: ${btc_price:,.0f} ({opp['pct_from_threshold']:+.2f}%) | "
+                f"Nuestra P: {opp['our_prob']:.1%} | Mercado: {opp['market_prob']:.1%} | "
+                f"EV: {opp['ev_pct']}% | Cierra en: {opp['minutes_to_close']:.0f}m",
+            )
+
+    btc_opps.sort(key=lambda x: x["ev_pct"], reverse=True)
+    state.btc_opportunities = btc_opps
+
+    if not btc_opps:
+        _log("INFO", "BTC | Sin oportunidades con edge suficiente.")
+        return
+
+    # Ejecutar el mejor trade BTC
+    for opp in btc_opps:
+        if state.balance_usdc < bot_params.min_position_usdc:
+            break
+
+        if _daily_loss_limit_reached():
+            break
+
+        # No repetir posición en el mismo mercado
+        if any(p.get("condition_id") == opp.get("condition_id") for p in state.poly_positions):
+            continue
+
+        # Consultar a Claude (reutiliza la misma función de análisis)
+        _log("INFO", f"BTC | Consultando Claude sobre: {opp['market_title'][:55]}...")
+        analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
+
+        if analysis["skipped"] or not analysis["approved"]:
+            reason = analysis.get("reason", "")
+            _log("WARN", f"BTC | Claude {'NO CONFIGURADO' if analysis['skipped'] else 'RECHAZA'}: {reason}")
+            opp["claude_rejected"] = True
+            continue
+
+        _log(
+            "INFO",
+            f"BTC | Claude APRUEBA [{analysis['confidence']}]: {analysis['reason']}",
+        )
+
+        success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
+        if success:
+            await asyncio.sleep(2)
 
 
 def _sync_account_from_polymarket():

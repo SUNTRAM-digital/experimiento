@@ -26,6 +26,11 @@ class BotParams:
         self.min_competitive_score: float = float(os.getenv("MIN_COMPETITIVE_SCORE", 0.0))  # 0=off, 0.5=moderado
         # --- Operacion ---
         self.scan_interval_minutes: int = int(os.getenv("SCAN_INTERVAL_MINUTES", 30))
+        # --- Bitcoin ---
+        self.btc_enabled: bool = os.getenv("BTC_ENABLED", "true").lower() == "true"
+        self.btc_max_position_usdc: float = float(os.getenv("BTC_MAX_POSITION_USDC", 3.0))
+        self.btc_max_hours_to_resolution: float = float(os.getenv("BTC_MAX_HOURS_TO_RESOLUTION", 1.0))
+        self.btc_vol_candles: int = int(os.getenv("BTC_VOL_CANDLES", 96))  # 96 × 15m = 24h
 
     def to_dict(self) -> dict:
         return {
@@ -41,6 +46,10 @@ class BotParams:
             "min_book_depth_usdc": self.min_book_depth_usdc,
             "min_competitive_score": self.min_competitive_score,
             "scan_interval_minutes": self.scan_interval_minutes,
+            "btc_enabled": self.btc_enabled,
+            "btc_max_position_usdc": self.btc_max_position_usdc,
+            "btc_max_hours_to_resolution": self.btc_max_hours_to_resolution,
+            "btc_vol_candles": self.btc_vol_candles,
         }
 
     def update(self, data: dict):
