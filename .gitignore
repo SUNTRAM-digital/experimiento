@@ -1,0 +1,34 @@
+# ── Credenciales y secretos ───────────────────────────────────────────────
+.env
+*.key
+*.pem
+*.p12
+
+# ── Datos en tiempo real (estado del bot, logs, historial de chats) ───────
+data/state.json
+data/logs.json
+data/chats.json
+data/
+
+# ── Logs del servidor ─────────────────────────────────────────────────────
+*.log
+bot_output.log
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.Python
+
+# ── Memoria del agente (contiene info del proyecto/usuario) ───────────────
+AGENTE_MEMORIA.md
+
+# ── IDEs y OS ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
