@@ -1,34 +1,102 @@
-# ── Credenciales y secretos ───────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# CREDENCIALES Y SECRETOS — nunca deben subirse al repositorio
+# ══════════════════════════════════════════════════════════════════════════════
 .env
+.env.local
+.env.production
+.env.staging
 *.key
 *.pem
 *.p12
+*.pfx
+*.cert
+*.crt
+secrets/
+credentials/
 
-# ── Datos en tiempo real (estado del bot, logs, historial de chats) ───────
+# ══════════════════════════════════════════════════════════════════════════════
+# DATOS EN TIEMPO REAL — estado del bot, posiciones, historial
+# Contienen informacion de wallets, trades, balances reales
+# ══════════════════════════════════════════════════════════════════════════════
 data/state.json
 data/logs.json
 data/chats.json
-data/
+data/params.json
+data/updown_stats.json
+data/strategy_notes.json
+!data/.gitkeep
 
-# ── Logs del servidor ─────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# ARCHIVOS DE MEMORIA DEL AGENTE — pueden contener contexto del usuario
+# ══════════════════════════════════════════════════════════════════════════════
+AGENTE_MEMORIA.md
+.claude/
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BASE DE CONOCIMIENTO — documentos de investigacion y referencia personal
+# ══════════════════════════════════════════════════════════════════════════════
+base de conocimiento/
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LOGS — pueden contener direcciones, precios, actividad real
+# ══════════════════════════════════════════════════════════════════════════════
 *.log
+*.log.*
+logs/
 bot_output.log
+nohup.out
 
-# ── Python ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# PYTHON
+# ══════════════════════════════════════════════════════════════════════════════
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
 .venv/
 venv/
 env/
-.Python
+ENV/
 
-# ── Memoria del agente (contiene info del proyecto/usuario) ───────────────
-AGENTE_MEMORIA.md
+# ══════════════════════════════════════════════════════════════════════════════
+# TESTING
+# ══════════════════════════════════════════════════════════════════════════════
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+test_results/
+*.test.db
 
-# ── IDEs y OS ─────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# IDEs Y EDITORES
+# ══════════════════════════════════════════════════════════════════════════════
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SISTEMA OPERATIVO
+# ══════════════════════════════════════════════════════════════════════════════
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BACKUPS Y TEMPORALES
+# ══════════════════════════════════════════════════════════════════════════════
+*.bak
+*.tmp
+*.temp
+*.orig
+*.backup
