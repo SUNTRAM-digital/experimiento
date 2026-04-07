@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Callable
 from config import settings, bot_params
 from markets import fetch_weather_markets, get_live_price, get_order_book_depth, get_polymarket_positions
-from weather import get_forecast_high
+from weather_ensemble import get_ensemble_high
 from strategy import evaluate_market
 from claude_analyst import analyze_opportunity, analyze_portfolio, analyze_updown_opportunity
 from price_feed import (
@@ -608,11 +608,21 @@ async def _scan_cycle():
         if not market.get("target_date"):
             continue
 
-        # Obtener forecast
-        forecast = await get_forecast_high(market["station"], market["target_date"])
+        # Obtener forecast (ensemble: NOAA + OpenMeteo + observacion actual)
+        forecast = await get_ensemble_high(market["station"], market["target_date"])
         if not forecast:
             _log("WARN", f"Sin forecast para {market['station']} en {market['target_date']}")
             continue
+        sources_str = "+".join(forecast.get("sources_used", ["?"]))
+        _log(
+            "INFO",
+            f"Forecast {market['station']} | "
+            f"NOAA:{forecast.get('noaa_high_f','?')}°F "
+            f"OpenMeteo:{forecast.get('openmeteo_high_f','?')}°F "
+            f"Obs:{forecast.get('current_obs_f','?')}°F → "
+            f"Ensemble:{forecast['high_f']}°F ±{forecast['std_dev']}°F "
+            f"({forecast['confidence'].upper()}) [{sources_str}]"
+        )
 
         # Precio en vivo (mas preciso que el de Gamma)
         live_price = await get_live_price(market["yes_token_id"])
