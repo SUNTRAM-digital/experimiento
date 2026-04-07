@@ -93,6 +93,7 @@ def evaluate_btc_market(
     btc_price: float,
     vol_per_minute: float,
     balance_usdc: float,
+    ta_data: Optional[dict] = None,
 ) -> Optional[dict]:
     """
     Evalúa si un mercado de BTC ofrece edge suficiente para operar.
@@ -112,10 +113,20 @@ def evaluate_btc_market(
     if hours_to_close > bot_params.btc_max_hours_to_resolution:
         return None
 
-    spread_pct  = market.get("spread_pct", 0.0)
-    yes_price   = market["yes_price"]
+    yes_price = market["yes_price"]
+    no_price  = 1 - yes_price
 
-    # Calcular nuestra probabilidad para el lado YES (que es el que cotiza el mercado)
+    # No comprar tokens con precio extremo (< $0.05 o > $0.95).
+    # A precios cercanos a 0 el modelo log-normal es poco confiable y el EV
+    # calculado es una ilusión: se necesita demasiada precisión en la estimación
+    # de probabilidad para que el edge sea real.
+    _MIN_TOKEN_PRICE = 0.05
+    if yes_price < _MIN_TOKEN_PRICE or no_price < _MIN_TOKEN_PRICE:
+        return None
+
+    spread_pct  = market.get("spread_pct", 0.0)
+
+    # Calcular nuestra probabilidad base (modelo log-normal)
     our_prob_yes = calc_btc_probability(
         current_price    = btc_price,
         threshold        = threshold,
@@ -124,11 +135,22 @@ def evaluate_btc_market(
         vol_per_minute   = vol_per_minute,
     )
 
+    # Ajuste de momentum desde TradingView TA
+    # Señal TV +1 (STRONG_BUY) → precio sube → aumenta P(above), reduce P(below)
+    ta_signal = 0.0
+    ta_rec    = "NEUTRAL"
+    if ta_data and ta_data.get("available"):
+        ta_signal = ta_data.get("signal", 0.0)
+        ta_rec    = ta_data.get("recommendation", "NEUTRAL")
+        weight    = bot_params.btc_momentum_weight
+        direction_sign = 1.0 if direction == "above" else -1.0
+        adjustment = ta_signal * weight * direction_sign
+        our_prob_yes = max(0.01, min(0.99, our_prob_yes + adjustment))
+
     ev_yes = calc_ev(our_prob_yes, yes_price, spread_pct)
 
     # Evaluar también el lado NO
     our_prob_no = 1 - our_prob_yes
-    no_price    = 1 - yes_price
     ev_no = calc_ev(our_prob_no, no_price, spread_pct) if no_price > 0.01 else 0.0
 
     # Elegir el mejor lado
@@ -193,4 +215,7 @@ def evaluate_btc_market(
         "last_trade_price":  market.get("last_trade_price", entry_price),
         "competitive_score": market.get("competitive_score", 0),
         "min_order_size":    market.get("min_order_size", 5),
+        # TA
+        "ta_recommendation": ta_rec,
+        "ta_signal":         round(ta_signal, 2),
     }

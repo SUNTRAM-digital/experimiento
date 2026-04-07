@@ -11,10 +11,15 @@ from config import settings, bot_params
 from markets import fetch_weather_markets, get_live_price, get_order_book_depth, get_polymarket_positions
 from weather import get_forecast_high
 from strategy import evaluate_market
-from claude_analyst import analyze_opportunity, analyze_portfolio
-from price_feed import get_btc_price, get_btc_volatility
+from claude_analyst import analyze_opportunity, analyze_portfolio, analyze_updown_opportunity
+from price_feed import (
+    get_btc_price, get_btc_volatility, get_btc_ta,
+    get_btc_market_data_cmc, vol_interval_for_horizon, tv_interval_for_horizon,
+)
 from markets_btc import fetch_btc_markets
 from strategy_btc import evaluate_btc_market
+from markets_updown import fetch_updown_market
+from strategy_updown import evaluate_updown_market
 
 logger = logging.getLogger("weatherbot")
 
@@ -51,8 +56,43 @@ class BotState:
         self.last_scan: Optional[str] = None
         self.error_count = 0
         # Bitcoin
-        self.btc_price: Optional[float] = None       # precio actual BTC en USD
-        self.btc_opportunities: list[dict] = []       # oportunidades detectadas en mercados BTC
+        self.btc_price: Optional[float] = None
+        self.btc_opportunities: list[dict] = []
+        self.btc_ta: dict = {}
+        self.btc_cmc: dict = {}
+        # Auto-trading BTC
+        self.btc_auto_mode: bool = False
+        self.btc_scan_interval_minutes: int = 5
+        self.btc_next_scan_in: int = 0   # segundos hasta siguiente escaneo
+        # Auto-trade global (omite aprobación de Claude)
+        self.auto_trade_mode: bool = False
+        # Presupuestos por tipo (calculados al inicio de cada ciclo)
+        self.budget_weather: float = 0.0
+        self.budget_btc: float = 0.0
+        self.budget_updown: float = 0.0
+        # Capital desplegado en posiciones abiertas por tipo
+        self.deployed_weather: float = 0.0
+        self.deployed_btc: float = 0.0
+        self.deployed_updown: float = 0.0
+        # Capital disponible por tipo (= budget - deployed)
+        self.available_weather: float = 0.0
+        self.available_btc: float = 0.0
+        self.available_updown: float = 0.0
+        # Proporciones de asignación — viven en bot_params (con persistencia)
+        # BTC Up/Down (5m y 15m)
+        self.updown_5m_consecutive_losses: int = 0
+        self.updown_15m_consecutive_losses: int = 0
+        self.updown_5m_stopped: bool = False
+        self.updown_15m_stopped: bool = False
+        self.updown_last_market_5m: Optional[dict] = None   # último mercado visto
+        self.updown_last_market_15m: Optional[dict] = None
+        self.updown_last_opp_5m: Optional[dict] = None      # última oportunidad evaluada
+        self.updown_last_opp_15m: Optional[dict] = None
+        self.updown_last_trade_5m: Optional[dict] = None    # último trade ejecutado
+        self.updown_last_trade_15m: Optional[dict] = None
+        self.updown_ta_5m: dict = {}                        # último TA usado
+        self.updown_ta_15m: dict = {}
+        self.updown_recent_trades: list[dict] = []          # historial reciente (últimos 30)
 
 
 state = BotState()
@@ -127,6 +167,7 @@ def _save_state():
             "total_pnl": state.total_pnl,
             "active_positions": state.active_positions,
             "trade_history": state.trade_history,
+            "updown_recent_trades": state.updown_recent_trades,
             "last_scan": state.last_scan,
             "error_count": state.error_count,
         }
@@ -147,6 +188,7 @@ def _load_state():
         state.total_pnl           = float(payload.get("total_pnl", 0))
         state.active_positions    = payload.get("active_positions", [])
         state.trade_history       = payload.get("trade_history", [])
+        state.updown_recent_trades = payload.get("updown_recent_trades", [])
         state.last_scan           = payload.get("last_scan")
         state.error_count         = int(payload.get("error_count", 0))
         raw_date = payload.get("daily_date")
@@ -261,54 +303,15 @@ def _daily_loss_limit_reached() -> bool:
 
 def _redeem_position(token_id: str, condition_id: str, size: float, market_title: str) -> bool:
     """
-    Redime una posición resuelta. Para posiciones perdidas (precio ≈ 0) las quema a $0
-    para limpiarlas del portafolio. Para posiciones ganadas (precio ≈ 1) reclama el USDC.
+    Redimir posiciones en Polymarket requiere una llamada on-chain al contrato CTF
+    (Conditional Token Framework), que no está soportada por py_clob_client.
+    Polymarket generalmente auto-redime en ~24h. Si no, el usuario puede hacerlo
+    manualmente en polymarket.com/portfolio.
     """
-    if _clob_client is None:
-        _log("ERROR", "No hay cliente CLOB — no se puede redimir")
-        return False
-
-    # Intentar via py_clob_client si el método existe
-    try:
-        if hasattr(_clob_client, "redeem_positions"):
-            result = _clob_client.redeem_positions(condition_id)
-            _log("INFO", f"REDIMIR OK | {market_title[:50]} | {result}")
-            return True
-    except Exception as e:
-        _log("WARN", f"redeem_positions falló ({e}), intentando método alternativo")
-
-    # Intentar via API directa con credenciales del cliente
-    try:
-        import httpx as _httpx
-        headers = {}
-        for attr in ("api_creds", "_creds", "creds"):
-            creds = getattr(_clob_client, attr, None)
-            if creds and hasattr(creds, "api_key"):
-                headers = {
-                    "POLY_API_KEY":         creds.api_key,
-                    "POLY_API_SECRET":      getattr(creds, "api_secret", ""),
-                    "POLY_API_PASSPHRASE":  getattr(creds, "api_passphrase", ""),
-                }
-                break
-
-        if headers:
-            resp = _httpx.post(
-                "https://clob.polymarket.com/settlement",
-                json={"condition_id": condition_id, "asset_id": token_id},
-                headers=headers,
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                _log("INFO", f"REDIMIR OK (API) | {market_title[:50]}")
-                return True
-            _log("WARN", f"Settlement API respondió {resp.status_code}: {resp.text[:80]}")
-    except Exception as e:
-        _log("WARN", f"API de redención falló: {e}")
-
     _log(
-        "WARN",
-        f"POSICIÓN RESUELTA NO REDIMIDA | {market_title[:50]} | "
-        f"Usa polymarket.com/portfolio para reclamar manualmente",
+        "INFO",
+        f"POSICIÓN RESUELTA | {market_title[:55]} | "
+        f"Polymarket auto-redimirá en ~24h. Si no, ve a polymarket.com/portfolio",
     )
     return False
 
@@ -394,19 +397,28 @@ def _execute_trade(opportunity: dict) -> bool:
         from py_clob_client.order_builder.constants import BUY
 
         shares = opportunity["shares"]
-        price = opportunity["entry_price"]
+        price  = opportunity["entry_price"]
+        market_title = opportunity.get("market_title") or opportunity.get("title", "Unknown")
 
-        # Minimo 5 shares por orden (requisito de Polymarket)
-        shares = max(shares, 5.0)
+        # Seguridad: el costo real (shares × price) nunca debe superar el max configurado
+        is_updown = opportunity.get("asset") == "BTC_UPDOWN"
+        if is_updown:
+            max_usdc = max(1.0, round(float(bot_params.updown_max_usdc), 2))
+            actual_cost = round(shares * price, 2)
+            if actual_cost > max_usdc + 0.05:
+                shares = round(max_usdc / price, 2)
+                _log("WARN", f"UpDown | Shares recortados para respetar max ${max_usdc} (costo era ${actual_cost:.2f} → ahora ${round(shares*price,2):.2f})")
 
         order = OrderArgs(
             token_id=opportunity["token_id"],
             price=round(price, 4),
             size=round(shares, 2),
             side=BUY,
-            fee_rate_bps=1000,  # 10% maker fee en mercados de clima
+            fee_rate_bps=1000,
         )
         signed = _clob_client.create_order(order)
+        # Todos los trades usan GTC. Para UpDown, las órdenes abiertas se cancelan
+        # automáticamente al inicio del siguiente ciclo (_cancel_stale_updown_orders).
         response = _clob_client.post_order(signed, OrderType.GTC)
 
         if response.get("success") or response.get("status") in ("live", "matched"):
@@ -418,7 +430,7 @@ def _execute_trade(opportunity: dict) -> bool:
             trade = {
                 "id": response.get("orderID", ""),
                 "time": datetime.now(timezone.utc).isoformat(),
-                "market": opportunity["market_title"],
+                "market": market_title,
                 "side": opportunity["side"],
                 "price": price,
                 "shares": shares,
@@ -426,6 +438,10 @@ def _execute_trade(opportunity: dict) -> bool:
                 "ev_pct": opportunity["ev_pct"],
                 "claude_approved": not opportunity.get("claude_rejected", False),
                 "status": "open",
+                # Campos extra para UpDown tracking
+                "asset": opportunity.get("asset", "WEATHER"),
+                "token_id": opportunity.get("token_id", ""),
+                "interval_minutes": opportunity.get("interval_minutes"),
             }
             state.active_positions.append(trade)
             state.trade_history.insert(0, trade)
@@ -434,7 +450,7 @@ def _execute_trade(opportunity: dict) -> bool:
 
             _log(
                 "INFO",
-                f"TRADE EJECUTADO | {opportunity['side']} {opportunity['market_title'][:50]} | "
+                f"TRADE EJECUTADO | {opportunity['side']} {market_title[:50]} | "
                 f"${cost:.2f} @ {price:.3f} | EV: {opportunity['ev_pct']}%",
             )
             _save_state()
@@ -457,6 +473,41 @@ async def _scan_cycle():
     if balance > 0:
         state.balance_usdc = balance
 
+    # ── Asignación de capital: 60% weather / 20% BTC / 20% UpDown ───────────
+    # Deployed primero: capital ya comprometido en posiciones abiertas
+    _dep = _calc_deployed_by_type()
+    state.deployed_weather = round(_dep.get("WEATHER",    0.0), 2)
+    state.deployed_btc     = round(_dep.get("BTC",        0.0), 2)
+    state.deployed_updown  = round(_dep.get("BTC_UPDOWN", 0.0), 2)
+
+    # Total = cash libre + capital ya desplegado (valor total de la cuenta)
+    _total_deployed = state.deployed_weather + state.deployed_btc + state.deployed_updown
+    _total = state.balance_usdc + _total_deployed
+
+    state.budget_weather = round(_total * bot_params.alloc_weather_pct, 2)
+    state.budget_btc     = round(_total * bot_params.alloc_btc_pct,     2)
+    state.budget_updown  = round(_total * bot_params.alloc_updown_pct,  2)
+
+    # Disponible: distribuir el cash entre las categorías con headroom libre.
+    # Si una categoría está sobre presupuesto, su cash se redistribuye proporcionalmente
+    # a las otras que sí tienen espacio. Total distribuido = balance_usdc exacto.
+    _cash = state.balance_usdc
+    _hw = max(0.0, state.budget_weather - state.deployed_weather)
+    _hb = max(0.0, state.budget_btc     - state.deployed_btc)
+    _hu = max(0.0, state.budget_updown  - state.deployed_updown)
+    _total_h = _hw + _hb + _hu
+    _ratio = min(1.0, _cash / _total_h) if _total_h > 0 else 0.0
+    state.available_weather = round(_hw * _ratio, 2)
+    state.available_btc     = round(_hb * _ratio, 2)
+    state.available_updown  = round(_hu * _ratio, 2)
+
+    _log(
+        "INFO",
+        f"Capital — Weather: ${state.budget_weather:.2f} (dep ${state.deployed_weather:.2f} / avail ${state.available_weather:.2f}) | "
+        f"BTC: ${state.budget_btc:.2f} (dep ${state.deployed_btc:.2f} / avail ${state.available_btc:.2f}) | "
+        f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f})",
+    )
+
     _check_daily_reset()
 
     # Actualizar posiciones reales y ordenes abiertas desde Polymarket
@@ -474,6 +525,13 @@ async def _scan_cycle():
                 # Auto-redimir posiciones resueltas
                 if pos.get("redeemable"):
                     cur_price = pos.get("cur_price", 0)
+                    token_id  = pos.get("token_id", "")
+                    # Actualizar racha UpDown si aplica (via precio posición redeemable)
+                    if token_id in _updown_pending_outcomes:
+                        pending = _updown_pending_outcomes.pop(token_id)
+                        interval = pending["interval"] if isinstance(pending, dict) else pending
+                        won = cur_price > 0.5
+                        _update_updown_loss_streak(interval, won, None)
                     if cur_price > 0.95:
                         # Ganamos — redimir para cobrar
                         _log("INFO", f"POSICIÓN GANADA PENDIENTE DE COBRO | {pos['market_title'][:50]} — ${pos['cur_value_usdc']:.2f} USDC")
@@ -536,9 +594,14 @@ async def _scan_cycle():
         _log("WARN", f"Limite de perdida diaria alcanzado ({bot_params.max_daily_loss_pct*100:.0f}%). Bot pausado.")
         return
 
-    # Obtener mercados activos
-    markets = await fetch_weather_markets()
-    _log("INFO", f"Mercados encontrados: {len(markets)}")
+    # ── Ciclo Weather ─────────────────────────────────────────────────────────
+    if not bot_params.weather_enabled:
+        _log("INFO", "Weather DESACTIVADO — saltando scan de mercados de clima")
+        # Saltar al resto del ciclo (BTC sigue adelante abajo)
+        markets = []
+    else:
+        markets = await fetch_weather_markets()
+        _log("INFO", f"Mercados encontrados: {len(markets)}")
 
     opportunities = []
     for market in markets:
@@ -556,8 +619,8 @@ async def _scan_cycle():
         if live_price:
             market["yes_price"] = live_price
 
-        # Evaluar oportunidad
-        opportunity = evaluate_market(market, forecast, state.balance_usdc)
+        # Evaluar oportunidad (usa budget_weather para sizing)
+        opportunity = evaluate_market(market, forecast, state.budget_weather)
         if opportunity:
             opportunities.append(opportunity)
             _log(
@@ -578,10 +641,14 @@ async def _scan_cycle():
         _log("INFO", "Sin oportunidades con edge suficiente en este ciclo.")
         return
 
-    # Ejecutar el mejor trade si hay balance suficiente
+    # Ejecutar el mejor trade respetando available_weather
+    weather_spent = 0.0
     for opp in opportunities:
         if state.balance_usdc < bot_params.min_position_usdc:
             _log("WARN", "Balance insuficiente para abrir nuevas posiciones.")
+            break
+        if weather_spent + opp["size_usdc"] > state.available_weather:
+            _log("INFO", f"Weather | Disponible agotado (gastado ${weather_spent:.2f} / disponible ${state.available_weather:.2f} / presupuesto ${state.budget_weather:.2f})")
             break
 
         if _daily_loss_limit_reached():
@@ -623,34 +690,38 @@ async def _scan_cycle():
             )
             continue
 
-        # Consultar a Claude antes de ejecutar
-        _log("INFO", f"Consultando a Claude sobre: {opp['market_title'][:55]}...")
-        analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
+        # Consultar a Claude antes de ejecutar (saltar si auto_trade_mode activo)
+        if state.auto_trade_mode:
+            _log("INFO", f"AUTO-TRADE | Ejecutando sin aprobación: {opp['market_title'][:55]}...")
+        else:
+            _log("INFO", f"Consultando a Claude sobre: {opp['market_title'][:55]}...")
+            analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
 
-        if analysis["skipped"] or not analysis["approved"]:
-            if analysis["skipped"]:
-                _log("WARN", "Claude no configurado — trade BLOQUEADO. Configura ANTHROPIC_API_KEY en .env")
-            else:
-                _log(
-                    "WARN",
-                    f"Claude RECHAZA [{analysis['confidence']}]: {analysis['reason']}",
-                )
-            opp["claude_rejected"] = True
-            opp["claude_reason"] = analysis["reason"]
-            continue
+            if analysis["skipped"] or not analysis["approved"]:
+                if analysis["skipped"]:
+                    _log("WARN", "Claude no configurado — trade BLOQUEADO. Configura ANTHROPIC_API_KEY en .env")
+                else:
+                    _log(
+                        "WARN",
+                        f"Claude RECHAZA [{analysis['confidence']}]: {analysis['reason']}",
+                    )
+                opp["claude_rejected"] = True
+                opp["claude_reason"] = analysis["reason"]
+                continue
 
-        _log(
-            "INFO",
-            f"Claude APRUEBA [{analysis['confidence']}] "
-            f"[Riesgo ejecucion: {analysis.get('execution_risk','N/A')}]: "
+            _log(
+                "INFO",
+                f"Claude APRUEBA [{analysis['confidence']}] "
+                f"[Riesgo ejecucion: {analysis.get('execution_risk','N/A')}]: "
             f"{analysis['reason']}",
         )
 
         success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
         if success:
+            weather_spent += opp["size_usdc"]
             await asyncio.sleep(2)  # Pausa entre trades
 
-    # ── Ciclo BTC ──────────────────────────────────────────────────────────
+    # ── Ciclo BTC (mercados de precio) ─────────────────────────────────────
     if bot_params.btc_enabled:
         await _scan_btc_markets()
 
@@ -659,23 +730,67 @@ async def _scan_cycle():
 
 
 async def _scan_btc_markets():
-    """Escanea mercados de precio de BTC en Polymarket y ejecuta trades si hay edge."""
-    _log("INFO", "BTC | Obteniendo precio y volatilidad...")
+    """
+    Escanea mercados de precio de BTC en Polymarket.
+    Usa TradingView TA y CoinMarketCap para enriquecer el análisis.
+    Ajusta el intervalo de volatilidad según el horizonte máximo configurado.
+    """
+    if not bot_params.btc_enabled:
+        _log("INFO", "BTC | Desactivado en panel — scan omitido")
+        return
+    _log("INFO", "BTC | Obteniendo precio y datos de mercado...")
 
+    # ── Precio ──────────────────────────────────────────────────────────────
     btc_price = await get_btc_price()
     if not btc_price:
         _log("WARN", "BTC | No se pudo obtener precio de BTC — saltando ciclo BTC")
         return
-
     state.btc_price = btc_price
 
-    vol_per_minute = await get_btc_volatility(interval="15m", candles=bot_params.btc_vol_candles)
+    # ── CoinMarketCap ────────────────────────────────────────────────────────
+    from config import settings as _settings
+    cmc_data = await get_btc_market_data_cmc(_settings.cmc_api_key)
+    if cmc_data:
+        state.btc_cmc = cmc_data
+        _log(
+            "INFO",
+            f"BTC | CMC: ${cmc_data['price']:,.2f} | "
+            f"1h: {cmc_data['percent_change_1h']:+.2f}% | "
+            f"24h: {cmc_data['percent_change_24h']:+.2f}%",
+        )
+    else:
+        _log("INFO", f"BTC | Precio Binance: ${btc_price:,.2f} (CMC no configurado)")
+
+    # ── Volatilidad adaptativa ───────────────────────────────────────────────
+    # Usar intervalo corto si el horizonte máximo es corto (ej. mercados de 5 min)
+    vol_interval, vol_candles = vol_interval_for_horizon(bot_params.btc_max_hours_to_resolution)
+    vol_per_candle = await get_btc_volatility(interval=vol_interval, candles=vol_candles)
+    # Convertir sigma por vela → sigma por minuto (para la fórmula log-normal del estratega)
+    _CANDLE_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+    candle_mins = _CANDLE_MINUTES.get(vol_interval, 15)
+    import math as _math
+    vol_per_minute = vol_per_candle / _math.sqrt(candle_mins)
     _log(
         "INFO",
-        f"BTC | Precio: ${btc_price:,.2f} | "
-        f"Volatilidad 15m: {vol_per_minute * 100:.3f}% por minuto",
+        f"BTC | Vol ({vol_interval} × {vol_candles}): {vol_per_candle * 100:.4f}% por vela → "
+        f"{vol_per_minute * 100:.4f}% por minuto",
     )
 
+    # ── TradingView TA ───────────────────────────────────────────────────────
+    tv_interval = tv_interval_for_horizon(bot_params.btc_max_hours_to_resolution)
+    ta_data = await get_btc_ta(interval=tv_interval)
+    state.btc_ta = ta_data
+    if ta_data.get("available"):
+        rsi_str = f" | RSI: {ta_data['rsi']:.1f}" if ta_data.get("rsi") else ""
+        _log(
+            "INFO",
+            f"BTC | TradingView ({tv_interval}): {ta_data['recommendation']} "
+            f"[↑{ta_data['buy']} ↔{ta_data['neutral']} ↓{ta_data['sell']}]{rsi_str}",
+        )
+    else:
+        _log("WARN", f"BTC | TradingView TA no disponible: {ta_data.get('error', '')}")
+
+    # ── Mercados Polymarket ──────────────────────────────────────────────────
     markets = await fetch_btc_markets()
     _log("INFO", f"BTC | Mercados encontrados: {len(markets)}")
 
@@ -685,16 +800,20 @@ async def _scan_btc_markets():
         if live_price:
             market["yes_price"] = live_price
 
-        opp = evaluate_btc_market(market, btc_price, vol_per_minute, state.balance_usdc)
+        opp = evaluate_btc_market(
+            market, btc_price, vol_per_minute, state.budget_btc,
+            ta_data=ta_data,
+        )
         if opp:
             btc_opps.append(opp)
+            ta_str = f" | TV: {opp['ta_recommendation']}" if opp.get("ta_recommendation") else ""
             _log(
                 "INFO",
                 f"BTC OPP | {opp['side']} {'>' if opp['direction']=='above' else '<'}"
                 f"${opp['threshold']:,.0f} | "
-                f"Precio actual: ${btc_price:,.0f} ({opp['pct_from_threshold']:+.2f}%) | "
-                f"Nuestra P: {opp['our_prob']:.1%} | Mercado: {opp['market_prob']:.1%} | "
-                f"EV: {opp['ev_pct']}% | Cierra en: {opp['minutes_to_close']:.0f}m",
+                f"${btc_price:,.0f} ({opp['pct_from_threshold']:+.2f}%) | "
+                f"P: {opp['our_prob']:.1%} vs {opp['market_prob']:.1%} | "
+                f"EV: {opp['ev_pct']}% | {opp['minutes_to_close']:.0f}m{ta_str}",
             )
 
     btc_opps.sort(key=lambda x: x["ev_pct"], reverse=True)
@@ -704,36 +823,693 @@ async def _scan_btc_markets():
         _log("INFO", "BTC | Sin oportunidades con edge suficiente.")
         return
 
-    # Ejecutar el mejor trade BTC
+    # ── Ejecutar trades (respeta budget_btc) ───────────────────────────────
+    btc_spent = 0.0
     for opp in btc_opps:
         if state.balance_usdc < bot_params.min_position_usdc:
+            break
+        if btc_spent + opp["size_usdc"] > state.available_btc:
+            _log("INFO", f"BTC | Disponible agotado (gastado ${btc_spent:.2f} / disponible ${state.available_btc:.2f} / presupuesto ${state.budget_btc:.2f})")
             break
 
         if _daily_loss_limit_reached():
             break
 
-        # No repetir posición en el mismo mercado
         if any(p.get("condition_id") == opp.get("condition_id") for p in state.poly_positions):
             continue
 
-        # Consultar a Claude (reutiliza la misma función de análisis)
-        _log("INFO", f"BTC | Consultando Claude sobre: {opp['market_title'][:55]}...")
-        analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
+        if state.auto_trade_mode:
+            _log("INFO", f"BTC AUTO-TRADE | Ejecutando sin aprobación: {opp['market_title'][:55]}...")
+        else:
+            _log("INFO", f"BTC | Consultando Claude sobre: {opp['market_title'][:55]}...")
+            analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
 
-        if analysis["skipped"] or not analysis["approved"]:
-            reason = analysis.get("reason", "")
-            _log("WARN", f"BTC | Claude {'NO CONFIGURADO' if analysis['skipped'] else 'RECHAZA'}: {reason}")
-            opp["claude_rejected"] = True
-            continue
+            if analysis["skipped"] or not analysis["approved"]:
+                reason = analysis.get("reason", "")
+                _log("WARN", f"BTC | Claude {'NO CONFIGURADO' if analysis['skipped'] else 'RECHAZA'}: {reason}")
+                opp["claude_rejected"] = True
+                continue
 
-        _log(
-            "INFO",
-            f"BTC | Claude APRUEBA [{analysis['confidence']}]: {analysis['reason']}",
-        )
+            _log("INFO", f"BTC | Claude APRUEBA [{analysis['confidence']}]: {analysis['reason']}")
 
         success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
         if success:
+            btc_spent += opp["size_usdc"]
             await asyncio.sleep(2)
+
+
+def _calc_deployed_by_type() -> dict[str, float]:
+    """
+    Calcula el capital actualmente desplegado en posiciones abiertas, separado por tipo.
+    Fuente de verdad: state.poly_positions (datos frescos de Polymarket).
+    Usa cost_usdc (costo original) de cada posición activa.
+    """
+    deployed = {"WEATHER": 0.0, "BTC": 0.0, "BTC_UPDOWN": 0.0}
+    for pos in state.poly_positions:
+        cost  = float(pos.get("cost_usdc", pos.get("cur_value_usdc", 0.0)))
+        title = pos.get("market_title", "").lower()
+        if "updown" in title or "up/down" in title or "up or down" in title or "up down" in title:
+            asset = "BTC_UPDOWN"
+        elif "btc" in title or "bitcoin" in title or "$" in title:
+            asset = "BTC"
+        else:
+            asset = "WEATHER"
+        deployed[asset] = deployed.get(asset, 0.0) + cost
+    return deployed
+
+
+# ── BTC Up/Down markets (5m y 15m) ────────────────────────────────────────
+
+# Rastrea qué slugs ya operamos en esta sesión para no duplicar
+_updown_traded_slugs: set[str] = set()
+
+# Mapeo token_id → detalles del trade pendiente de resolución
+# {"interval": int, "side": str, "btc_start": float, "end_ts": int, "trade_idx": int}
+_updown_pending_outcomes: dict[str, dict] = {}
+
+
+async def _scan_updown(interval_minutes: int):
+    """
+    Escanea el mercado UP/DOWN del intervalo dado y ejecuta si hay edge.
+    Respeta el límite de pérdidas consecutivas.
+    """
+    is_5m = interval_minutes == 5
+
+    if is_5m:
+        losses  = state.updown_5m_consecutive_losses
+        stopped = state.updown_5m_stopped
+    else:
+        losses  = state.updown_15m_consecutive_losses
+        stopped = state.updown_15m_stopped
+
+    if stopped:
+        _log("WARN", f"UpDown {interval_minutes}m | DETENIDO por {losses} pérdidas consecutivas")
+        return
+
+    market = await fetch_updown_market(interval_minutes)
+    if not market:
+        _log("INFO", f"UpDown {interval_minutes}m | Sin mercado activo ahora mismo")
+        return
+
+    slug = market["slug"]
+    _log(
+        "INFO",
+        f"UpDown {interval_minutes}m | {market['title']} | "
+        f"{market['minutes_to_close']:.1f}min restantes | "
+        f"UP:{market['up_price']:.3f} DOWN:{market['down_price']:.3f}",
+    )
+
+    # Guardar mercado actual en estado
+    if is_5m:
+        state.updown_last_market_5m = market
+    else:
+        state.updown_last_market_15m = market
+
+    # No operar dos veces en el mismo ciclo de mercado
+    if slug in _updown_traded_slugs:
+        _log("INFO", f"UpDown {interval_minutes}m | Ya operado en este ciclo — esperando el siguiente")
+        return
+
+    # Obtener TA para el intervalo adecuado
+    ta_interval = "1m" if interval_minutes == 5 else "5m"
+    ta_data = await get_btc_ta(interval=ta_interval)
+
+    if is_5m:
+        state.updown_ta_5m = ta_data
+    else:
+        state.updown_ta_15m = ta_data
+
+    # Precio BTC al inicio de la ventana (de Binance klines)
+    btc_price_now   = state.btc_price or await get_btc_price()
+    btc_price_start = await _get_btc_price_at_ts(market["window_start_ts"])
+
+    # Sin precio base no podemos analizar dirección — no operar
+    if not btc_price_start or btc_price_start <= 0:
+        _log("WARN", f"UpDown {interval_minutes}m | Sin precio BTC al inicio de ventana — cancelando")
+        return
+
+    # CMC data para señal de tendencia macro 1h
+    cmc_data = state.btc_cmc if state.btc_cmc else None
+
+    opp, skip_reason = evaluate_updown_market(
+        market=market,
+        ta_data=ta_data,
+        btc_price=btc_price_now or 0,
+        btc_price_window_start=btc_price_start,
+        cmc_data=cmc_data,
+    )
+
+    # Guardar oportunidad evaluada (aunque no se opere)
+    scan_snapshot = {
+        "scanned_at": datetime.now(timezone.utc).strftime("%H:%M:%S UTC"),
+        "slug":       slug,
+        "up_price":   market["up_price"],
+        "down_price": market["down_price"],
+        "elapsed_minutes": round(market.get("elapsed_minutes", 0), 1),
+        "minutes_to_close": round(market["minutes_to_close"], 1),
+        "ta_rec":     ta_data.get("recommendation", "—"),
+        "ta_signal":  round(ta_data.get("signal", 0), 2) if ta_data.get("signal") is not None else 0,
+        "ta_rsi":     round(ta_data["rsi"], 1) if ta_data.get("rsi") else None,
+        "btc_price":  btc_price_now,
+        "btc_start":  btc_price_start,
+        "opp":        opp,  # None si no hay señal suficiente
+    }
+    if is_5m:
+        state.updown_last_opp_5m = scan_snapshot
+    else:
+        state.updown_last_opp_15m = scan_snapshot
+
+    # Log del análisis completo (siempre, haya o no señal)
+    from strategy_updown import build_btc_direction_signal
+    _sig = build_btc_direction_signal(
+        ta_data=ta_data,
+        btc_price=btc_price_now or 0,
+        btc_price_window_start=btc_price_start,
+        cmc_data=cmc_data,
+        market=market,
+    )
+    _log("INFO",
+         f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
+         f"| BTC inicio=${btc_price_start:.0f} ahora=${btc_price_now:.0f} ({_sig['window_pct']:+.3f}%) "
+         f"| cierra en {market['minutes_to_close']:.1f}min")
+    _log("INFO",
+         f"UpDown {interval_minutes}m | Señales — "
+         f"TA:{ta_data.get('recommendation','?')}({_sig['ta_raw']:+.3f}) "
+         f"RSI:{ta_data.get('rsi','?')} MACD:{_sig['macd_sig']:+.3f} "
+         f"EMA:{_sig['ema_sig']:+.3f} Momentum:{_sig['momentum']:+.3f} "
+         f"Mercado:{_sig['market_sig']:+.3f} Macro:{_sig['macro']:+.3f} "
+         f"→ COMBINADA:{_sig['combined']:+.4f} ({_sig['direction']})")
+
+    if not opp:
+        _log("INFO", f"UpDown {interval_minutes}m | Sin entrada — {skip_reason}")
+        return
+
+    _log(
+        "INFO",
+        f"UpDown {interval_minutes}m | SEÑAL {opp['side']} | "
+        f"Confianza:{opp['confidence']}% | Precio entrada:{opp['entry_price']:.3f} | "
+        f"RR ratio:{opp.get('rr_ratio',0):.3f} | BTC movió {opp.get('window_pct',0):+.3f}% en ventana",
+    )
+
+    # Recomputar disponible en tiempo real (evita usar state.available_updown obsoleto)
+    # Disponible = mínimo entre: headroom del presupuesto y el cash real
+    _updown_headroom = max(0.0, state.budget_updown - state.deployed_updown)
+    _avail_now = round(min(_updown_headroom, state.balance_usdc), 2)
+
+    if state.balance_usdc < opp["size_usdc"]:
+        _log("WARN", (
+            f"UpDown {interval_minutes}m | Cash insuficiente: "
+            f"tienes ${state.balance_usdc:.2f} pero el trade necesita ${opp['size_usdc']} — "
+            f"sube el cash o baja updown_max_usdc"
+        ))
+        return
+    if opp["size_usdc"] > _avail_now:
+        _log("WARN", (
+            f"UpDown {interval_minutes}m | Presupuesto UpDown agotado: "
+            f"quieres gastar ${opp['size_usdc']} pero solo hay ${_avail_now:.2f} disponible | "
+            f"Budget=${state.budget_updown:.2f} Deployed=${state.deployed_updown:.2f} "
+            f"Headroom=${_updown_headroom:.2f} Cash=${state.balance_usdc:.2f}"
+        ))
+        return
+    if _daily_loss_limit_reached():
+        return
+
+    # ── Revisión de Claude antes de ejecutar ────────────────────────────────
+    if not state.auto_trade_mode:
+        _log("INFO", f"UpDown {interval_minutes}m | Consultando a Claude...")
+        claude = await analyze_updown_opportunity(
+            opportunity=opp,
+            ta_data=ta_data,
+            btc_price_now=btc_price_now or 0,
+            btc_price_start=btc_price_start or 0,
+            cmc_data=cmc_data,
+        )
+        opp["claude_reason"]     = claude["reason"]
+        opp["claude_confidence"] = claude["confidence"]
+        opp["claude_raw"]        = claude.get("raw", "")
+
+        if not claude["approved"]:
+            _log("WARN", f"UpDown {interval_minutes}m | Claude RECHAZA [{claude['confidence']}]: {claude['reason']}")
+            opp["claude_rejected"] = True
+            return
+
+        # Claude puede cambiar la dirección si ve señales más fuertes en el otro lado
+        if claude["direction_changed"]:
+            new_dir = claude["direction"]
+            _log("INFO",
+                 f"UpDown {interval_minutes}m | Claude CAMBIA dirección "
+                 f"{opp['side']} → {new_dir}: {claude['reason']}")
+            opp["side"] = new_dir
+            if new_dir == "UP":
+                opp["token_id"]    = market["up_token"]
+                opp["entry_price"] = market["up_price"]
+            else:
+                opp["token_id"]    = market["down_token"]
+                opp["entry_price"] = market["down_price"]
+            opp["shares"] = round(opp["size_usdc"] / opp["entry_price"], 2)
+
+        _log("INFO", f"UpDown {interval_minutes}m | Claude APRUEBA [{claude['confidence']}]: {claude['reason']}")
+    else:
+        _log("INFO", f"UpDown {interval_minutes}m | AUTO-TRADE — ejecutando sin revisión de Claude")
+
+    success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
+    if success:
+        _updown_traded_slugs.add(slug)
+
+        # Calcular cuándo cierra la ventana para poder resolver el resultado vía BTC price
+        end_ts = int(market["window_start_ts"]) + interval_minutes * 60
+
+        trade_record = {
+            "time":            datetime.now(timezone.utc).strftime("%H:%M:%S UTC"),
+            "interval":        interval_minutes,
+            "slug":            slug,
+            "side":            opp["side"],
+            "entry_price":     opp["entry_price"],
+            "size_usdc":       opp["size_usdc"],
+            "confidence":      opp.get("confidence", 0),
+            "combined_signal": opp.get("combined_signal", 0),
+            "ta_rec":          opp.get("ta_recommendation", "—"),
+            "ta_rsi":          opp.get("ta_rsi"),
+            "ta_signal":       opp.get("ta_signal", 0),
+            "window_momentum": opp.get("window_momentum", 0),
+            "elapsed_minutes": opp.get("elapsed_minutes", 0),
+            "btc_price":       btc_price_now,
+            "btc_start":       btc_price_start,
+            "end_ts":          end_ts,
+            # Claude review
+            "claude_reason":     opp.get("claude_reason", "AUTO-TRADE"),
+            "claude_confidence": opp.get("claude_confidence", "N/A"),
+            "result":          None,  # se actualiza cuando resuelve
+            # campos legacy para compatibilidad con la UI
+            "ev_pct":          opp.get("ev_pct", 0),
+            "our_prob":        opp.get("our_prob", 0),
+        }
+        if is_5m:
+            state.updown_last_trade_5m = trade_record
+        else:
+            state.updown_last_trade_15m = trade_record
+        # Historial reciente (últimos 30)
+        state.updown_recent_trades.insert(0, trade_record)
+        if len(state.updown_recent_trades) > 30:
+            state.updown_recent_trades = state.updown_recent_trades[:30]
+
+        # Guardar en pending para resolver el resultado por precio BTC al cierre
+        _updown_pending_outcomes[opp["token_id"]] = {
+            "interval": interval_minutes,
+            "side":     opp["side"],
+            "btc_start": btc_price_start or 0,
+            "end_ts":   end_ts,
+            "slug":     slug,
+        }
+
+        # Descontar del disponible para que el siguiente scan (5m o 15m) no gaste de más
+        state.available_updown = round(max(0.0, state.available_updown - opp["size_usdc"]), 2)
+        state.deployed_updown  = round(state.deployed_updown + opp["size_usdc"], 2)
+        _log("INFO", f"UpDown {interval_minutes}m | TRADE {opp['side']} ${opp['size_usdc']} @ {opp['entry_price']:.3f} | EV {opp['ev_pct']}% | avail restante ${state.available_updown:.2f}")
+    else:
+        _log("WARN", f"UpDown {interval_minutes}m | Fallo al ejecutar trade")
+
+
+async def _get_btc_price_at_ts(unix_ts: int) -> Optional[float]:
+    """
+    Obtiene el precio OPEN de BTC al timestamp dado consultando múltiples fuentes.
+    Incluye Chainlink on-chain como fuente primaria (es la fuente de resolución de
+    los mercados UpDown de Polymarket).
+
+    Fuentes (en paralelo):
+      0. Chainlink on-chain — precio actual si unix_ts es reciente (< 5 min atrás)
+      1. Binance  — klines 1m, precio OPEN
+      2. Kraken   — OHLC 1m, precio OPEN
+      3. Coinbase — candles 1m, precio OPEN
+    """
+    import httpx as _httpx
+
+    async def _from_binance(client: _httpx.AsyncClient) -> Optional[float]:
+        try:
+            r = await client.get(
+                "https://api.binance.com/api/v3/klines",
+                params={"symbol": "BTCUSDT", "interval": "1m",
+                        "startTime": unix_ts * 1000, "endTime": (unix_ts + 120) * 1000, "limit": 2},
+                timeout=6,
+            )
+            if r.status_code == 200:
+                d = r.json()
+                if d:
+                    return float(d[0][1])  # open
+        except Exception:
+            pass
+        return None
+
+    async def _from_kraken(client: _httpx.AsyncClient) -> Optional[float]:
+        try:
+            r = await client.get(
+                "https://api.kraken.com/0/public/OHLC",
+                params={"pair": "XBTUSD", "interval": 1, "since": unix_ts - 60},
+                timeout=6,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                ohlc = data.get("result", {}).get("XXBTZUSD") or data.get("result", {}).get("XBTUSD", [])
+                # Encontrar la vela más cercana al timestamp
+                best = None
+                for candle in ohlc:
+                    candle_ts = int(candle[0])
+                    if abs(candle_ts - unix_ts) <= 60:
+                        best = float(candle[1])  # open
+                        break
+                return best
+        except Exception:
+            pass
+        return None
+
+    async def _from_coinbase(client: _httpx.AsyncClient) -> Optional[float]:
+        try:
+            from datetime import timezone as _tz
+            start = datetime.fromtimestamp(unix_ts - 60, tz=_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            end   = datetime.fromtimestamp(unix_ts + 120, tz=_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            r = await client.get(
+                "https://api.exchange.coinbase.com/products/BTC-USD/candles",
+                params={"granularity": 60, "start": start, "end": end},
+                headers={"User-Agent": "WeatherbotPolymarket/1.0"},
+                timeout=6,
+            )
+            if r.status_code == 200:
+                candles = r.json()  # [timestamp, low, high, open, close, volume]
+                if candles:
+                    # Ordenar y tomar la vela más cercana
+                    candles.sort(key=lambda c: abs(int(c[0]) - unix_ts))
+                    return float(candles[0][3])  # open
+        except Exception:
+            pass
+        return None
+
+    # Chainlink: si el timestamp es reciente (< 5 min), podemos usar el precio live
+    # Para timestamps históricos, Chainlink on-chain requiere buscar rondas — usamos spot
+    now_ts_local = int(datetime.now(timezone.utc).timestamp())
+    chainlink_price: Optional[float] = None
+    if abs(now_ts_local - unix_ts) < 300:  # timestamp reciente → precio Chainlink actual válido
+        try:
+            from price_feed import get_btc_price_chainlink as _cl_price
+            chainlink_price = await _cl_price()
+            if chainlink_price:
+                _log("INFO", f"UpDown | Precio Chainlink live: ${chainlink_price:,.2f} (fuente resolución Polymarket)")
+        except Exception:
+            pass
+
+    async with _httpx.AsyncClient(headers={"User-Agent": "WeatherbotPolymarket/1.0"}) as client:
+        results = await asyncio.gather(
+            _from_binance(client),
+            _from_kraken(client),
+            _from_coinbase(client),
+            return_exceptions=True,
+        )
+
+    prices = [p for p in results if isinstance(p, float) and p and p > 0]
+
+    # Añadir Chainlink al pool si está disponible
+    if chainlink_price:
+        prices.append(chainlink_price)
+
+    if not prices:
+        # Sin ninguna fuente disponible — fallback al cache si es reciente
+        if abs(now_ts_local - unix_ts) < 600 and state.btc_price and state.btc_price > 0:
+            _log("WARN", f"UpDown | Todas las fuentes fallaron, usando cache ${state.btc_price:,.0f}")
+            return state.btc_price
+        return None
+
+    # Con múltiples precios: descartar outliers (> 0.5% de la mediana) y usar mediana
+    prices.sort()
+    median = prices[len(prices) // 2]
+    valid  = [p for p in prices if abs(p - median) / median < 0.005]
+    final  = sum(valid) / len(valid) if valid else median
+
+    spot_sources = ["Binance", "Kraken", "Coinbase"]
+    labels  = [spot_sources[i] for i, p in enumerate(results) if isinstance(p, float) and p and p > 0]
+    if chainlink_price:
+        labels.insert(0, "Chainlink")
+    _log("INFO", f"UpDown | Precio inicio ventana ${final:,.2f} ({'/'.join(labels)}, {len(prices)} fuentes)")
+    return round(final, 2)
+
+
+def _update_updown_loss_streak(interval_minutes: int, won: bool, trade_record: Optional[dict]):
+    """
+    Actualiza el contador de pérdidas consecutivas, registra resultado en learner,
+    y actualiza el campo 'result' en el historial reciente.
+    """
+    from config import bot_params as _bp
+
+    # ── Actualizar historial reciente ────────────────────────────────────────
+    result_str = "WIN" if won else "LOSS"
+    # Buscar el trade más reciente sin resultado para este intervalo y marcarlo
+    for tr in state.updown_recent_trades:
+        if tr.get("interval") == interval_minutes and tr.get("result") is None:
+            tr["result"] = result_str
+            break
+
+    # ── Learner: registrar resultado ─────────────────────────────────────────
+    try:
+        from updown_learner import record_result as _lr
+        effective_trade = trade_record or {}
+        # Si no tenemos el trade record explícito, usar el del historial
+        if not effective_trade:
+            for tr in state.updown_recent_trades:
+                if tr.get("interval") == interval_minutes and tr.get("result") == result_str:
+                    effective_trade = tr
+                    break
+        _lr(interval_minutes, effective_trade, won)
+
+        # Loguear parámetros adaptativos actualizados
+        from updown_learner import get_adaptive_params as _gap
+        ap = _gap(interval_minutes)
+        _log("INFO",
+             f"UpDown {interval_minutes}m | Learner: {ap['reason']} | "
+             f"min_signal={ap['min_signal']:.2f} invert={ap['invert_signal']}")
+    except Exception as e:
+        _log("WARN", f"UpDown learner error: {e}")
+
+    # ── Racha de pérdidas ────────────────────────────────────────────────────
+    if interval_minutes == 5:
+        if won:
+            state.updown_5m_consecutive_losses = 0
+            _log("INFO", f"UpDown 5m | WIN — racha de pérdidas reiniciada")
+        else:
+            state.updown_5m_consecutive_losses += 1
+            _log("WARN", f"UpDown 5m | LOSS — pérdidas consecutivas: {state.updown_5m_consecutive_losses}")
+            if state.updown_5m_consecutive_losses >= _bp.updown_max_consecutive_losses:
+                state.updown_5m_stopped = True
+                _log(
+                    "WARN",
+                    f"UpDown 5m | DETENIDO — {state.updown_5m_consecutive_losses} pérdidas consecutivas. "
+                    "Reactiva manualmente desde la UI.",
+                )
+    else:
+        if won:
+            state.updown_15m_consecutive_losses = 0
+            _log("INFO", f"UpDown 15m | WIN — racha de pérdidas reiniciada")
+        else:
+            state.updown_15m_consecutive_losses += 1
+            _log("WARN", f"UpDown 15m | LOSS — pérdidas consecutivas: {state.updown_15m_consecutive_losses}")
+            if state.updown_15m_consecutive_losses >= _bp.updown_max_consecutive_losses:
+                state.updown_15m_stopped = True
+                _log(
+                    "WARN",
+                    f"UpDown 15m | DETENIDO — {state.updown_15m_consecutive_losses} pérdidas consecutivas. "
+                    "Reactiva manualmente desde la UI.",
+                )
+
+
+async def _cancel_stale_updown_orders():
+    """
+    Cancela órdenes GTC de UpDown que llevan más de 90 segundos abiertas sin llenarse.
+    Usa el mismo patrón de _fetch_open_orders (OpenOrderParams).
+    """
+    if _clob_client is None:
+        return
+    try:
+        # Reusar _fetch_open_orders — ya parsea correctamente con OpenOrderParams
+        open_orders = await asyncio.get_event_loop().run_in_executor(None, _fetch_open_orders)
+        if not open_orders:
+            return
+
+        # Tokens UpDown conocidos (los que el bot está siguiendo)
+        updown_tokens = {
+            p.get("token_id", "") if isinstance(p, dict) else ""
+            for p in _updown_pending_outcomes.values()
+        }
+
+        now_ts    = datetime.now(timezone.utc).timestamp()
+        cancelled = 0
+
+        for order in open_orders:
+            token_id   = order.get("token_id", "")
+            order_id   = order.get("id", "")
+            created_at = order.get("created_at", "")
+
+            # Solo cancelar si es una orden de UpDown
+            if updown_tokens and token_id not in updown_tokens:
+                continue
+
+            # Parsear edad de la orden
+            try:
+                created_ts = datetime.fromisoformat(
+                    str(created_at).replace("Z", "+00:00")
+                ).timestamp()
+                age_s = now_ts - created_ts
+            except Exception:
+                age_s = 999  # no se puede parsear → cancelar igual
+
+            if age_s > 90 and order_id:
+                try:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, lambda oid=order_id: _clob_client.cancel(oid)
+                    )
+                    cancelled += 1
+                    _log("INFO", f"UpDown | Orden GTC cancelada ({age_s:.0f}s sin llenar): {order_id[:20]}…")
+                except Exception as ce:
+                    _log("WARN", f"UpDown | Error cancelando {order_id[:20]}: {ce}")
+
+        if cancelled:
+            _log("INFO", f"UpDown | {cancelled} orden(es) stale canceladas")
+
+    except Exception as e:
+        _log("WARN", f"UpDown | Error al cancelar órdenes stale: {e}")
+
+
+async def _resolve_pending_updown_outcomes():
+    """
+    Revisa si algún trade UpDown pendiente ya cerró su ventana.
+    En ese caso, obtiene el precio BTC al cierre y determina WIN/LOSS.
+    Mucho más confiable que esperar el flag 'redeemable' de Polymarket,
+    que tarda minutos para mercados de 5m.
+    """
+    if not _updown_pending_outcomes:
+        return
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    resolved_tokens = []
+
+    for token_id, pending in list(_updown_pending_outcomes.items()):
+        if not isinstance(pending, dict):
+            # formato viejo (int), limpiar
+            resolved_tokens.append(token_id)
+            continue
+
+        end_ts = pending.get("end_ts", 0)
+        if now_ts < end_ts + 15:   # esperar 15s de buffer tras el cierre
+            continue
+
+        side      = pending.get("side", "UP")
+        btc_start = pending.get("btc_start", 0.0)
+        interval  = pending.get("interval", 5)
+        slug      = pending.get("slug", "")
+
+        # Obtener precio BTC al cierre de la ventana
+        btc_end = await _get_btc_price_at_ts(end_ts)
+        if not btc_end:
+            # Fallback: usar precio live si han pasado más de 30s desde el cierre
+            if now_ts > end_ts + 30:
+                btc_end = state.btc_price or await get_btc_price()
+                if btc_end:
+                    _log("INFO", f"UpDown | Usando precio live ${btc_end:.0f} para resolver {slug} (kline no disponible)")
+                else:
+                    _log("WARN", f"UpDown | Sin precio BTC para resolver {slug}")
+                    if now_ts > end_ts + interval * 60 * 2:
+                        resolved_tokens.append(token_id)  # descartar después de 2 ventanas
+                    continue
+            else:
+                continue  # esperar más tiempo
+
+        if not (btc_start and btc_start > 0):
+            # Sin precio de inicio no podemos determinar WIN/LOSS — contar como LOSS conservadoramente
+            _log("WARN", f"UpDown | Sin btc_start para {slug} — contando como LOSS")
+            _update_updown_loss_streak(interval, False, None)
+            resolved_tokens.append(token_id)
+            continue
+
+        btc_went_up = btc_end >= btc_start
+        won = (side == "UP") == btc_went_up
+        direction = "SUBIO" if btc_went_up else "BAJO"
+        _log(
+            "INFO" if won else "WARN",
+            f"UpDown {interval}m | {'WIN ✓' if won else 'LOSS ✗'} — BTC {direction} "
+            f"${btc_start:.0f}→${btc_end:.0f} | apostamos {side}",
+        )
+
+        _update_updown_loss_streak(interval, won, None)
+        resolved_tokens.append(token_id)
+
+    for token_id in resolved_tokens:
+        _updown_pending_outcomes.pop(token_id, None)
+
+
+# ── BTC Auto-trading loop ──────────────────────────────────────────────────
+
+_btc_auto_running: bool = False
+_btc_auto_task: Optional[asyncio.Task] = None
+
+
+async def _btc_auto_loop(interval_minutes: int):
+    """Loop independiente: ejecuta _scan_btc_markets() cada interval_minutes."""
+    global _btc_auto_running
+    _log("INFO", f"BTC AUTO | Iniciado — intervalo: {interval_minutes} min")
+    state.btc_auto_mode = True
+    _btc_auto_running = True
+    state.btc_scan_interval_minutes = interval_minutes
+
+    # Escaneo inmediato al activar
+    try:
+        if bot_params.btc_enabled:
+            await _scan_btc_markets()
+        else:
+            _log("INFO", "BTC AUTO | btc_enabled=False — scan omitido")
+    except Exception as e:
+        _log("ERROR", f"BTC AUTO | Error en primer escaneo: {e}")
+
+    while _btc_auto_running:
+        # Cuenta regresiva
+        for remaining in range(interval_minutes * 60, 0, -1):
+            if not _btc_auto_running:
+                break
+            state.btc_next_scan_in = remaining
+            await asyncio.sleep(1)
+
+        if not _btc_auto_running:
+            break
+
+        try:
+            if not bot_params.btc_enabled:
+                _log("INFO", "BTC AUTO | btc_enabled=False — ciclo omitido")
+            else:
+                state.btc_next_scan_in = 0
+                await _scan_btc_markets()
+        except Exception as e:
+            _log("ERROR", f"BTC AUTO | Error en ciclo: {e}")
+
+    state.btc_auto_mode = False
+    state.btc_next_scan_in = 0
+    _log("INFO", "BTC AUTO | Detenido")
+
+
+def enable_btc_auto(interval_minutes: int = 5):
+    """Activa el auto-trading de BTC con el intervalo dado."""
+    global _btc_auto_running, _btc_auto_task
+    _btc_auto_running = True
+    if _btc_auto_task is None or _btc_auto_task.done():
+        try:
+            loop = asyncio.get_event_loop()
+            _btc_auto_task = loop.create_task(_btc_auto_loop(interval_minutes))
+        except RuntimeError:
+            asyncio.ensure_future(_btc_auto_loop(interval_minutes))
+    _log("INFO", f"BTC AUTO | enable_btc_auto({interval_minutes} min)")
+
+
+def disable_btc_auto():
+    """Detiene el auto-trading de BTC."""
+    global _btc_auto_running
+    _btc_auto_running = False
+    state.btc_auto_mode = False
+    state.btc_next_scan_in = 0
+    _log("INFO", "BTC AUTO | disable_btc_auto()")
 
 
 def _sync_account_from_polymarket():
@@ -857,11 +1633,56 @@ async def run_bot():
     _log("INFO", "Bot detenido.")
 
 
+async def _run_updown_loop():
+    """
+    Loop dedicado para UpDown: escanea cada 60s independientemente del ciclo principal.
+    Necesario porque los mercados 5m/15m abren y cierran mucho más rápido que scan_interval.
+    """
+    await asyncio.sleep(15)  # esperar a que run_bot inicialice balance
+    _updown_balance_tick = 0
+    while state.running:
+        try:
+            # Refrescar balance real desde Polymarket en cada iteración del loop.
+            # El balance interno puede quedar desactualizado si hubo trades o reembolsos
+            # entre ciclos principales. Sin esto, available_updown queda incorrecto.
+            fresh = await asyncio.get_event_loop().run_in_executor(None, _get_balance)
+            if fresh > 0:
+                state.balance_usdc = fresh
+
+            # Calcular budget si el ciclo principal aún no lo ha hecho
+            if state.balance_usdc > 0 and state.budget_updown == 0:
+                _dep = _calc_deployed_by_type()
+                state.deployed_weather = round(_dep.get("WEATHER",    0.0), 2)
+                state.deployed_btc     = round(_dep.get("BTC",        0.0), 2)
+                state.deployed_updown  = round(_dep.get("BTC_UPDOWN", 0.0), 2)
+                _total_dep = state.deployed_weather + state.deployed_btc + state.deployed_updown
+                total = state.balance_usdc + _total_dep
+                state.budget_updown    = round(total * bot_params.alloc_updown_pct, 2)
+                _ud_headroom           = max(0.0, state.budget_updown - state.deployed_updown)
+                state.available_updown = round(min(_ud_headroom, state.balance_usdc), 2)
+                _log("INFO", f"UpDown | Budget calculado: ${state.budget_updown:.2f} / headroom ${_ud_headroom:.2f} / disponible ${state.available_updown:.2f}")
+
+            # Cancelar órdenes GTC de UpDown que no se llenaron (>90s abiertas)
+            await _cancel_stale_updown_orders()
+
+            # Resolver trades pasados cuya ventana ya cerró
+            await _resolve_pending_updown_outcomes()
+
+            if bot_params.updown_5m_enabled:
+                await _scan_updown(5)
+            if bot_params.updown_15m_enabled:
+                await _scan_updown(15)
+        except Exception as e:
+            _log("ERROR", f"UpDown loop error: {e}")
+        await asyncio.sleep(60)
+
+
 def start():
     if state.running:
         return
     state.running = True
     asyncio.create_task(run_bot())
+    asyncio.create_task(_run_updown_loop())
 
 
 def stop():

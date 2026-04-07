@@ -38,6 +38,10 @@ def _parse_btc_market(title: str, end_date_str: str) -> Optional[dict]:
     if not any(kw in tl for kw in BTC_KEYWORDS):
         return None
 
+    # Excluir mercados "between X and Y" — no modelables con log-normal simple
+    if "between" in tl:
+        return None
+
     # Detectar si es mercado de precio (no de otros eventos sobre BTC)
     if not any(kw in tl for kw in PRICE_KEYWORDS):
         return None

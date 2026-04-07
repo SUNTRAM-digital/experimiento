@@ -185,6 +185,12 @@
   .btn.save   { background: var(--blue);  color: #000; }
 
   /* PARAMS */
+  .param-section-hdr {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--blue); font-weight: 700;
+    border-bottom: 1px solid #1e3a5f;
+    padding-bottom: 4px; margin-bottom: 8px;
+  }
   .param-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
   .param-row label { color: var(--muted); font-size: 11px; display: flex; justify-content: space-between; }
   .param-row input { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 5px 8px; border-radius: 4px; font-size: 12px; }
@@ -286,7 +292,12 @@
 <header>
   <h1>⛅ Weatherbot Polymarket</h1>
   <span id="status-badge" class="badge off">DETENIDO</span>
-  <span style="color:var(--muted); margin-left:auto; font-size:11px;">Ultimo scan: <span id="last-scan">—</span></span>
+  <span style="color:var(--muted); margin-left:auto; font-size:11px; display:flex; align-items:center; gap:16px;">
+    <span title="Hora UTC que el bot usa para todos los mercados (los mercados UpDown también son UTC)">
+      Bot UTC: <span id="bot-clock" style="color:var(--blue); font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.5px;">—</span>
+    </span>
+    <span>Ultimo scan: <span id="last-scan">—</span></span>
+  </span>
 </header>
 
 <div class="main">
@@ -330,6 +341,207 @@
         <span class="stat-label">Oportunidades activas</span>
         <span class="stat-val green" id="opp-count">0</span>
       </div>
+      <div class="stat-row" id="btc-price-row" style="border-top:1px solid #222;padding-top:6px;margin-top:6px;display:none">
+        <span class="stat-label">₿ Bitcoin (actual)</span>
+        <span class="stat-val blue" id="btc-price-display">—</span>
+      </div>
+      <div class="stat-row" id="btc-opps-row" style="display:none">
+        <span class="stat-label">₿ Oportunidades BTC</span>
+        <span class="stat-val" id="btc-opp-count" style="color:var(--yellow)">0</span>
+      </div>
+    </div>
+
+    <!-- Meta de ganancia -->
+    <div class="panel" id="goal-panel">
+      <h2>🎯 Meta de ganancia</h2>
+      <div id="goal-active-view" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <span style="font-size:.78rem;color:var(--muted)">Progreso</span>
+          <span id="goal-earned-lbl" style="font-size:1.05rem;font-weight:bold;color:var(--green)">$0.00</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-bottom:4px">
+          <span>de <span id="goal-target-lbl" style="color:var(--text)">$0.00</span></span>
+          <span id="goal-pct-lbl" style="color:var(--blue)">0%</span>
+        </div>
+        <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-bottom:8px">
+          <div id="goal-progress-bar" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:4px;transition:width .6s;width:0%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.72rem;margin-bottom:10px">
+          <span style="color:var(--muted)">Tiempo restante</span>
+          <span id="goal-time-lbl" style="color:var(--yellow);font-weight:600">—</span>
+        </div>
+        <div id="goal-reached-banner" style="display:none;background:#14532d;border:1px solid #16a34a;border-radius:6px;padding:6px 10px;text-align:center;font-size:.8rem;color:#86efac;margin-bottom:8px">
+          ✓ ¡Meta alcanzada!
+        </div>
+        <div id="goal-expired-banner" style="display:none;background:#3a1c1c;border:1px solid var(--red);border-radius:6px;padding:6px 10px;text-align:center;font-size:.8rem;color:#fca5a5;margin-bottom:8px">
+          Tiempo agotado
+        </div>
+        <button onclick="_toggleGoalForm()" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:4px;font-size:.75rem;cursor:pointer;margin-bottom:4px">
+          ✏️ Modificar meta
+        </button>
+        <button onclick="cancelGoal()" style="width:100%;background:transparent;border:1px solid #3a1c1c;color:var(--red);border-radius:5px;padding:4px;font-size:.75rem;cursor:pointer">
+          ✕ Cancelar meta
+        </button>
+      </div>
+      <div id="goal-empty-view">
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">Sin meta activa. Define un objetivo de ganancia para el bot.</div>
+      </div>
+      <!-- Formulario (visible siempre cuando no hay meta, colapsable cuando sí hay) -->
+      <div id="goal-form" style="margin-top:8px">
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <div style="flex:1">
+            <div style="font-size:.68rem;color:var(--muted);margin-bottom:2px">Objetivo (USDC)</div>
+            <input type="number" id="goal-input-usdc" min="1" max="10000" step="1" value="30"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 8px;font-size:.82rem"/>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:.68rem;color:var(--muted);margin-bottom:2px">Plazo (horas)</div>
+            <input type="number" id="goal-input-hours" min="1" max="720" step="1" value="24"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 8px;font-size:.82rem"/>
+          </div>
+        </div>
+        <button onclick="saveGoal()" style="width:100%;background:#1a4a2e;border:1px solid var(--green);color:var(--green);border-radius:5px;padding:6px;font-size:.8rem;cursor:pointer;font-weight:600">
+          Activar meta
+        </button>
+      </div>
+    </div>
+
+    <!-- Capital Allocation -->
+    <div class="panel" id="alloc-panel">
+      <h2>Asignación de capital</h2>
+      <div id="alloc-rows">
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">
+          <span style="color:#60a5fa;font-weight:600">⛅ Weather</span>
+          <span id="alloc-w-pct" style="color:var(--muted)">60%</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:6px;font-size:.75rem">
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Budget</div>
+            <div id="alloc-w-budget" style="color:var(--text);font-weight:600">$0.00</div>
+          </div>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Desplegado</div>
+            <div id="alloc-w-dep" style="color:var(--yellow);font-weight:600">$0.00</div>
+          </div>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Disponible</div>
+            <div id="alloc-w-avail" style="color:var(--green);font-weight:600">$0.00</div>
+          </div>
+        </div>
+        <div style="height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden">
+          <div id="alloc-w-bar" style="height:100%;background:#60a5fa;border-radius:2px;transition:width .5s;width:0%"></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">
+          <span style="color:#f59e0b;font-weight:600">₿ BTC</span>
+          <span id="alloc-b-pct" style="color:var(--muted)">20%</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:6px;font-size:.75rem">
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Budget</div>
+            <div id="alloc-b-budget" style="color:var(--text);font-weight:600">$0.00</div>
+          </div>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Desplegado</div>
+            <div id="alloc-b-dep" style="color:var(--yellow);font-weight:600">$0.00</div>
+          </div>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Disponible</div>
+            <div id="alloc-b-avail" style="color:var(--green);font-weight:600">$0.00</div>
+          </div>
+        </div>
+        <div style="height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden">
+          <div id="alloc-b-bar" style="height:100%;background:#f59e0b;border-radius:2px;transition:width .5s;width:0%"></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">
+          <span style="color:#a78bfa;font-weight:600">⚡ UpDown</span>
+          <span id="alloc-u-pct" style="color:var(--muted)">20%</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:6px;font-size:.75rem">
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Budget</div>
+            <div id="alloc-u-budget" style="color:var(--text);font-weight:600">$0.00</div>
+          </div>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Desplegado</div>
+            <div id="alloc-u-dep" style="color:var(--yellow);font-weight:600">$0.00</div>
+          </div>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
+            <div style="color:var(--muted);font-size:.65rem">Disponible</div>
+            <div id="alloc-u-avail" style="color:var(--green);font-weight:600">$0.00</div>
+          </div>
+        </div>
+        <div style="height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden">
+          <div id="alloc-u-bar" style="height:100%;background:#a78bfa;border-radius:2px;transition:width .5s;width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Editar proporciones -->
+      <details style="margin-top:4px">
+        <summary style="font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none">Cambiar proporciones…</summary>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:6px;font-size:.75rem">
+            <span style="color:#60a5fa;width:60px">Weather</span>
+            <input type="number" id="alloc-inp-w" value="60" min="10" max="80" step="5" oninput="_allocInputsDirty=true" style="width:50px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:.75rem">
+            <span style="color:var(--muted)">%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:.75rem">
+            <span style="color:#f59e0b;width:60px">BTC</span>
+            <input type="number" id="alloc-inp-b" value="20" min="5" max="50" step="5" oninput="_allocInputsDirty=true" style="width:50px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:.75rem">
+            <span style="color:var(--muted)">%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:.75rem">
+            <span style="color:#a78bfa;width:60px">UpDown</span>
+            <input type="number" id="alloc-inp-u" value="20" min="5" max="50" step="5" oninput="_allocInputsDirty=true" style="width:50px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:.75rem">
+            <span style="color:var(--muted)">%</span>
+          </div>
+          <div id="alloc-sum-warn" style="font-size:.7rem;color:var(--red);display:none">La suma debe ser 100%</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="saveAllocation()" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:4px;border:1px solid #2d5a8e;background:#1e3a5f;color:#60a5fa;cursor:pointer">Guardar</button>
+            <button onclick="resetAllocation()" title="Resetear a 60/20/20" style="padding:4px 8px;font-size:.75rem;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);cursor:pointer">↺ Reset</button>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Tipos de trade -->
+    <div class="panel">
+      <h2>Tipos de trade</h2>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <!-- Weather -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-radius:6px;padding:7px 10px">
+          <span style="font-size:.82rem;font-weight:600;color:#60a5fa">⛅ Weather</span>
+          <button id="btn-trade-weather" onclick="toggleTradeType('weather')"
+            style="padding:3px 12px;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#86efac;cursor:pointer;min-width:80px">
+            Activado
+          </button>
+        </div>
+        <!-- BTC -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-radius:6px;padding:7px 10px">
+          <span style="font-size:.82rem;font-weight:600;color:#f59e0b">₿ BTC above</span>
+          <button id="btn-trade-btc" onclick="toggleTradeType('btc')"
+            style="padding:3px 12px;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#86efac;cursor:pointer;min-width:80px">
+            Activado
+          </button>
+        </div>
+        <!-- UpDown 5m -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-radius:6px;padding:7px 10px">
+          <span style="font-size:.82rem;font-weight:600;color:#a78bfa">⚡ UpDown 5m</span>
+          <button id="btn-trade-updown5" onclick="toggleTradeType('updown_5m')"
+            style="padding:3px 12px;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#86efac;cursor:pointer;min-width:80px">
+            Activado
+          </button>
+        </div>
+        <!-- UpDown 15m -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-radius:6px;padding:7px 10px">
+          <span style="font-size:.82rem;font-weight:600;color:#a78bfa">⚡ UpDown 15m</span>
+          <button id="btn-trade-updown15" onclick="toggleTradeType('updown_15m')"
+            style="padding:3px 12px;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#86efac;cursor:pointer;min-width:80px">
+            Activado
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Controls -->
@@ -338,11 +550,27 @@
       <button class="btn start" id="btn-start" onclick="startBot()">▶ Iniciar Bot</button>
       <button class="btn stop"  id="btn-stop"  onclick="stopBot()"  style="display:none">■ Detener Bot</button>
       <button class="btn" style="background:#555;color:#fff;margin-top:6px" onclick="shutdownServer()">⏻ Apagar Servidor</button>
+
+      <div id="auto-trade-panel" style="margin-top:14px;padding:10px 12px;border-radius:8px;border:1px solid #374151;background:#111827">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:.85rem;font-weight:bold;color:#f9fafb">Auto-Trade</span>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <span id="auto-trade-lbl" style="font-size:.75rem;color:#6b7280">INACTIVO</span>
+            <div id="auto-trade-toggle" onclick="toggleAutoTrade()" style="width:42px;height:22px;border-radius:11px;background:#374151;position:relative;cursor:pointer;transition:background .2s">
+              <div id="auto-trade-knob" style="width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left .2s"></div>
+            </div>
+          </label>
+        </div>
+        <div style="font-size:.72rem;color:#6b7280;line-height:1.4">Ejecuta trades directamente sin pedir confirmación a Claude. Usa solo si confías en la estrategia.</div>
+      </div>
     </div>
 
     <!-- Params -->
     <div class="panel">
       <h2>Parametros</h2>
+
+      <!-- ── General ───────────────────────────────────── -->
+      <div class="param-section-hdr">General</div>
       <div class="param-row">
         <label>Max por trade (USDC) <span id="lbl-max">5</span><span class="help-btn" onclick="showHelp('max_trade',event)">?</span></label>
         <input type="number" id="p-max" min="1" max="1000" step="1" value="5" oninput="document.getElementById('lbl-max').textContent=this.value"/>
@@ -367,10 +595,13 @@
           oninput="document.getElementById('lbl-loss').textContent=this.value"/>
       </div>
       <div class="param-row">
-        <label>Max horas a cierre <span id="lbl-hours">24</span>h<span class="help-btn" onclick="showHelp('hours_max',event)">?</span></label>
-        <input type="range" id="p-hours" min="1" max="48" step="1" value="24"
-          oninput="document.getElementById('lbl-hours').textContent=this.value"/>
+        <label>Intervalo scan (min) <span id="lbl-interval">30</span>min<span class="help-btn" onclick="showHelp('scan_int',event)">?</span></label>
+        <input type="range" id="p-interval" min="5" max="120" step="5" value="30"
+          oninput="document.getElementById('lbl-interval').textContent=this.value"/>
       </div>
+
+      <!-- ── Calidad de mercado ─────────────────────────── -->
+      <div class="param-section-hdr" style="margin-top:8px">Calidad de mercado <span style="font-size:9px;font-weight:400;color:#555">(todos)</span></div>
       <div class="param-row">
         <label>Liquidez minima (USDC) <span id="lbl-liq">50</span><span class="help-btn" onclick="showHelp('liq_min',event)">?</span></label>
         <input type="number" id="p-liq" min="10" max="1000" step="10" value="50"
@@ -396,11 +627,42 @@
         <input type="range" id="p-comp" min="0" max="0.9" step="0.1" value="0"
           oninput="document.getElementById('lbl-comp').textContent=parseFloat(this.value).toFixed(1)"/>
       </div>
+
+      <!-- ── Clima ──────────────────────────────────────── -->
+      <div class="param-section-hdr" style="margin-top:8px">⛅ Clima <span style="font-size:9px;font-weight:400;color:#555">(weather markets)</span></div>
       <div class="param-row">
-        <label>Intervalo scan (min) <span id="lbl-interval">30</span>min<span class="help-btn" onclick="showHelp('scan_int',event)">?</span></label>
-        <input type="range" id="p-interval" min="5" max="120" step="5" value="30"
-          oninput="document.getElementById('lbl-interval').textContent=this.value"/>
+        <label>Max horas a cierre <span id="lbl-hours">24</span>h<span class="help-btn" onclick="showHelp('hours_max',event)">?</span></label>
+        <input type="range" id="p-hours" min="1" max="48" step="1" value="24"
+          oninput="document.getElementById('lbl-hours').textContent=this.value"/>
       </div>
+
+      <!-- ── Bitcoin ────────────────────────────────────── -->
+      <div class="param-section-hdr" style="margin-top:8px">₿ Bitcoin <span style="font-size:9px;font-weight:400;color:#555">(BTC price markets)</span></div>
+      <div class="param-row">
+        <label>Activar mercados BTC <span id="lbl-btc-enabled" style="color:var(--green)">ON</span><span class="help-btn" onclick="showHelp('btc_enabled',event)">?</span></label>
+        <input type="range" id="p-btc-enabled" min="0" max="1" step="1" value="1"
+          oninput="document.getElementById('lbl-btc-enabled').textContent=this.value==='1'?'ON':'OFF';document.getElementById('lbl-btc-enabled').style.color=this.value==='1'?'var(--green)':'var(--red)'"/>
+      </div>
+      <div class="param-row">
+        <label>Max por trade BTC (USDC) <span id="lbl-btc-max">3</span><span class="help-btn" onclick="showHelp('btc_max',event)">?</span></label>
+        <input type="number" id="p-btc-max" min="1" max="100" step="1" value="3"
+          oninput="document.getElementById('lbl-btc-max').textContent=this.value"/>
+      </div>
+      <div class="param-row">
+        <label>Max horas BTC <span id="lbl-btc-hours">1.00</span>h
+          <span style="color:var(--muted);font-weight:400;font-size:10px">(0.08 = 5min)</span><span class="help-btn" onclick="showHelp('btc_hours',event)">?</span>
+        </label>
+        <input type="number" id="p-btc-hours" min="0.05" max="4" step="0.05" value="1"
+          oninput="document.getElementById('lbl-btc-hours').textContent=parseFloat(this.value||1).toFixed(2)"/>
+      </div>
+      <div class="param-row">
+        <label>Peso momentum TV <span id="lbl-btc-momentum">0.03</span>
+          <span style="color:var(--muted);font-weight:400;font-size:10px">(0=off)</span><span class="help-btn" onclick="showHelp('btc_momentum',event)">?</span>
+        </label>
+        <input type="range" id="p-btc-momentum" min="0" max="0.15" step="0.01" value="0.03"
+          oninput="document.getElementById('lbl-btc-momentum').textContent=parseFloat(this.value).toFixed(2)"/>
+      </div>
+
       <button class="btn save" onclick="saveParams()">Guardar Parametros</button>
     </div>
   </div>
@@ -408,11 +670,94 @@
   <!-- CONTENT -->
   <div class="content">
     <div class="tabs">
+      <div class="tab" onclick="showTab('tab-dashboard')">Dashboard</div>
       <div class="tab active" onclick="showTab('tab-opps')">Oportunidades</div>
       <div class="tab" onclick="showTab('tab-positions')">Posiciones <span id="badge-pos" style="background:#f59e0b;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-orders')">Ordenes Abiertas <span id="badge-ord" style="background:#60a5fa;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-history')">Historial</div>
       <div class="tab" onclick="showTab('tab-logs')">Logs</div>
+      <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
+      <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
+      <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="tab-dashboard" class="tab-content">
+      <!-- Row 1: KPI cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Cuenta total</div>
+          <div id="db-total" style="font-size:1.4rem;font-weight:bold;color:var(--blue);font-family:monospace;margin-top:3px">$0.00</div>
+          <div id="db-total-delta" style="font-size:.75rem;color:var(--muted);margin-top:2px">—</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">P&L posiciones</div>
+          <div id="db-pnl" style="font-size:1.4rem;font-weight:bold;font-family:monospace;margin-top:3px">$0.00</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Trades totales</div>
+          <div id="db-trades" style="font-size:1.4rem;font-weight:bold;color:var(--text);font-family:monospace;margin-top:3px">0</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Pérdida hoy</div>
+          <div id="db-dloss" style="font-size:1.4rem;font-weight:bold;color:var(--red);font-family:monospace;margin-top:3px">$0.00</div>
+        </div>
+      </div>
+
+      <!-- Row 2: Capital allocation chart + Trades by type -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+
+        <!-- Capital allocation donut -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Asignación de capital</div>
+          <div style="display:flex;gap:16px;align-items:center">
+            <div style="position:relative;width:120px;height:120px;flex-shrink:0">
+              <canvas id="db-alloc-chart" width="120" height="120"></canvas>
+            </div>
+            <div id="db-alloc-legend" style="font-size:.78rem;line-height:2"></div>
+          </div>
+        </div>
+
+        <!-- Trades by type bar -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Trades por tipo</div>
+          <div style="position:relative;height:120px">
+            <canvas id="db-type-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Full-width allocation detail table -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Detalle de asignación de capital</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Proporción</th>
+              <th>Budget ($)</th>
+              <th>Desplegado ($)</th>
+              <th>Disponible ($)</th>
+              <th>% Utilizado</th>
+            </tr>
+          </thead>
+          <tbody id="db-alloc-table">
+            <tr><td colspan="6" class="empty">Sin datos — inicia el bot</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Row 4: P&L history line chart -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">P&L acumulado (por trade)</div>
+          <button onclick="fetchDashboard()" style="font-size:.72rem;background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:2px 8px;cursor:pointer">Actualizar</button>
+        </div>
+        <div style="position:relative;height:180px">
+          <canvas id="db-pnl-chart"></canvas>
+        </div>
+        <div id="db-pnl-empty" style="display:none;text-align:center;color:var(--muted);padding:20px;font-size:.82rem">Sin historial de trades aún</div>
+      </div>
     </div>
 
     <!-- OPORTUNIDADES -->
@@ -441,12 +786,21 @@
 
     <!-- POSICIONES REALES POLYMARKET -->
     <div id="tab-positions" class="tab-content">
-      <div style="color:#888;font-size:.8rem;margin-bottom:8px">Shares que posees actualmente en tu cuenta de Polymarket (actualizadas en cada escaneo)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="color:#888;font-size:.8rem">Shares que posees actualmente en tu cuenta de Polymarket (actualizadas en cada escaneo)</div>
+        <button id="btn-refresh-analysis" onclick="refreshPortfolioAnalysis()" style="background:#1e3a5f;color:#60a5fa;border:1px solid #2d5a8e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Analizar portafolio</button>
+      </div>
       <div id="pos-conflict-warn" style="display:none;background:#3a1a00;border:1px solid #f97316;border-radius:6px;padding:8px 12px;margin-bottom:10px;color:#fb923c;font-size:.8rem"></div>
-      <div id="portfolio-analysis-box" style="display:none;background:#0f1a2e;border:1px solid #1e3a5f;border-radius:8px;padding:12px 16px;margin-bottom:14px">
-        <div style="color:#60a5fa;font-size:.8rem;font-weight:bold;margin-bottom:6px">ANALISIS DE PORTAFOLIO — Claude</div>
-        <pre id="portfolio-analysis-text" style="margin:0;font-size:.8rem;color:#d1d5db;white-space:pre-wrap;font-family:monospace"></pre>
-        <div id="portfolio-analysis-time" style="color:#555;font-size:.72rem;margin-top:6px"></div>
+      <div id="portfolio-analysis-box" style="display:none;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:.9rem">🧠</span>
+            <span style="color:#60a5fa;font-size:.8rem;font-weight:600">Análisis de Claude</span>
+          </div>
+          <div id="portfolio-analysis-time" style="color:#555;font-size:.72rem"></div>
+        </div>
+        <div id="portfolio-analysis-cards" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div id="portfolio-analysis-summary" style="display:none;margin-top:10px;background:#0f1a2e;border-left:3px solid #60a5fa;border-radius:0 6px 6px 0;padding:10px 14px;font-size:.8rem;color:#d1d5db;line-height:1.6"></div>
       </div>
       <table>
         <thead>
@@ -508,6 +862,378 @@
     <div id="tab-logs" class="tab-content" style="background:var(--bg);">
       <div id="log-container"></div>
     </div>
+
+    <!-- BITCOIN -->
+    <div id="tab-btc" class="tab-content">
+
+      <!-- Panel de control auto-trading -->
+      <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:4px">Auto-trading BTC</div>
+          <span id="btc-auto-badge" style="font-size:.85rem;font-weight:700;padding:3px 10px;border-radius:12px;background:#1c2128;color:var(--muted)">INACTIVO</span>
+        </div>
+        <div id="btc-countdown-wrap" style="display:none">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:4px">Próximo scan</div>
+          <span id="btc-countdown" style="font-family:monospace;font-size:1rem;color:var(--blue)">—</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="color:var(--muted);font-size:.78rem">Intervalo:</span>
+            <input type="number" id="btc-auto-interval" value="5" min="1" max="60" step="1"
+              style="width:52px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:.78rem"/>
+            <span style="color:var(--muted);font-size:.78rem">min</span>
+          </div>
+          <button id="btn-btc-auto-on"  onclick="setBtcAuto(true)"
+            style="background:var(--green);color:#000;border:none;border-radius:6px;padding:5px 12px;font-size:.78rem;font-weight:700;cursor:pointer">
+            ▶ Activar auto
+          </button>
+          <button id="btn-btc-auto-off" onclick="setBtcAuto(false)"
+            style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:.78rem;font-weight:700;cursor:pointer;display:none">
+            ■ Detener
+          </button>
+          <button onclick="btcManualScan()"
+            style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:.78rem;cursor:pointer">
+            ⟳ Escanear ahora
+          </button>
+        </div>
+        <div style="margin-left:auto;font-size:.72rem;color:var(--muted);text-align:right;line-height:1.5">
+          Usa el <strong style="color:var(--blue)">chat →</strong> para decirle a Claude:<br>
+          <em>"activa auto BTC cada 5 min"</em> · <em>"compra la mejor oportunidad BTC"</em>
+        </div>
+      </div>
+
+      <!-- Datos API -->
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
+          <span style="color:var(--muted);font-size:11px">Precio BTC</span>
+          <div style="font-size:1.3rem;font-weight:bold;color:var(--blue);font-family:monospace" id="btc-tab-price">—</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
+          <span style="color:var(--muted);font-size:11px">Volatilidad 15m</span>
+          <div style="font-size:1.3rem;font-weight:bold;color:var(--yellow);font-family:monospace" id="btc-tab-vol">—</div>
+        </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
+          <span style="color:var(--muted);font-size:11px">TradingView</span>
+          <div style="font-size:1rem;font-weight:bold;font-family:monospace" id="btc-tab-tv-rec">—</div>
+          <div style="font-size:.72rem;color:var(--muted)" id="btc-tab-tv-detail"></div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
+          <span style="color:var(--muted);font-size:11px">CMC 1h / 24h</span>
+          <div style="font-size:.95rem;font-weight:bold;font-family:monospace" id="btc-tab-cmc">—</div>
+        </div>
+      </div>
+
+      <!-- Panel de indicadores TA -->
+      <div id="btc-ta-panel" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Indicadores TradingView</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;font-family:monospace;font-size:.82rem">
+          <div><span style="color:var(--muted)">RSI: </span><span id="ta-rsi">—</span></div>
+          <div><span style="color:var(--muted)">EMA20: </span><span id="ta-ema20">—</span></div>
+          <div><span style="color:var(--muted)">EMA50: </span><span id="ta-ema50">—</span></div>
+          <div><span style="color:var(--muted)">MACD: </span><span id="ta-macd">—</span></div>
+          <div><span style="color:var(--muted)">Señales ↑: </span><span id="ta-buy" style="color:var(--green)">—</span></div>
+          <div><span style="color:var(--muted)">Señales ↓: </span><span id="ta-sell" style="color:var(--red)">—</span></div>
+          <div><span style="color:var(--muted)">Neutras: </span><span id="ta-neutral">—</span></div>
+          <div><span style="color:var(--muted)">Modelo: </span><code style="font-size:.75rem">1−Φ(ln(X/P₀)/σ√T)</code></div>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Umbral</th>
+            <th>Dirección</th>
+            <th>BTC actual</th>
+            <th>Dist. %</th>
+            <th>Nuestra P</th>
+            <th>Mercado P</th>
+            <th>EV</th>
+            <th>TV Signal</th>
+            <th>Cierra en</th>
+            <th>Tamaño</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-btc"><tr><td colspan="11" class="empty">Sin oportunidades BTC — activa el bot con BTC habilitado</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- TAB UPDOWN -->
+    <div id="tab-updown" class="tab-content">
+
+      <!-- ── Fila superior: tarjetas de mercado en vivo ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+
+        <!-- 5m live card -->
+        <div style="background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span style="font-weight:bold;color:#60a5fa;font-size:.95rem">⚡ BTC Up/Down 5m</span>
+            <span id="ud5-status-badge" style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:#1a4a2e;color:#3fb950">ACTIVO</span>
+          </div>
+          <!-- Mercado actual -->
+          <div id="ud5-market-live" style="margin-bottom:10px">
+            <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Mercado actual</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <div style="background:#111827;border-radius:5px;padding:5px 10px;text-align:center;flex:1">
+                <div style="font-size:.65rem;color:#6b7280">UP</div>
+                <div id="ud5-up-price" style="font-size:1.1rem;font-weight:bold;color:#3fb950;font-family:monospace">—</div>
+              </div>
+              <div style="background:#111827;border-radius:5px;padding:5px 10px;text-align:center;flex:1">
+                <div style="font-size:.65rem;color:#6b7280">DOWN</div>
+                <div id="ud5-down-price" style="font-size:1.1rem;font-weight:bold;color:#f85149;font-family:monospace">—</div>
+              </div>
+              <div style="background:#111827;border-radius:5px;padding:5px 10px;text-align:center;flex:1">
+                <div style="font-size:.65rem;color:#6b7280">Cierra en</div>
+                <div id="ud5-ttc" style="font-size:1rem;font-weight:bold;color:#f59e0b;font-family:monospace">—</div>
+              </div>
+            </div>
+          </div>
+          <!-- TA Signal -->
+          <div style="background:#111827;border-radius:6px;padding:8px 10px;margin-bottom:10px">
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Señal TradingView (1m)</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span id="ud5-ta-rec" style="font-weight:bold;font-size:.9rem">—</span>
+              <span style="color:#6b7280;font-size:.78rem">RSI: <span id="ud5-ta-rsi" style="color:#f9fafb">—</span></span>
+              <span style="color:#6b7280;font-size:.78rem">Signal: <span id="ud5-ta-signal" style="color:#f9fafb">—</span></span>
+              <span style="color:#6b7280;font-size:.78rem">BTC: <span id="ud5-btc-price" style="color:#60a5fa;font-family:monospace">—</span></span>
+            </div>
+          </div>
+          <!-- Última evaluación -->
+          <div id="ud5-opp-box" style="background:#111827;border-radius:6px;padding:8px 10px;margin-bottom:10px;display:none">
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Última evaluación</div>
+            <div id="ud5-opp-content" style="font-size:.82rem"></div>
+          </div>
+          <!-- Último trade -->
+          <div id="ud5-trade-box" style="background:#0f2a1a;border:1px solid #166534;border-radius:6px;padding:8px 10px;margin-bottom:10px;display:none">
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Último trade ejecutado</div>
+            <div id="ud5-trade-content" style="font-size:.82rem"></div>
+          </div>
+          <!-- Controls -->
+          <div style="display:flex;gap:6px">
+            <button id="btn-ud5-toggle" onclick="toggleUpdown(5)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#d1d5db;cursor:pointer">Desactivar</button>
+            <button id="btn-ud5-reset" onclick="resetUpdown(5)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #374151;background:#111827;color:#6b7280;cursor:pointer" disabled>Reset pérd.</button>
+          </div>
+          <div style="font-size:.72rem;color:#9ca3af;margin-top:6px">Pérdidas consecutivas: <span id="ud5-losses" style="color:#f9fafb;font-weight:bold">0</span> / <span id="ud5-max-losses">5</span></div>
+        </div>
+
+        <!-- 15m live card -->
+        <div style="background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span style="font-weight:bold;color:#a78bfa;font-size:.95rem">⚡ BTC Up/Down 15m</span>
+            <span id="ud15-status-badge" style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:#1a4a2e;color:#3fb950">ACTIVO</span>
+          </div>
+          <!-- Mercado actual -->
+          <div id="ud15-market-live" style="margin-bottom:10px">
+            <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Mercado actual</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <div style="background:#111827;border-radius:5px;padding:5px 10px;text-align:center;flex:1">
+                <div style="font-size:.65rem;color:#6b7280">UP</div>
+                <div id="ud15-up-price" style="font-size:1.1rem;font-weight:bold;color:#3fb950;font-family:monospace">—</div>
+              </div>
+              <div style="background:#111827;border-radius:5px;padding:5px 10px;text-align:center;flex:1">
+                <div style="font-size:.65rem;color:#6b7280">DOWN</div>
+                <div id="ud15-down-price" style="font-size:1.1rem;font-weight:bold;color:#f85149;font-family:monospace">—</div>
+              </div>
+              <div style="background:#111827;border-radius:5px;padding:5px 10px;text-align:center;flex:1">
+                <div style="font-size:.65rem;color:#6b7280">Cierra en</div>
+                <div id="ud15-ttc" style="font-size:1rem;font-weight:bold;color:#f59e0b;font-family:monospace">—</div>
+              </div>
+            </div>
+          </div>
+          <!-- TA Signal -->
+          <div style="background:#111827;border-radius:6px;padding:8px 10px;margin-bottom:10px">
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Señal TradingView (5m)</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span id="ud15-ta-rec" style="font-weight:bold;font-size:.9rem">—</span>
+              <span style="color:#6b7280;font-size:.78rem">RSI: <span id="ud15-ta-rsi" style="color:#f9fafb">—</span></span>
+              <span style="color:#6b7280;font-size:.78rem">Signal: <span id="ud15-ta-signal" style="color:#f9fafb">—</span></span>
+              <span style="color:#6b7280;font-size:.78rem">BTC: <span id="ud15-btc-price" style="color:#60a5fa;font-family:monospace">—</span></span>
+            </div>
+          </div>
+          <!-- Última evaluación -->
+          <div id="ud15-opp-box" style="background:#111827;border-radius:6px;padding:8px 10px;margin-bottom:10px;display:none">
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Última evaluación</div>
+            <div id="ud15-opp-content" style="font-size:.82rem"></div>
+          </div>
+          <!-- Último trade -->
+          <div id="ud15-trade-box" style="background:#0f2a1a;border:1px solid #166534;border-radius:6px;padding:8px 10px;margin-bottom:10px;display:none">
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Último trade ejecutado</div>
+            <div id="ud15-trade-content" style="font-size:.82rem"></div>
+          </div>
+          <!-- Controls -->
+          <div style="display:flex;gap:6px">
+            <button id="btn-ud15-toggle" onclick="toggleUpdown(15)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#d1d5db;cursor:pointer">Desactivar</button>
+            <button id="btn-ud15-reset" onclick="resetUpdown(15)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #374151;background:#111827;color:#6b7280;cursor:pointer" disabled>Reset pérd.</button>
+          </div>
+          <div style="font-size:.72rem;color:#9ca3af;margin-top:6px">Pérdidas consecutivas: <span id="ud15-losses" style="color:#f9fafb;font-weight:bold">0</span> / <span id="ud15-max-losses">5</span></div>
+        </div>
+      </div>
+
+      <!-- ── Parámetros y nota ── -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="flex:1;min-width:220px;background:#0f1117;border:1px solid #374151;border-radius:8px;padding:12px 14px">
+          <div style="font-weight:bold;color:#f9fafb;margin-bottom:10px;font-size:.85rem">Parámetros UpDown</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div style="font-size:.8rem">
+              <label style="color:#9ca3af">Max USDC / trade</label>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                <input type="number" id="ud-max-usdc-input" value="1" min="0.5" max="100" step="0.5" style="width:70px;background:#1f2937;border:1px solid #374151;color:#f9fafb;border-radius:4px;padding:3px 6px;font-size:.8rem">
+                <span style="color:#6b7280;font-size:.75rem">USDC</span>
+              </div>
+            </div>
+            <div style="font-size:.8rem">
+              <label style="color:#9ca3af">Máx. pérdidas consec.</label>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                <input type="number" id="ud-max-losses-input" value="5" min="1" max="20" step="1" style="width:55px;background:#1f2937;border:1px solid #374151;color:#f9fafb;border-radius:4px;padding:3px 6px;font-size:.8rem">
+                <span style="color:#6b7280;font-size:.75rem">trades</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button id="btn-save-updown" onclick="saveUpdownParams()" style="padding:5px 14px;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1e3a5f;color:#60a5fa;cursor:pointer">Guardar</button>
+              <span id="updown-save-ok" style="margin-left:8px;font-size:.75rem;color:#22c55e;opacity:0;transition:opacity .4s">✓ Guardado</span>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:.72rem;color:#818cf8">
+            Max $<span id="ud-info-maxusdc">1</span> USDC · Para tras <span id="ud-info-maxlosses">5</span> pérdidas consecutivas · Resuelve vía Chainlink BTC/USD
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Log en tiempo real UpDown ── -->
+      <div style="background:#080d18;border:1px solid #1e3a5f;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:pulse 1.5s infinite"></span>
+            <span style="font-size:.72rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px">Log en tiempo real</span>
+          </div>
+          <button onclick="document.getElementById('ud-log-list').innerHTML=''" style="font-size:.7rem;background:transparent;border:1px solid #374151;color:#6b7280;border-radius:4px;padding:1px 8px;cursor:pointer">Limpiar</button>
+        </div>
+        <div id="ud-log-list" style="height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;font-family:monospace;font-size:.75rem">
+          <div data-placeholder style="color:#4b5563;text-align:center;padding-top:60px">Esperando actividad UpDown…</div>
+        </div>
+      </div>
+
+      <!-- ── Historial reciente de trades UpDown ── -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Historial reciente de trades UpDown</div>
+        <div style="max-height:260px;overflow-y:auto;border-radius:4px">
+        <table style="min-width:100%">
+          <thead style="position:sticky;top:0;z-index:1;background:var(--bg2)">
+            <tr>
+              <th>Hora</th>
+              <th>Mercado</th>
+              <th>Lado</th>
+              <th>Precio entrada</th>
+              <th>Tamaño</th>
+              <th>Confianza</th>
+              <th>Momentum</th>
+              <th>TA Señal</th>
+              <th>RSI</th>
+              <th>Claude</th>
+              <th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-updown-history"><tr><td colspan="11" class="empty">Sin trades UpDown aún — el bot operará cuando encuentre edge suficiente</td></tr></tbody>
+        </table>
+        </div><!-- fin scroll -->
+      </div>
+      <div id="updown-learn-panel" style="margin-top:12px;padding:0 4px"></div>
+    </div>
+
+    <!-- TAB ESTRATEGIAS -->
+    <div id="tab-strategies" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px" id="strat-perf-cards">
+        <!-- rendimiento cards inyectados por JS -->
+      </div>
+
+      <!-- Algoritmos -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+
+        <!-- Clima -->
+        <div class="panel" style="padding:14px">
+          <div style="font-size:.8rem;color:#60a5fa;font-weight:700;margin-bottom:8px">⛅ ESTRATEGIA CLIMA</div>
+          <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
+            <b style="color:var(--text)">Fuente:</b> Forecast NOAA (weather.gov) — sin API key<br>
+            <b style="color:var(--text)">Señal:</b> Probabilidad gaussiana de que la temp máxima supere/no supere el umbral del mercado<br>
+            <b style="color:var(--text)">Sizing:</b> Kelly fraccionado × presupuesto clima<br>
+            <b style="color:var(--text)">Filtros:</b> EV mínimo, liquidez mínima, spread máximo, horas al cierre<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API revisa cada trade antes de ejecutar (salvo auto-trade)
+          </div>
+          <div id="strat-weather-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
+        </div>
+
+        <!-- BTC predicción -->
+        <div class="panel" style="padding:14px">
+          <div style="font-size:.8rem;color:#f59e0b;font-weight:700;margin-bottom:8px">₿ ESTRATEGIA BTC PREDICCIÓN</div>
+          <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
+            <b style="color:var(--text)">Fuente:</b> Precio Binance + TradingView TA + CoinMarketCap<br>
+            <b style="color:var(--text)">Señal:</b> Modelo log-normal: probabilidad de que BTC esté sobre/bajo un threshold al cierre<br>
+            <b style="color:var(--text)">Inputs:</b> Precio actual, volatilidad histórica (klines), horas al cierre<br>
+            <b style="color:var(--text)">Filtros:</b> EV mínimo, confirmación TA (RSI + recomendación), horas al cierre<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API revisa (salvo auto-trade)
+          </div>
+          <div id="strat-btc-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
+        </div>
+
+        <!-- UpDown -->
+        <div class="panel" style="padding:14px">
+          <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:8px">⚡ ESTRATEGIA UPDOWN</div>
+          <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
+            <b style="color:var(--text)">Fuente:</b> TradingView TA (RSI, EMA20/50, señal) + momentum de ventana + CMC tendencia 1h<br>
+            <b style="color:var(--text)">Señal:</b> Compuesta: TA 70% + momentum ventana 20% + macro CMC 10%<br>
+            <b style="color:var(--text)">Dirección:</b> Predicción pura de movimiento BTC — precio del share solo filtra ratio riesgo/recompensa<br>
+            <b style="color:var(--text)">Aprendizaje:</b> Ajusta umbrales automáticamente por win rate, precisión TA, timing y lado<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API revisa cada trade (salvo auto-trade)
+          </div>
+          <div id="strat-updown-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- Learner UpDown detalle -->
+      <div class="panel" style="padding:14px;margin-bottom:16px">
+        <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:10px">🧠 APRENDIZAJE ADAPTATIVO — UpDown</div>
+        <div id="strat-learner-detail" style="font-size:.75rem;color:var(--muted)">Cargando...</div>
+      </div>
+
+      <!-- Notas del usuario -->
+      <div class="panel" style="padding:14px;margin-bottom:16px">
+        <div style="font-size:.8rem;color:var(--text);font-weight:700;margin-bottom:4px">📝 TUS OBSERVACIONES Y SUGERENCIAS DE MEJORA</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px">
+          Escribe aquí lo que observas sobre el comportamiento del bot, qué está fallando, qué quieres que aprenda o cambie.
+          Claude lee estas notas en cada conversación del chat y las tiene en cuenta al operar.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:.72rem;color:#60a5fa;margin-bottom:4px">⛅ Observaciones Clima</div>
+            <textarea id="note-weather" rows="4" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:4px;font-size:.73rem;resize:vertical;box-sizing:border-box" placeholder="Ej: el bot está entrando demasiado pronto, los forecasts de NOAA fallan cuando hay frentes fríos..."></textarea>
+          </div>
+          <div>
+            <div style="font-size:.72rem;color:#f59e0b;margin-bottom:4px">₿ Observaciones BTC Predicción</div>
+            <textarea id="note-btc" rows="4" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:4px;font-size:.73rem;resize:vertical;box-sizing:border-box" placeholder="Ej: está comprando muy cerca de la expiración, los mercados de 24h tienen mejor EV que los de 48h..."></textarea>
+          </div>
+          <div>
+            <div style="font-size:.72rem;color:#a78bfa;margin-bottom:4px">⚡ Observaciones UpDown</div>
+            <textarea id="note-updown" rows="4" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:4px;font-size:.73rem;resize:vertical;box-sizing:border-box" placeholder="Ej: el RSI solo no es suficiente, cuando hay noticias macro el TA falla, funciona mejor en 15m que en 5m..."></textarea>
+          </div>
+          <div>
+            <div style="font-size:.72rem;color:var(--green);margin-bottom:4px">💡 Notas Generales</div>
+            <textarea id="note-general" rows="4" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:4px;font-size:.73rem;resize:vertical;box-sizing:border-box" placeholder="Ej: no operar los fines de semana, ser más agresivo cuando el VIX está bajo, priorizar mercados con más de $500 de liquidez..."></textarea>
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button onclick="saveStrategyNotes()" style="background:#22c55e;color:#000;border:none;padding:7px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:.8rem">Guardar notas</button>
+          <button onclick="askClaudeStrategyReview()" style="background:#7c3aed;color:#fff;border:none;padding:7px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:.8rem">🤖 Pedir análisis a Claude</button>
+          <span id="notes-save-status" style="font-size:.72rem;color:var(--green)"></span>
+        </div>
+      </div>
+
+      <!-- Historial de sugerencias de Claude -->
+      <div class="panel" style="padding:14px">
+        <div style="font-size:.8rem;color:var(--text);font-weight:700;margin-bottom:8px">🤖 ÚLTIMAS SUGERENCIAS DE MEJORA (Claude)</div>
+        <div id="strat-claude-suggestions" style="font-size:.75rem;color:var(--muted);line-height:1.7">
+          Haz clic en "Pedir análisis a Claude" para obtener sugerencias basadas en tu historial de trades y tus observaciones.
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- CHAT PANEL -->
@@ -541,10 +1267,15 @@
     <div class="chat-input-area" id="chat-input-area">
       <div class="chat-suggestions">
         <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Cómo va el portafolio?</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Qué posición tiene más riesgo?</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Debería vender algo?</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Cuál es la mejor oportunidad?</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">Explícame el EV</span>
+      </div>
+      <div class="chat-suggestions" style="margin-top:2px">
+        <span style="color:var(--muted);font-size:10px;align-self:center">₿</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza el mercado BTC ahora</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Activa auto BTC cada 5 min</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Compra la mejor oportunidad BTC</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Detén el auto-trading BTC</span>
       </div>
       <div class="chat-input-row">
         <textarea id="chat-input" placeholder="Pregunta sobre tu portafolio, posiciones, oportunidades..." onkeydown="chatKeydown(event)"></textarea>
@@ -577,6 +1308,11 @@ const HELP = {
   depth_min:   { t:'Profundidad mín libro', b:'USDC disponibles en el libro al precio de entrada. Asegura que hay suficientes contrapartes para llenar nuestra orden sin mover el precio.' },
   comp_min:    { t:'Score competitivo mín', b:'Indicador de Polymarket (0-1) que mide la presencia de market makers activos.\n• 0.0 = mercado vacío, solo órdenes retail\n• 0.5 = actividad moderada\n• 0.8+ = market makers activos, buena liquidez\nValores bajos indican spreads poco confiables.' },
   scan_int:    { t:'Intervalo de scan', b:'Cada cuántos minutos el bot busca nuevas oportunidades. Valores muy bajos pueden hacer rate limiting en las APIs de weather.gov y Polymarket.' },
+  // BTC parameters
+  btc_enabled:  { t:'Activar mercados BTC', b:'Habilita o deshabilita los mercados de predicción de precio BTC (tipo "¿estará BTC sobre $X en 24h?").\n• ON = el bot escanea y puede operar estos mercados\n• OFF = se ignoran completamente\nNo afecta los mercados UpDown (sube/baja 5m/15m).' },
+  btc_max:      { t:'Máximo por trade BTC', b:'El bot nunca apostará más de este monto en un solo mercado de predicción BTC, independientemente del edge calculado.\nRecomendado: entre $2 y $10 dependiendo de tu balance total.' },
+  btc_hours:    { t:'Máx horas al cierre BTC', b:'Solo se evalúan mercados BTC que cierran en menos de estas horas.\n• Valor bajo (0.08 = 5min) = mercados muy a corto plazo, más volátiles\n• Valor alto (96) = permite mercados de días\nEl modelo log-normal pierde precisión con horizontes muy largos.' },
+  btc_momentum: { t:'Peso momentum TradingView', b:'Cuánto influye la señal de momentum de TradingView en la dirección del trade BTC.\n• 0.0 = solo usa precio y volatilidad histórica (modelo puro)\n• 0.03 = pequeño sesgo hacia la dirección que señala TV\n• 0.15 = fuerte peso al análisis técnico\nValores altos pueden ser perjudiciales si el TA contradice los fundamentos de precio.' },
   // Opportunities table
   opp_lado:    { t:'Lado (YES/NO)', b:'YES = apostamos que la condición SE CUMPLE (la temperatura cae en el rango indicado).\nNO = apostamos que la condición NO SE CUMPLE.\nPolymarket funciona como mercado binario: ganas $1 por share si aciertas, $0 si fallas.' },
   opp_forecast:{ t:'Forecast ± σ', b:'Temperatura máxima pronosticada por weather.gov (National Weather Service) ± la desviación estándar del pronóstico. Usamos esta incertidumbre para calcular la probabilidad real con distribución normal.' },
@@ -655,7 +1391,8 @@ function connectWS() {
     if (msg.type === 'status')       renderStatus(msg.data);
     if (msg.type === 'positions')    renderPositions(msg.data);
     if (msg.type === 'open_orders')  renderOpenOrders(msg.data);
-    if (msg.type === 'opportunities') renderOpportunities(msg.data);
+    if (msg.type === 'opportunities')     renderOpportunities(msg.data);
+    if (msg.type === 'btc_opportunities') renderBtcOpportunities(msg.data);
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 20000);
@@ -667,12 +1404,45 @@ function appendLog(entry) {
   div.className = `log-line ${entry.level}`;
   div.innerHTML = `<span class="ts">[${entry.time}]</span><span class="msg">${escHtml(entry.msg)}</span>`;
   c.appendChild(div);
-  // Mantener max logs
   while (c.children.length > MAX_LOGS) c.removeChild(c.firstChild);
-  // Auto-scroll si estamos en tab logs
   if (document.getElementById('tab-logs').classList.contains('active')) {
     c.scrollTop = c.scrollHeight;
   }
+  // Espejo en panel UpDown si el mensaje es de UpDown
+  if (/updown|up.?down|up\/down/i.test(entry.msg)) {
+    _appendUpdownLog(entry);
+  }
+}
+
+const _UD_LOG_MAX = 120;
+function _appendUpdownLog(entry) {
+  const list = document.getElementById('ud-log-list');
+  if (!list) return;
+  // Quitar placeholder si existe
+  const placeholder = list.querySelector('[data-placeholder]');
+  if (placeholder) placeholder.remove();
+
+  const levelColors = { INFO:'#9ca3af', WARN:'#f59e0b', ERROR:'#ef4444', DEBUG:'#6b7280' };
+  const msgColor = levelColors[entry.level] || '#9ca3af';
+
+  // Detectar tipo de evento para badge
+  const msg = entry.msg || '';
+  let badge = '';
+  if (/SEÑAL|signal/i.test(msg))             badge = `<span style="background:#1d4ed8;color:#93c5fd;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">SEÑAL</span>`;
+  else if (/ejecutad|trade|orden|compra/i.test(msg)) badge = `<span style="background:#14532d;color:#4ade80;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">TRADE</span>`;
+  else if (/claude|análisis|analiz/i.test(msg))      badge = `<span style="background:#312e81;color:#a5b4fc;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">CLAUDE</span>`;
+  else if (/WIN|ganó|ganancia/i.test(msg))           badge = `<span style="background:#14532d;color:#4ade80;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">WIN ✓</span>`;
+  else if (/LOSS|perdió|pérdida/i.test(msg))         badge = `<span style="background:#7f1d1d;color:#fca5a5;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">LOSS ✗</span>`;
+  else if (/descartad|filtro|skip|no opera/i.test(msg)) badge = `<span style="background:#1f2937;color:#6b7280;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">SKIP</span>`;
+  else if (/mercado|market|slug/i.test(msg))         badge = `<span style="background:#1c3048;color:#60a5fa;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">MKT</span>`;
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:4px;background:#0d1424';
+  row.innerHTML = `<span style="color:#4b5563;flex-shrink:0;padding-top:1px">${entry.time}</span>${badge}<span style="color:${msgColor};word-break:break-word">${escHtml(msg)}</span>`;
+  list.appendChild(row);
+
+  while (list.children.length > _UD_LOG_MAX) list.removeChild(list.firstChild);
+  list.scrollTop = list.scrollHeight;
 }
 
 function escHtml(s) {
@@ -680,6 +1450,7 @@ function escHtml(s) {
 }
 
 function renderStatus(d) {
+  window._lastStatus = d;  // guardar para uso en otras secciones (Estrategias)
   const running = d.running;
   document.getElementById('status-badge').textContent = running ? 'ACTIVO' : 'DETENIDO';
   document.getElementById('status-badge').className = `badge ${running ? 'on' : 'off'}`;
@@ -700,9 +1471,143 @@ function renderStatus(d) {
   document.getElementById('opp-count').textContent = d.opportunities_count ?? 0;
   document.getElementById('last-scan').textContent = d.last_scan || '—';
 
+  // BTC price in sidebar
+  const btcPrice = d.btc_price;
+  const btcRow = document.getElementById('btc-price-row');
+  const btcOppsRow = document.getElementById('btc-opps-row');
+  if (btcPrice) {
+    btcRow.style.display = '';
+    btcOppsRow.style.display = '';
+    document.getElementById('btc-price-display').textContent = '$' + btcPrice.toLocaleString('en-US', {maximumFractionDigits:0});
+    document.getElementById('btc-tab-price').textContent = '$' + btcPrice.toLocaleString('en-US', {maximumFractionDigits:0});
+    document.getElementById('btc-opp-count').textContent = d.btc_opportunities_count ?? 0;
+    const badge = document.getElementById('badge-btc');
+    const cnt = d.btc_opportunities_count ?? 0;
+    if (cnt > 0) { badge.textContent = cnt; badge.style.display = 'inline'; }
+    else badge.style.display = 'none';
+  }
+
+  // TradingView TA
+  const ta = d.btc_ta;
+  if (ta && ta.available) {
+    const tvStyle = _TV_REC_STYLE[ta.recommendation] || _TV_REC_STYLE['NEUTRAL'];
+    const tvEl = document.getElementById('btc-tab-tv-rec');
+    if (tvEl) { tvEl.textContent = tvStyle.label; tvEl.style.color = tvStyle.color; }
+    const detEl = document.getElementById('btc-tab-tv-detail');
+    if (detEl) {
+      const rsiStr = ta.rsi ? ` · RSI ${ta.rsi.toFixed(1)}` : '';
+      detEl.textContent = `↑${ta.buy} ↔${ta.neutral} ↓${ta.sell}${rsiStr}`;
+    }
+    // Detailed TA panel
+    const taPanel = document.getElementById('btc-ta-panel');
+    if (taPanel) taPanel.style.display = '';
+    const _tv = (id, val, digits=2) => {
+      const el = document.getElementById(id);
+      if (el && val != null) el.textContent = typeof val === 'number' ? val.toFixed ? val.toFixed(digits) : val : val;
+    };
+    _tv('ta-rsi',  ta.rsi,  1);
+    _tv('ta-ema20', ta.ema20, 0);
+    _tv('ta-ema50', ta.ema50, 0);
+    _tv('ta-macd',  ta.macd,  4);
+    _tv('ta-buy',   ta.buy,   0);
+    _tv('ta-sell',  ta.sell,  0);
+    _tv('ta-neutral', ta.neutral, 0);
+    // RSI color
+    const rsiEl = document.getElementById('ta-rsi');
+    if (rsiEl && ta.rsi != null) {
+      rsiEl.style.color = ta.rsi > 70 ? 'var(--red)' : ta.rsi < 30 ? 'var(--green)' : 'var(--text)';
+    }
+  }
+
+  // CoinMarketCap
+  const cmc = d.btc_cmc;
+  const cmcEl = document.getElementById('btc-tab-cmc');
+  if (cmc && cmc.available && cmcEl) {
+    const c1h  = cmc.percent_change_1h  ?? 0;
+    const c24h = cmc.percent_change_24h ?? 0;
+    const fmt  = v => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+    cmcEl.textContent = `${fmt(c1h)} / ${fmt(c24h)}`;
+    cmcEl.style.color = c1h >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // BTC Auto mode
+  const autoMode = d.btc_auto_mode;
+  const badge     = document.getElementById('btc-auto-badge');
+  const cntWrap   = document.getElementById('btc-countdown-wrap');
+  const btnOn     = document.getElementById('btn-btc-auto-on');
+  const btnOff    = document.getElementById('btn-btc-auto-off');
+  if (badge) {
+    badge.textContent  = autoMode ? `ACTIVO · cada ${d.btc_scan_interval_minutes}m` : 'INACTIVO';
+    badge.style.background = autoMode ? '#1a4a2e' : '#1c2128';
+    badge.style.color = autoMode ? 'var(--green)' : 'var(--muted)';
+    badge.style.border = autoMode ? '1px solid var(--green)' : '1px solid transparent';
+  }
+  if (cntWrap) cntWrap.style.display = autoMode ? '' : 'none';
+  if (btnOn)  btnOn.style.display  = autoMode ? 'none' : '';
+  if (btnOff) btnOff.style.display = autoMode ? '' : 'none';
+  if (autoMode && d.btc_next_scan_in > 0) {
+    const secs = d.btc_next_scan_in;
+    const m = Math.floor(secs / 60), s = secs % 60;
+    const cntEl = document.getElementById('btc-countdown');
+    if (cntEl) cntEl.textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+
   const startBal = d.daily_start_balance || 1;
   const lossPct = Math.min(100, (d.daily_loss_usdc / startBal) * 100);
   document.getElementById('loss-bar').style.width = lossPct + '%';
+
+  // Auto-trade toggle
+  _setAutoTradeUI(d.auto_trade_mode === true);
+
+  // UpDown status
+  renderUpdownStatus(d);
+
+  // Toggles de tipos de trade (panel izquierdo)
+  _renderTradeToggles(d);
+
+  // Capital allocation sidebar widget
+  renderAllocationWidget(d);
+
+  // Actualizar tabla de asignación del dashboard con los mismos datos del status
+  _renderAllocTable(d);
+
+  // Meta de ganancia
+  renderGoalWidget(d.goal);
+}
+
+function _renderAllocTable(d) {
+  const tbl = document.getElementById('db-alloc-table');
+  if (!tbl) return;
+  const tv = d.total_value || d.balance_usdc || 0;
+  const rows = [
+    { icon:'⛅', name:'Weather', pct: d.alloc_weather_pct||0.7, dep: d.deployed_weather||0, avail: d.available_weather||0 },
+    { icon:'₿',  name:'BTC',    pct: d.alloc_btc_pct||0.1,     dep: d.deployed_btc||0,     avail: d.available_btc||0     },
+    { icon:'⚡', name:'UpDown', pct: d.alloc_updown_pct||0.2,  dep: d.deployed_updown||0,  avail: d.available_updown||0  },
+  ];
+  tbl.innerHTML = rows.map(r => {
+    const budget    = Math.round(tv * r.pct * 100) / 100;
+    const usedPct   = budget > 0 ? Math.min(100, r.dep / budget * 100) : 0;
+    const overBudget = budget > 0 && r.dep > budget;
+    const barColor  = usedPct >= 100 ? 'var(--red)' : usedPct > 80 ? 'var(--yellow)' : 'var(--green)';
+    const pctLabel  = overBudget
+      ? `<span title="Deployed supera el budget — posiciones antiguas pendientes de resolver" style="color:var(--red);font-family:monospace;font-size:.75rem">100% ⚠</span>`
+      : `<span style="font-family:monospace;font-size:.75rem;color:${barColor}">${usedPct.toFixed(1)}%</span>`;
+    return `<tr>
+      <td>${r.icon} ${r.name}</td>
+      <td style="color:var(--muted)">${Math.round(r.pct*100)}%</td>
+      <td style="font-family:monospace">$${budget.toFixed(2)}</td>
+      <td style="font-family:monospace;color:var(--yellow)">$${r.dep.toFixed(2)}</td>
+      <td style="font-family:monospace;color:${r.avail>0?'var(--green)':'var(--muted)'}">$${r.avail.toFixed(2)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;background:var(--bg3);border-radius:2px;height:5px;overflow:hidden">
+            <div style="height:100%;background:${barColor};width:${usedPct}%;transition:width .5s"></div>
+          </div>
+          ${pctLabel}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 async function fetchStatus() {
@@ -745,25 +1650,180 @@ async function fetchOpportunities() {
   renderOpportunities(await r.json());
 }
 
+const _TV_REC_STYLE = {
+  'STRONG_BUY':  { color: 'var(--green)',  label: '▲▲ S.BUY' },
+  'BUY':         { color: '#86efac',        label: '▲ BUY'    },
+  'NEUTRAL':     { color: 'var(--muted)',   label: '— NEUTRAL' },
+  'SELL':        { color: '#fca5a5',        label: '▼ SELL'   },
+  'STRONG_SELL': { color: 'var(--red)',     label: '▼▼ S.SELL' },
+};
+
+function renderBtcOpportunities(opps) {
+  const tbody = document.getElementById('tbl-btc');
+  if (!opps || !opps.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">Sin oportunidades BTC activas</td></tr>';
+    return;
+  }
+  if (opps[0]?.vol_per_minute !== undefined) {
+    document.getElementById('btc-tab-vol').textContent = opps[0].vol_per_minute.toFixed(4) + '%/min';
+  }
+  tbody.innerHTML = opps.map(o => {
+    const distColor = Math.abs(o.pct_from_threshold) < 1 ? 'var(--red)' : Math.abs(o.pct_from_threshold) < 3 ? 'var(--yellow)' : 'var(--muted)';
+    const dirIcon   = o.direction === 'above' ? '↑' : '↓';
+    const dirColor  = o.direction === 'above' ? 'var(--green)' : 'var(--red)';
+    const tvRec     = o.ta_recommendation || 'NEUTRAL';
+    const tvStyle   = _TV_REC_STYLE[tvRec] || _TV_REC_STYLE['NEUTRAL'];
+    return `<tr>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(o.market_title)}">${escHtml(o.market_title?.substring(0,40) ?? '—')}</td>
+      <td style="font-family:monospace;font-weight:bold">$${(o.threshold??0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>
+      <td style="color:${dirColor};font-weight:bold">${dirIcon} ${o.direction?.toUpperCase()??'—'}</td>
+      <td style="font-family:monospace">$${(o.btc_price_at_eval??0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>
+      <td style="color:${distColor};font-family:monospace">${o.pct_from_threshold>=0?'+':''}${(o.pct_from_threshold??0).toFixed(2)}%</td>
+      <td>${((o.our_prob??0)*100).toFixed(1)}%</td>
+      <td>${((o.market_prob??0)*100).toFixed(1)}%</td>
+      <td class="${(o.ev_pct??0)>=20?'ev-high':'ev-med'}">${o.ev_pct??0}%</td>
+      <td style="color:${tvStyle.color};font-weight:600;font-size:.78rem;white-space:nowrap">${tvStyle.label}</td>
+      <td>${_fmtTimeLeft(o.hours_to_close)}</td>
+      <td style="color:var(--green);font-weight:bold">$${(o.size_usdc??0).toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function fetchBtcOpportunities() {
+  try {
+    const r = await fetch('/api/btc-opportunities');
+    if (r.ok) renderBtcOpportunities(await r.json());
+  } catch(e) {}
+}
+
+async function setBtcAuto(enabled) {
+  const interval = parseInt(document.getElementById('btc-auto-interval')?.value || 5);
+  const r = await fetch('/api/btc/auto', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({enabled, interval_minutes: interval}),
+  });
+  const d = await r.json();
+  if (!d.ok) alert('Error: ' + d.msg);
+}
+
+async function btcManualScan() {
+  const btn = event.target;
+  btn.textContent = '⟳ Escaneando...';
+  btn.disabled = true;
+  await fetch('/api/btc/scan', {method: 'POST'});
+  setTimeout(() => { btn.textContent = '⟳ Escanear ahora'; btn.disabled = false; }, 3000);
+}
+
 let _portfolioRecs = [];
+
+function _applyPortfolioAnalysisData(d) {
+  const box = document.getElementById('portfolio-analysis-box');
+  if (!d.analysis && !d.recommendations) return;
+
+  // Timestamp
+  const ts = document.getElementById('portfolio-analysis-time');
+  let tsText = '';
+  if (d.last_analysis_at) tsText += `Analizado: ${d.last_analysis_at}`;
+  if (d.next_in_hours > 0) tsText += ` · Próximo en ${d.next_in_hours}h`;
+  ts.textContent = tsText;
+
+  // Cards por posición — usa rec.reason directamente (ya viene limpio del backend)
+  const cardsEl = document.getElementById('portfolio-analysis-cards');
+  if (d.recommendations && d.recommendations.length) {
+    _portfolioRecs = d.recommendations;
+    const actionCfg = {
+      'MANTENER': { color: '#22c55e', bg: '#052e16', icon: '✓' },
+      'VENDER':   { color: '#ef4444', bg: '#2d0a0a', icon: '↓' },
+      'ESPERAR':  { color: '#f59e0b', bg: '#2d1a00', icon: '⏳' },
+      'COMPRAR':  { color: '#60a5fa', bg: '#0c1f3a', icon: '↑' },
+    };
+    cardsEl.innerHTML = d.recommendations.map(rec => {
+      const cfg = actionCfg[rec.action] || { color: '#9ca3af', bg: '#1a1a2e', icon: '?' };
+      // Título corto: quitar el prefijo genérico y signo de interrogación
+      const shortTitle = (rec.title || rec.reason || '')
+        .replace(/Will the (highest|lowest) temperature in /i, '')
+        .replace(/\?$/, '');
+      // Razón: formatear negritas y dividir en frases para mejor lectura
+      const reasonHtml = (rec.reason || '')
+        .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e5e7eb">$1</strong>');
+      return `<div style="background:${cfg.bg};border:1px solid ${cfg.color}33;border-left:3px solid ${cfg.color};border-radius:6px;padding:10px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="background:${cfg.color}22;color:${cfg.color};font-weight:700;font-size:.72rem;padding:2px 10px;border-radius:12px;letter-spacing:.5px;flex-shrink:0">${cfg.icon} ${rec.action}</span>
+            <span style="color:#e5e7eb;font-size:.82rem;font-weight:500">${escHtml(shortTitle)}</span>
+          </div>
+          <span style="color:#6b7280;font-size:.72rem;flex-shrink:0;margin-left:8px">${rec.outcome} · ${rec.size} shares</span>
+        </div>
+        <div style="font-size:.8rem;color:#9ca3af;line-height:1.6">${reasonHtml}</div>
+      </div>`;
+    }).join('');
+
+    const overlay = document.getElementById('pos-modal-overlay');
+    if (overlay && overlay.classList.contains('open') && _currentModalTokenId) {
+      _renderModalClaudeRec(_currentModalTokenId);
+    }
+  }
+
+  // Resumen general — buscar después de RESUMEN_PORTAFOLIO con cualquier decoración
+  const summaryEl = document.getElementById('portfolio-analysis-summary');
+  if (d.analysis) {
+    const m = d.analysis.match(/RESUMEN[_\s]PORTAFOLIO[^\n]*\n+([\s\S]+?)(\n\n[•#*\n]|$)/i);
+    if (m) {
+      const txt = m[1].trim()
+        .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e5e7eb">$1</strong>');
+      summaryEl.innerHTML = `<div style="color:#60a5fa;font-size:.72rem;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Resumen del portafolio</div><div style="font-size:.8rem;line-height:1.7">${txt}</div>`;
+      summaryEl.style.display = 'block';
+    } else {
+      summaryEl.style.display = 'none';
+    }
+  }
+
+  box.style.display = 'block';
+}
 
 async function fetchPortfolioAnalysis() {
   try {
     const r = await fetch('/api/portfolio-analysis');
     const d = await r.json();
-    const box = document.getElementById('portfolio-analysis-box');
-    const pre = document.getElementById('portfolio-analysis-text');
-    const ts  = document.getElementById('portfolio-analysis-time');
-    if (d.analysis) {
-      pre.textContent = d.analysis;
-      let tsText = '';
-      if (d.last_analysis_at) tsText += `Analizado: ${d.last_analysis_at}`;
-      if (d.next_in_hours > 0) tsText += ` · Próximo en ${d.next_in_hours}h`;
-      ts.textContent = tsText;
-      box.style.display = 'block';
-    }
-    if (d.recommendations) _portfolioRecs = d.recommendations;
+    _applyPortfolioAnalysisData(d);
   } catch(e) {}
+}
+
+async function refreshPortfolioAnalysis() {
+  const btn = document.getElementById('btn-refresh-analysis');
+  btn.textContent = '⟳ Analizando...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/portfolio-analysis/refresh', {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      _applyPortfolioAnalysisData(d);
+    } else {
+      alert(d.msg || 'Error al actualizar análisis');
+    }
+  } catch(e) {
+    alert('Error de conexión al actualizar análisis');
+  } finally {
+    btn.textContent = '&#8635; Analizar portafolio';
+    btn.disabled = false;
+  }
+}
+
+let _currentModalTokenId = null;
+
+function _renderModalClaudeRec(tokenId) {
+  const recEl = document.getElementById('pm-claude-rec');
+  if (!recEl) return;
+  const rec = _portfolioRecs.find(r => r.token_id === tokenId);
+  if (rec) {
+    const actionColor = rec.action === 'MANTENER' ? 'var(--yellow)' : rec.action === 'SALIR' ? 'var(--red)' : 'var(--green)';
+    recEl.innerHTML = `<span style="color:${actionColor};font-weight:bold">${rec.action}</span> — ${escHtml(rec.reason)}`;
+    recEl.parentElement.style.display = 'block';
+  } else {
+    recEl.innerHTML = '<span style="color:var(--muted)">Sin análisis · <a href="#" style="color:#60a5fa" onclick="event.preventDefault();refreshPortfolioAnalysis()">Solicitar análisis ahora</a></span>';
+    recEl.parentElement.style.display = 'block';
+  }
 }
 
 function parsePosIndicators(title, outcome, curPrice) {
@@ -878,12 +1938,35 @@ function renderPositions(rows) {
   }
 
   tbody.innerHTML = rows.map((p, i) => {
-    const pnlColor = p.pnl_usdc >= 0 ? 'var(--green)' : 'var(--red)';
-    const closeWarn = p.hours_to_close !== null && p.hours_to_close < 6 ? 'color:var(--red);font-weight:bold' : 'color:var(--muted)';
-    const redeemable = p.redeemable ? ' <span style="color:var(--green)">✓ REDIMIBLE</span>' : '';
-    const ind = parsePosIndicators(p.market_title, p.outcome, p.cur_price);
     const tokenEsc = p.token_id.replace(/'/g, "\\'");
     const titleEsc = (p.market_title || '').replace(/'/g, "\\'").substring(0, 40);
+    const polyLink = p.poly_url
+      ? ` <a href="${p.poly_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Ver en Polymarket" style="color:#60a5fa;font-size:.75rem;text-decoration:none;margin-left:4px">↗</a>`
+      : '';
+
+    // Posición resuelta — fila compacta
+    if (p.redeemable) {
+      const pnlColor = p.pnl_usdc >= 0 ? 'var(--green)' : 'var(--red)';
+      const pnlStr = `${p.pnl_usdc >= 0 ? '+' : ''}$${p.pnl_usdc}`;
+      return `<tr style="background:rgba(34,197,94,.08);border-left:3px solid var(--green)">
+        <td colspan="7" style="padding:6px 10px;">
+          <span style="font-size:.82rem;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" title="${escHtml(p.market_title)}">${escHtml((p.market_title||'').substring(0,50))}${polyLink}</span>
+          <span style="margin-left:10px;background:var(--green);color:#000;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;">Listo para canjear</span>
+          <span style="margin-left:8px;color:${pnlColor};font-weight:bold;font-size:.82rem">${pnlStr}</span>
+        </td>
+        <td colspan="2" style="text-align:right;padding:6px 10px;">
+          <a href="https://polymarket.com/portfolio" target="_blank" rel="noopener"
+             onclick="event.stopPropagation()"
+             style="display:inline-block;padding:3px 10px;font-size:.75rem;border-radius:5px;border:1px solid var(--green);background:#14532d;color:#86efac;text-decoration:none;cursor:pointer">
+            Canjear ↗
+          </a>
+        </td>
+      </tr>`;
+    }
+
+    const pnlColor = p.pnl_usdc >= 0 ? 'var(--green)' : 'var(--red)';
+    const closeWarn = p.hours_to_close !== null && p.hours_to_close < 6 ? 'color:var(--red);font-weight:bold' : 'color:var(--muted)';
+    const ind = parsePosIndicators(p.market_title, p.outcome, p.cur_price);
     const key = _cityDateKey(p.market_title);
     const conflict = key && conflictKeys.has(key);
     const rowStyle = conflict ? 'background:rgba(220,80,0,.08);' : '';
@@ -891,7 +1974,7 @@ function renderPositions(rows) {
       ? ' <span title="Hay otra apuesta en esta ciudad+fecha — una perderá" style="color:#f97316;font-size:.7rem;cursor:help">⚠ CONFLICTO</span>'
       : '';
     return `<tr class="pos-row" style="${rowStyle}" onclick="openPositionChart(${i})">
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(p.market_title)}">${escHtml((p.market_title||'').substring(0,45))}${redeemable}${conflictBadge}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(p.market_title)}">${escHtml((p.market_title||'').substring(0,45))}${conflictBadge}${polyLink}</td>
       <td style="color:${ind.apuestaColor};font-weight:600;white-space:nowrap;font-size:.8rem">${ind.apuestaLabel}</td>
       <td style="color:${ind.estadoColor};font-weight:bold;white-space:nowrap;font-size:.8rem">${ind.estadoLabel}</td>
       <td>${p.size}</td>
@@ -921,7 +2004,10 @@ async function fetchPositions() {
   renderPositions(await r.json());
 }
 
+let _openOrders = [];
+
 function renderOpenOrders(rows) {
+  _openOrders = rows;
   const tbody = document.getElementById('tbl-orders');
   const badge = document.getElementById('badge-ord');
   if (!rows.length) {
@@ -931,19 +2017,25 @@ function renderOpenOrders(rows) {
   }
   badge.textContent = rows.length;
   badge.style.display = 'inline';
-  tbody.innerHTML = rows.map(o => `
-    <tr>
-      <td style="font-size:.75rem;color:#888">${o.id.substring(0,10)}…</td>
+  tbody.innerHTML = rows.map((o, i) => {
+    // Buscar título en posiciones conocidas
+    const matchPos = _positions.find(p => p.token_id === o.token_id);
+    const title = matchPos ? matchPos.market_title : (o.market ? o.market.substring(0,30)+'…' : '—');
+    const fillPct = o.size_orig > 0 ? Math.round((o.size_filled / o.size_orig) * 100) : 0;
+    const fillColor = fillPct >= 80 ? 'var(--green)' : fillPct >= 30 ? 'var(--yellow)' : 'var(--muted)';
+    const createdStr = o.created_at ? new Date(o.created_at * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+    return `<tr class="pos-row" onclick="openOrderDetail(${i})" title="Click para ver detalles">
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem" title="${escHtml(matchPos ? matchPos.market_title : o.market)}">${escHtml(title)}</td>
       <td class="${o.side==='BUY'?'side-yes':'side-no'}">${o.side}</td>
-      <td>${(o.price*100).toFixed(1)}¢</td>
-      <td>${o.size_orig}</td>
-      <td style="color:var(--green)">${o.size_filled}</td>
-      <td style="color:var(--yellow)">${o.size_remaining}</td>
-      <td>$${o.cost_usdc}</td>
+      <td style="font-family:monospace">${(o.price*100).toFixed(1)}¢</td>
+      <td style="font-family:monospace">${o.size_orig}</td>
+      <td style="color:${fillColor};font-family:monospace">${o.size_filled} <span style="font-size:.7rem;color:${fillColor}">(${fillPct}%)</span></td>
+      <td style="color:var(--yellow);font-family:monospace">${o.size_remaining}</td>
+      <td style="font-family:monospace">$${o.cost_usdc}</td>
       <td style="color:var(--yellow)">${o.status}</td>
-      <td style="font-size:.75rem;color:#888">${o.created_at?.substring(0,19)?.replace('T',' ') ?? '—'}</td>
-    </tr>
-  `).join('');
+      <td style="font-size:.75rem;color:#888">${createdStr}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function fetchOpenOrders() {
@@ -951,11 +2043,152 @@ async function fetchOpenOrders() {
   renderOpenOrders(await r.json());
 }
 
+function openOrderDetail(idx) {
+  const o = _openOrders[idx];
+  if (!o) return;
+
+  // Enriquecer con datos de posiciones y trade history
+  const matchPos   = _positions.find(p => p.token_id === o.token_id);
+  const matchTrade = _tradeHistory.find(t =>
+    t.id === o.id ||
+    (o.token_id && t.token_id === o.token_id)
+  );
+
+  const title = matchPos ? matchPos.market_title : (matchTrade ? matchTrade.market : o.market || 'Mercado desconocido');
+  const createdStr = o.created_at ? new Date(o.created_at * 1000).toLocaleString('es', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+  const fillPct = o.size_orig > 0 ? ((o.size_filled / o.size_orig) * 100).toFixed(1) : '0.0';
+
+  // Construir explicación del lado
+  const sideExpl = o.side === 'BUY'
+    ? 'El bot está comprando shares de este outcome — apuesta a que la condición SE CUMPLE.'
+    : 'El bot está vendiendo shares de este outcome — cerrando o reduciendo una posición existente.';
+
+  // Estado de ejecución
+  let statusExpl = '';
+  if (o.status === 'LIVE') statusExpl = 'La orden está activa en el libro esperando contrapartes.';
+  else if (o.status === 'MATCHED') statusExpl = 'La orden fue ejecutada completamente.';
+  else if (o.status === 'DELAYED') statusExpl = 'La orden está en espera por restricciones del mercado.';
+  else statusExpl = `Estado: ${o.status}`;
+
+  // ¿Por qué se puso la orden? (del trade history)
+  let whyHtml = '<span style="color:var(--muted)">No hay contexto guardado para esta orden.</span>';
+  if (matchTrade) {
+    const evColor = (matchTrade.ev_pct >= 20) ? 'var(--green)' : 'var(--yellow)';
+    whyHtml = `
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:100px">
+          <div style="font-size:.68rem;color:var(--muted)">EV calculado</div>
+          <div style="font-size:1.1rem;font-weight:bold;color:${evColor}">${matchTrade.ev_pct}%</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:100px">
+          <div style="font-size:.68rem;color:var(--muted)">Costo total</div>
+          <div style="font-size:1.1rem;font-weight:bold">$${matchTrade.cost_usdc}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:100px">
+          <div style="font-size:.68rem;color:var(--muted)">Aprobado por</div>
+          <div style="font-size:1rem;font-weight:bold;color:${matchTrade.claude_approved?'var(--green)':'var(--yellow)'}">
+            ${matchTrade.claude_approved ? '✓ Claude' : '⚡ Auto-trade'}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Polymarket link
+  const polyUrl = matchPos?.poly_url || '';
+  const polyLinkHtml = polyUrl
+    ? `<a href="${polyUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;color:#60a5fa;font-size:.8rem;text-decoration:none;padding:5px 12px;border:1px solid #1e3a5f;border-radius:6px;background:#0f1a2e;margin-top:12px">🔗 Ver en Polymarket ↗</a>`
+    : '';
+
+  document.getElementById('ord-modal-title').textContent = title;
+  document.getElementById('ord-modal-body').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:80px;text-align:center">
+        <div style="font-size:.68rem;color:var(--muted)">Lado</div>
+        <div style="font-size:1.2rem;font-weight:bold;color:${o.side==='BUY'?'var(--green)':'var(--red)'}">${o.side}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:80px;text-align:center">
+        <div style="font-size:.68rem;color:var(--muted)">Precio</div>
+        <div style="font-size:1.2rem;font-weight:bold;font-family:monospace">${(o.price*100).toFixed(1)}¢</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:80px;text-align:center">
+        <div style="font-size:.68rem;color:var(--muted)">Shares totales</div>
+        <div style="font-size:1.2rem;font-weight:bold;font-family:monospace">${o.size_orig}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:80px;text-align:center">
+        <div style="font-size:.68rem;color:var(--muted)">Ejecutadas</div>
+        <div style="font-size:1.2rem;font-weight:bold;color:var(--green);font-family:monospace">${o.size_filled}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:80px;text-align:center">
+        <div style="font-size:.68rem;color:var(--muted)">Pendientes</div>
+        <div style="font-size:1.2rem;font-weight:bold;color:var(--yellow);font-family:monospace">${o.size_remaining}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:80px;text-align:center">
+        <div style="font-size:.68rem;color:var(--muted)">Valor pendiente</div>
+        <div style="font-size:1.2rem;font-weight:bold;font-family:monospace">$${o.cost_usdc}</div>
+      </div>
+    </div>
+
+    <!-- Barra de ejecución -->
+    <div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);margin-bottom:4px">
+        <span>Ejecución</span><span>${fillPct}% completada</span>
+      </div>
+      <div style="background:var(--bg3);border-radius:4px;height:8px;overflow:hidden">
+        <div style="height:100%;background:${parseFloat(fillPct)>=80?'var(--green)':parseFloat(fillPct)>=30?'var(--yellow)':'var(--blue)'};width:${fillPct}%;transition:width .5s;border-radius:4px"></div>
+      </div>
+    </div>
+
+    <!-- Estado y timestamp -->
+    <div style="background:var(--bg3);border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:.82rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="color:var(--yellow);font-weight:bold">${o.status}</span>
+        <span style="color:var(--muted);font-size:.75rem">${createdStr}</span>
+      </div>
+      <div style="color:var(--muted)">${statusExpl}</div>
+    </div>
+
+    <!-- Qué es esta orden -->
+    <div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:.7rem;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;font-weight:bold;margin-bottom:5px">¿Qué es esta orden?</div>
+      <div style="font-size:.82rem;color:var(--text);line-height:1.6">${sideExpl}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:5px">
+        Outcome apostado: <strong style="color:var(--text)">${o.outcome || '—'}</strong> ·
+        Token ID: <code style="font-size:.7rem;color:#888">${o.token_id ? o.token_id.substring(0,20)+'…' : '—'}</code>
+      </div>
+    </div>
+
+    <!-- Por qué se ejecutó -->
+    <div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:.7rem;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;font-weight:bold;margin-bottom:5px">¿Por qué la puso el bot?</div>
+      ${whyHtml}
+    </div>
+
+    <!-- Orden ID (técnico) -->
+    <div style="font-size:.72rem;color:var(--muted);font-family:monospace;margin-bottom:8px">
+      Order ID: ${escHtml(o.id || '—')}
+    </div>
+
+    ${polyLinkHtml}
+  `;
+
+  const ov = document.getElementById('ord-modal-overlay');
+  ov.style.display = 'flex';
+}
+
+function closeOrderModal() {
+  document.getElementById('ord-modal-overlay').style.display = 'none';
+}
+
+// Cache del historial de trades para enrichment
+let _tradeHistory = [];
+
 async function fetchHistory() {
   const r = await fetch('/api/trades');
   const rows = await r.json();
   const tbody = document.getElementById('tbl-history');
   if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Sin trades aun</td></tr>'; return; }
+  _tradeHistory = rows;
   tbody.innerHTML = rows.map(t => `
     <tr>
       <td>${t.time?.substring(11,19) ?? '—'}</td>
@@ -972,11 +2205,44 @@ function showTab(id) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  event.target.classList.add('active');
+  // Marcar el tab activo — puede llamarse desde código o desde click
+  const clickedTab = event?.target;
+  if (clickedTab && clickedTab.classList.contains('tab')) {
+    clickedTab.classList.add('active');
+  } else {
+    // Búsqueda por onclick si no hay evento
+    document.querySelectorAll('.tab').forEach(t => {
+      if (t.getAttribute('onclick') && t.getAttribute('onclick').includes(`'${id}'`)) {
+        t.classList.add('active');
+      }
+    });
+  }
   if (id === 'tab-logs') {
     const c = document.getElementById('log-container');
     c.scrollTop = c.scrollHeight;
   }
+  if (id === 'tab-dashboard')  fetchDashboard();
+  if (id === 'tab-strategies') fetchStrategies();
+  // Persistir en localStorage para sobrevivir refresco
+  try { localStorage.setItem('wb_active_tab', id); } catch(e) {}
+}
+
+function _restoreTab() {
+  try {
+    const saved = localStorage.getItem('wb_active_tab');
+    if (saved && document.getElementById(saved)) {
+      // Quitar active del tab inicial (tab-opps)
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(saved).classList.add('active');
+      document.querySelectorAll('.tab').forEach(t => {
+        if (t.getAttribute('onclick') && t.getAttribute('onclick').includes(`'${saved}'`)) {
+          t.classList.add('active');
+        }
+      });
+      if (saved === 'tab-dashboard') fetchDashboard();
+    }
+  } catch(e) {}
 }
 
 async function startBot() {
@@ -987,6 +2253,412 @@ async function startBot() {
 async function stopBot() {
   await fetch('/api/stop', { method: 'POST' });
   fetchStatus();
+}
+
+let _autoTradePending = false;
+
+function _setAutoTradeUI(active) {
+  const toggle = document.getElementById('auto-trade-toggle');
+  const knob   = document.getElementById('auto-trade-knob');
+  const lbl    = document.getElementById('auto-trade-lbl');
+  if (!toggle) return;
+  if (active) {
+    toggle.style.background = '#ef4444';
+    knob.style.left = '22px';
+    lbl.textContent = 'ACTIVO';
+    lbl.style.color = '#ef4444';
+    toggle.title = 'Auto-Trade ACTIVO — click para desactivar';
+  } else {
+    toggle.style.background = '#374151';
+    knob.style.left = '2px';
+    lbl.textContent = 'INACTIVO';
+    lbl.style.color = '#6b7280';
+    toggle.title = 'Auto-Trade inactivo — click para activar';
+  }
+}
+
+// ── UpDown controls ────────────────────────────────────────────────────────
+
+function _renderUpdownLiveCard(prefix, market, oppSnap, lastTrade) {
+  const _el = id => document.getElementById(`${prefix}-${id}`);
+
+  // Market prices
+  if (market) {
+    const upEl   = _el('up-price');
+    const downEl = _el('down-price');
+    const ttcEl  = _el('ttc');
+    if (upEl)   upEl.textContent   = `${(market.up_price   * 100).toFixed(1)}¢`;
+    if (downEl) downEl.textContent = `${(market.down_price * 100).toFixed(1)}¢`;
+    if (ttcEl)  ttcEl.textContent  = market.minutes_to_close != null
+      ? `${market.minutes_to_close.toFixed(1)}m` : '—';
+  }
+
+  // TA signal from last scan
+  if (oppSnap) {
+    const recEl  = _el('ta-rec');
+    const rsiEl  = _el('ta-rsi');
+    const sigEl  = _el('ta-signal');
+    const btcEl  = _el('btc-price');
+    if (recEl) {
+      const style = _TV_REC_STYLE[oppSnap.ta_rec] || _TV_REC_STYLE['NEUTRAL'];
+      recEl.textContent = style.label;
+      recEl.style.color = style.color;
+    }
+    if (rsiEl)  rsiEl.textContent  = oppSnap.ta_rsi  != null ? oppSnap.ta_rsi.toFixed(1) : '—';
+    if (sigEl)  sigEl.textContent  = oppSnap.ta_signal != null ? oppSnap.ta_signal.toFixed(2) : '—';
+    if (btcEl && oppSnap.btc_price) btcEl.textContent = '$' + oppSnap.btc_price.toLocaleString('en-US', {maximumFractionDigits:0});
+
+    // Opp box
+    const oppBox = _el('opp-box');
+    const oppContent = _el('opp-content');
+    if (oppBox && oppContent) {
+      oppBox.style.display = 'block';
+      if (oppSnap.opp) {
+        const o = oppSnap.opp;
+        const sideColor = o.side === 'UP' ? '#3fb950' : '#f85149';
+        oppContent.innerHTML = `
+          <span style="color:${sideColor};font-weight:bold">${o.side}</span>
+          <span style="color:var(--muted)"> · </span>
+          <span>P: <strong>${(o.our_prob*100).toFixed(1)}%</strong> vs ${(o.market_prob*100).toFixed(1)}% mkt</span>
+          <span style="color:var(--muted)"> · </span>
+          <span style="color:var(--green)">EV: <strong>${o.ev_pct}%</strong></span>
+          <span style="color:var(--muted);font-size:.7rem;margin-left:6px">@ ${oppSnap.scanned_at}</span>
+        `;
+      } else {
+        oppContent.innerHTML = `<span style="color:var(--muted)">Sin edge suficiente · señal ${oppSnap.ta_rec}</span>
+          <span style="color:var(--muted);font-size:.7rem;margin-left:6px">@ ${oppSnap.scanned_at}</span>`;
+      }
+    }
+  }
+
+  // Last trade box
+  const tradeBox = _el('trade-box');
+  const tradeContent = _el('trade-content');
+  if (tradeBox && tradeContent) {
+    if (lastTrade) {
+      tradeBox.style.display = 'block';
+      const sideColor = lastTrade.side === 'UP' ? '#3fb950' : '#f85149';
+      tradeContent.innerHTML = `
+        <span style="color:${sideColor};font-weight:bold">${lastTrade.side}</span>
+        <span style="color:var(--muted)"> · </span>
+        <span>$${lastTrade.size_usdc} @ ${(lastTrade.entry_price*100).toFixed(1)}¢</span>
+        <span style="color:var(--muted)"> · </span>
+        <span style="color:#a78bfa">Confianza ${lastTrade.confidence ?? '—'}%</span>
+        <span style="color:var(--muted)"> · </span>
+        <span style="color:#60a5fa">${lastTrade.ta_rec}</span>
+        ${lastTrade.claude_reason ? `<span style="color:var(--muted)"> · </span><span style="color:#fbbf24;font-size:.72rem" title="${lastTrade.claude_reason}">Claude ✓</span>` : ''}
+        <span style="color:var(--muted);font-size:.7rem;margin-left:6px">@ ${lastTrade.time}</span>
+      `;
+    } else {
+      tradeBox.style.display = 'none';
+    }
+  }
+}
+
+function _renderUpdownHistory(trades) {
+  const tbody = document.getElementById('tbl-updown-history');
+  if (!tbody) return;
+  if (!trades || !trades.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">Sin trades UpDown aún</td></tr>';
+    return;
+  }
+  tbody.innerHTML = trades.map(t => {
+    const sideColor = t.side === 'UP' ? 'var(--green)' : 'var(--red)';
+    const recStyle = _TV_REC_STYLE[t.ta_rec] || _TV_REC_STYLE['NEUTRAL'];
+    const resultCell = t.result == null
+      ? '<span style="color:#6b7280;font-size:.72rem">PENDIENTE</span>'
+      : t.result === 'WIN'
+        ? '<span style="color:var(--green);font-weight:700">WIN ✓</span>'
+        : '<span style="color:var(--red);font-weight:700">LOSS ✗</span>';
+    const claudeCell = t.claude_reason
+      ? `<span style="color:#fbbf24;cursor:pointer;font-size:.72rem" title="${t.claude_reason} [${t.claude_confidence ?? ''}]">Claude ✓</span>`
+      : '<span style="color:#4b5563;font-size:.72rem">—</span>';
+
+    // Construir link al mercado en Polymarket desde el slug
+    const slug = t.slug || '';
+    // El slug tiene forma "btc-updown-15m-1234567890" → el event slug es sin el último segmento
+    // URL: https://polymarket.com/event/{event-slug}/{market-slug}
+    let marketCell;
+    if (slug) {
+      // Evento padre: quitar el último componente del slug (el timestamp)
+      const parts = slug.split('-');
+      const eventSlug = parts.slice(0, -1).join('-'); // btc-updown-15m
+      const polyUrl = `https://polymarket.com/event/${eventSlug}/${slug}`;
+      marketCell = `
+        <span style="background:#1e3a5f;color:#60a5fa;border-radius:4px;padding:1px 5px;font-size:.72rem">${t.interval}m</span>
+        <a href="${polyUrl}" target="_blank" rel="noopener"
+           title="Ver mercado en Polymarket: ${slug}"
+           style="color:#60a5fa;font-size:.72rem;text-decoration:none;margin-left:3px"
+           onclick="event.stopPropagation()">↗</a>`;
+    } else {
+      marketCell = `<span style="background:#1e3a5f;color:#60a5fa;border-radius:4px;padding:1px 6px;font-size:.72rem">${t.interval}m</span>`;
+    }
+
+    return `<tr>
+      <td style="font-family:monospace;font-size:.75rem;color:var(--muted)">${t.time || '—'}</td>
+      <td style="white-space:nowrap">${marketCell}</td>
+      <td style="color:${sideColor};font-weight:bold">${t.side}</td>
+      <td style="font-family:monospace">${t.entry_price != null ? (t.entry_price*100).toFixed(1)+'¢' : '—'}</td>
+      <td>$${t.size_usdc ?? '—'}</td>
+      <td class="${(t.confidence??0)>=20?'ev-high':'ev-med'}">${t.confidence != null ? t.confidence.toFixed(1)+'%' : '—'}</td>
+      <td style="font-family:monospace;color:${(t.window_momentum??0)>0?'var(--green)':'var(--red)'}">${t.window_momentum != null ? ((t.window_momentum)*100).toFixed(2)+'%' : '—'}</td>
+      <td style="color:${recStyle.color};font-size:.78rem">${recStyle.label}</td>
+      <td style="font-family:monospace">${t.ta_rsi != null ? t.ta_rsi.toFixed(1) : '—'}</td>
+      <td>${claudeCell}</td>
+      <td>${resultCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderUpdownStatus(d) {
+  // 5m
+  const s5 = d.updown_5m_stopped;
+  const e5 = d.updown_5m_enabled;
+  const l5 = d.updown_5m_consecutive_losses ?? 0;
+  const ml = d.updown_max_consecutive_losses ?? 5;
+  const mu = d.updown_max_usdc ?? 1;
+
+  const b5 = document.getElementById('ud5-status-badge');
+  if (b5) {
+    const stopped5 = s5 || !e5;
+    b5.textContent = s5 ? 'DETENIDO (pérd.)' : e5 ? 'ACTIVO' : 'DESACTIVADO';
+    b5.style.background = stopped5 ? (s5 ? '#3a1a00' : '#1c2128') : '#1a4a2e';
+    b5.style.color = stopped5 ? (s5 ? '#f97316' : '#6b7280') : '#3fb950';
+  }
+  const l5El = document.getElementById('ud5-losses');
+  if (l5El) { l5El.textContent = l5; l5El.style.color = l5 >= 3 ? '#f97316' : '#f9fafb'; }
+  const maxL5 = document.getElementById('ud5-max-losses');
+  if (maxL5) maxL5.textContent = ml;
+  const maxU5 = document.getElementById('ud5-max-usdc');
+  if (maxU5) maxU5.textContent = mu.toFixed(2);
+  const btnT5 = document.getElementById('btn-ud5-toggle');
+  if (btnT5) { btnT5.textContent = e5 ? 'Desactivar' : 'Activar'; btnT5.style.color = e5 ? '#f87171' : '#86efac'; }
+  const btnR5 = document.getElementById('btn-ud5-reset');
+  if (btnR5) { btnR5.disabled = !s5; btnR5.style.color = s5 ? '#60a5fa' : '#4b5563'; }
+
+  // 15m
+  const s15 = d.updown_15m_stopped;
+  const e15 = d.updown_15m_enabled;
+  const l15 = d.updown_15m_consecutive_losses ?? 0;
+
+  const b15 = document.getElementById('ud15-status-badge');
+  if (b15) {
+    const stopped15 = s15 || !e15;
+    b15.textContent = s15 ? 'DETENIDO (pérd.)' : e15 ? 'ACTIVO' : 'DESACTIVADO';
+    b15.style.background = stopped15 ? (s15 ? '#3a1a00' : '#1c2128') : '#1a4a2e';
+    b15.style.color = stopped15 ? (s15 ? '#f97316' : '#6b7280') : '#3fb950';
+  }
+  const l15El = document.getElementById('ud15-losses');
+  if (l15El) { l15El.textContent = l15; l15El.style.color = l15 >= 3 ? '#f97316' : '#f9fafb'; }
+  const maxL15 = document.getElementById('ud15-max-losses');
+  if (maxL15) maxL15.textContent = ml;
+  const maxU15 = document.getElementById('ud15-max-usdc');
+  if (maxU15) maxU15.textContent = mu.toFixed(2);
+  const btnT15 = document.getElementById('btn-ud15-toggle');
+  if (btnT15) { btnT15.textContent = e15 ? 'Desactivar' : 'Activar'; btnT15.style.color = e15 ? '#f87171' : '#86efac'; }
+  const btnR15 = document.getElementById('btn-ud15-reset');
+  if (btnR15) { btnR15.disabled = !s15; btnR15.style.color = s15 ? '#60a5fa' : '#4b5563'; }
+
+  // Info notes
+  const infoMax = document.getElementById('ud-info-maxusdc');
+  if (infoMax) infoMax.textContent = mu.toFixed(2);
+  const infoLoss = document.getElementById('ud-info-maxlosses');
+  if (infoLoss) infoLoss.textContent = ml;
+
+  // Inputs
+  const inpMax = document.getElementById('ud-max-usdc-input');
+  if (inpMax && document.activeElement !== inpMax) inpMax.value = mu;
+  const inpLoss = document.getElementById('ud-max-losses-input');
+  if (inpLoss && document.activeElement !== inpLoss) inpLoss.value = ml;
+
+  // Badge en tab
+  const badge = document.getElementById('badge-updown');
+  if (badge) {
+    const active = (e5 && !s5) || (e15 && !s15);
+    badge.style.display = active ? 'inline' : 'none';
+    badge.textContent = (e5 && !s5 ? '5m ' : '') + (e15 && !s15 ? '15m' : '');
+  }
+
+  // Live market cards
+  _renderUpdownLiveCard('ud5',  d.updown_last_market_5m,  d.updown_last_opp_5m,  d.updown_last_trade_5m);
+  _renderUpdownLiveCard('ud15', d.updown_last_market_15m, d.updown_last_opp_15m, d.updown_last_trade_15m);
+
+  // Recent trades history table
+  _renderUpdownHistory(d.updown_recent_trades);
+}
+
+async function fetchUpdownLearn() {
+  try {
+    const r = await fetch('/api/updown/learn');
+    const data = await r.json();
+    _renderUpdownLearn(data);
+  } catch(e) {}
+}
+
+function _renderUpdownLearn(data) {
+  const el = document.getElementById('updown-learn-panel');
+  if (!el || !data) return;
+  const pct = v => v == null ? '—' : (v * 100).toFixed(0) + '%';
+  const ap5  = data['5m']?.adaptive  || {};
+  const ap15 = data['15m']?.adaptive || {};
+  const s5   = data['5m']  || {};
+  const s15  = data['15m'] || {};
+  const wrColor = wr => wr == null ? '#9ca3af' : wr >= 0.50 ? '#3fb950' : wr >= 0.40 ? '#f97316' : '#f87171';
+
+  el.innerHTML = `
+    <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
+      Aprendizaje adaptativo
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${[['5m', s5, ap5], ['15m', s15, ap15]].map(([label, s, ap]) => `
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.75rem">
+        <div style="font-weight:700;margin-bottom:5px">${label}</div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Total trades</span><span>${s.total ?? 0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Win rate total</span>
+          <span style="color:${wrColor(s.win_rate)}">${pct(s.win_rate)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Win rate reciente</span>
+          <span style="color:${wrColor(s.recent_wr)}">${pct(s.recent_wr)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Precisión TA</span>
+          <span style="color:${wrColor(s.ta_accuracy)}">${pct(s.ta_accuracy)}</span>
+        </div>
+        <div style="border-top:1px solid var(--border);margin:5px 0"></div>
+        <div style="color:var(--muted);margin-bottom:3px">Parámetros activos:</div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Min señal</span><span>${ap.min_signal ?? '0.10'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Peso TA</span><span>${ap.momentum_weight ?? '0.15'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Invertir señal</span>
+          <span style="color:${ap.invert_signal ? '#f97316' : '#9ca3af'}">${ap.invert_signal ? 'SÍ ⚠' : 'No'}</span>
+        </div>
+        ${ap.max_elapsed_min != null ? `
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Límite entrada</span><span style="color:#f97316">${ap.max_elapsed_min}min</span>
+        </div>` : ''}
+        <div style="margin-top:4px;font-size:.68rem;color:#6b7280;font-style:italic">${ap.reason ?? ''}</div>
+      </div>`).join('')}
+    </div>`;
+}
+
+// ── Toggle genérico de tipo de trade (panel izquierdo) ──────────────────────
+async function toggleTradeType(type) {
+  const btnId = {
+    weather:   'btn-trade-weather',
+    btc:       'btn-trade-btc',
+    updown_5m: 'btn-trade-updown5',
+    updown_15m:'btn-trade-updown15',
+  }[type];
+  const btn = document.getElementById(btnId);
+  const currently = btn && btn.textContent.trim() === 'Activado';
+  const r = await fetch('/api/toggle-trade-type', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ type, enabled: !currently }),
+  });
+  const d = await r.json();
+  if (d.ok) _applyTradeTypeBtn(btnId, !currently);
+}
+
+function _applyTradeTypeBtn(btnId, enabled) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.textContent  = enabled ? 'Activado' : 'Desactivado';
+  btn.style.color  = enabled ? '#86efac' : '#f87171';
+  btn.style.borderColor = enabled ? '#4b5563' : '#7f1d1d';
+}
+
+function _renderTradeToggles(d) {
+  _applyTradeTypeBtn('btn-trade-weather',   d.weather_enabled   !== false);
+  _applyTradeTypeBtn('btn-trade-btc',       d.btc_enabled       !== false);
+  _applyTradeTypeBtn('btn-trade-updown5',   d.updown_5m_enabled !== false);
+  _applyTradeTypeBtn('btn-trade-updown15',  d.updown_15m_enabled!== false);
+}
+
+async function toggleUpdown(interval) {
+  const key = interval === 5 ? 'updown_5m_enabled' : 'updown_15m_enabled';
+  const btn = document.getElementById(`btn-ud${interval}-toggle`);
+  const currently = btn && btn.textContent.trim() === 'Desactivar';
+  await fetch('/api/updown/params', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ [key]: !currently }),
+  });
+  fetchStatus();
+}
+
+async function resetUpdown(interval) {
+  await fetch('/api/updown/reset', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ interval_minutes: interval }),
+  });
+  fetchStatus();
+}
+
+async function saveUpdownParams() {
+  const maxUsdc  = parseFloat(document.getElementById('ud-max-usdc-input').value);
+  const maxLoss  = parseInt(document.getElementById('ud-max-losses-input').value);
+  if (isNaN(maxUsdc) || isNaN(maxLoss)) return;
+  const btn = document.getElementById('btn-save-updown');
+  const ok  = document.getElementById('updown-save-ok');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+  try {
+    const res = await fetch('/api/updown/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ updown_max_usdc: maxUsdc, updown_max_consecutive_losses: maxLoss }),
+    });
+    if (res.ok) {
+      ok.style.opacity = '1';
+      setTimeout(() => { ok.style.opacity = '0'; }, 2500);
+      fetchStatus();
+    } else {
+      ok.style.color = '#ef4444';
+      ok.textContent = '✗ Error';
+      ok.style.opacity = '1';
+      setTimeout(() => { ok.style.opacity = '0'; ok.style.color = '#22c55e'; ok.textContent = '✓ Guardado'; }, 2500);
+    }
+  } catch(e) {
+    ok.style.color = '#ef4444';
+    ok.textContent = '✗ Sin conexión';
+    ok.style.opacity = '1';
+    setTimeout(() => { ok.style.opacity = '0'; ok.style.color = '#22c55e'; ok.textContent = '✓ Guardado'; }, 2500);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar';
+  }
+}
+
+async function toggleAutoTrade() {
+  if (_autoTradePending) return;
+  const lbl = document.getElementById('auto-trade-lbl');
+  const currentlyActive = lbl && lbl.textContent === 'ACTIVO';
+
+  if (!currentlyActive) {
+    if (!confirm('Activar Auto-Trade ejecutará trades REALES automáticamente sin confirmación de Claude.\n\n¿Seguro que quieres activarlo?')) return;
+  }
+
+  _autoTradePending = true;
+  try {
+    const r = await fetch('/api/auto-trade', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ enabled: !currentlyActive }),
+    });
+    const d = await r.json();
+    if (d.ok) _setAutoTradeUI(d.auto_trade_mode);
+  } catch(e) {}
+  _autoTradePending = false;
 }
 
 async function shutdownServer() {
@@ -1014,6 +2686,10 @@ async function saveParams() {
     min_book_depth_usdc:     parseFloat(document.getElementById('p-depth').value),
     min_competitive_score:   parseFloat(document.getElementById('p-comp').value),
     scan_interval_minutes:   parseInt(document.getElementById('p-interval').value),
+    btc_enabled:             document.getElementById('p-btc-enabled').value === '1',
+    btc_max_position_usdc:   parseFloat(document.getElementById('p-btc-max').value),
+    btc_max_hours_to_resolution: parseFloat(document.getElementById('p-btc-hours').value),
+    btc_momentum_weight:         parseFloat(document.getElementById('p-btc-momentum').value),
   };
   try {
     const r = await fetch('/api/params', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params) });
@@ -1078,9 +2754,346 @@ async function loadParams() {
     document.getElementById('p-comp').value = p.min_competitive_score;
     document.getElementById('lbl-comp').textContent = p.min_competitive_score.toFixed(1);
   }
+  if (p.btc_enabled !== undefined) {
+    const v = p.btc_enabled ? '1' : '0';
+    document.getElementById('p-btc-enabled').value = v;
+    const lbl = document.getElementById('lbl-btc-enabled');
+    lbl.textContent = p.btc_enabled ? 'ON' : 'OFF';
+    lbl.style.color = p.btc_enabled ? 'var(--green)' : 'var(--red)';
+  }
+  if (p.btc_max_position_usdc !== undefined) {
+    document.getElementById('p-btc-max').value = p.btc_max_position_usdc;
+    document.getElementById('lbl-btc-max').textContent = p.btc_max_position_usdc;
+  }
+  if (p.btc_max_hours_to_resolution !== undefined) {
+    document.getElementById('p-btc-hours').value = p.btc_max_hours_to_resolution;
+    document.getElementById('lbl-btc-hours').textContent = parseFloat(p.btc_max_hours_to_resolution).toFixed(2);
+  }
+  if (p.btc_momentum_weight !== undefined) {
+    document.getElementById('p-btc-momentum').value = p.btc_momentum_weight;
+    document.getElementById('lbl-btc-momentum').textContent = parseFloat(p.btc_momentum_weight).toFixed(2);
+  }
 }
 
+// ── Meta de ganancia ────────────────────────────────────────────────────────
+
+let _goalFormVisible = false;
+
+function _toggleGoalForm() {
+  _goalFormVisible = !_goalFormVisible;
+  document.getElementById('goal-form').style.display = _goalFormVisible ? 'block' : 'none';
+}
+
+function renderGoalWidget(g) {
+  const activeView  = document.getElementById('goal-active-view');
+  const emptyView   = document.getElementById('goal-empty-view');
+  const form        = document.getElementById('goal-form');
+  if (!g || !g.active) {
+    activeView.style.display = 'none';
+    emptyView.style.display  = 'block';
+    form.style.display       = 'block';
+    return;
+  }
+  activeView.style.display = 'block';
+  emptyView.style.display  = 'none';
+  form.style.display       = _goalFormVisible ? 'block' : 'none';
+
+  const earnedColor = g.earned >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('goal-earned-lbl').style.color = earnedColor;
+  document.getElementById('goal-earned-lbl').textContent = (g.earned >= 0 ? '+' : '') + '$' + g.earned.toFixed(2);
+  document.getElementById('goal-target-lbl').textContent = '$' + g.goal_usdc.toFixed(2);
+  document.getElementById('goal-pct-lbl').textContent    = Math.max(0, g.pct).toFixed(1) + '%';
+  document.getElementById('goal-progress-bar').style.width = Math.min(100, Math.max(0, g.pct)) + '%';
+
+  // Tiempo restante
+  const hr = Math.floor(g.hours_remaining);
+  const mn = Math.round((g.hours_remaining - hr) * 60);
+  document.getElementById('goal-time-lbl').textContent = g.expired ? '00:00h' : `${hr}h ${mn}m`;
+
+  document.getElementById('goal-reached-banner').style.display  = g.reached  ? 'block' : 'none';
+  document.getElementById('goal-expired-banner').style.display  = (g.expired && !g.reached) ? 'block' : 'none';
+
+  // Cambiar color de barra si está en rojo
+  const bar = document.getElementById('goal-progress-bar');
+  bar.style.background = g.reached
+    ? 'linear-gradient(90deg,#facc15,#eab308)'
+    : 'linear-gradient(90deg,#22c55e,#16a34a)';
+}
+
+async function saveGoal() {
+  const usdc  = parseFloat(document.getElementById('goal-input-usdc').value);
+  const hours = parseFloat(document.getElementById('goal-input-hours').value);
+  if (!usdc || usdc <= 0 || !hours || hours <= 0) return;
+  const r = await fetch('/api/goal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({usdc, hours}) });
+  const j = await r.json();
+  if (j.ok) {
+    _goalFormVisible = false;
+    document.getElementById('goal-form').style.display = 'none';
+  }
+}
+
+async function cancelGoal() {
+  await fetch('/api/goal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({usdc:0, hours:24}) });
+}
+
+// ── Asignación de capital (sidebar widget) ─────────────────────────────────
+
+// Flag: true = usuario editó los inputs, no sobreescribir hasta que guarde o descarte
+let _allocInputsDirty = false;
+
+function renderAllocationWidget(d) {
+  const types = [
+    { key:'w', label:'Weather', color:'#60a5fa', budget: d.budget_weather||0, dep: d.deployed_weather||0, avail: d.available_weather||0, pct: d.alloc_weather_pct||0.6 },
+    { key:'b', label:'BTC',     color:'#f59e0b', budget: d.budget_btc||0,     dep: d.deployed_btc||0,     avail: d.available_btc||0,     pct: d.alloc_btc_pct||0.2 },
+    { key:'u', label:'UpDown',  color:'#a78bfa', budget: d.budget_updown||0,  dep: d.deployed_updown||0,  avail: d.available_updown||0,  pct: d.alloc_updown_pct||0.2 },
+  ];
+  for (const t of types) {
+    const usedPct = t.budget > 0 ? Math.min(100, (t.dep / t.budget) * 100) : 0;
+    const _s = id => document.getElementById(id);
+    _s(`alloc-${t.key}-pct`).textContent    = `${Math.round(t.pct*100)}%`;
+    _s(`alloc-${t.key}-budget`).textContent = `$${t.budget.toFixed(2)}`;
+    _s(`alloc-${t.key}-dep`).textContent    = `$${t.dep.toFixed(2)}`;
+    _s(`alloc-${t.key}-avail`).textContent  = `$${t.avail.toFixed(2)}`;
+    _s(`alloc-${t.key}-avail`).style.color  = t.avail > 0 ? 'var(--green)' : 'var(--muted)';
+    _s(`alloc-${t.key}-bar`).style.width    = usedPct + '%';
+  }
+  // Solo sincronizar inputs si el usuario NO los ha tocado
+  if (!_allocInputsDirty) {
+    const vals = { w: Math.round((d.alloc_weather_pct||0.6)*100), b: Math.round((d.alloc_btc_pct||0.2)*100), u: Math.round((d.alloc_updown_pct||0.2)*100) };
+    for (const [k, id] of Object.entries({ w:'alloc-inp-w', b:'alloc-inp-b', u:'alloc-inp-u' })) {
+      const el = document.getElementById(id);
+      if (el) el.value = vals[k];
+    }
+  }
+}
+
+async function saveAllocation() {
+  const w = parseInt(document.getElementById('alloc-inp-w').value) || 0;
+  const b = parseInt(document.getElementById('alloc-inp-b').value) || 0;
+  const u = parseInt(document.getElementById('alloc-inp-u').value) || 0;
+  const warn = document.getElementById('alloc-sum-warn');
+  if (w + b + u !== 100) { warn.style.display = 'block'; return; }
+  warn.style.display = 'none';
+  const r = await fetch('/api/allocation', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ weather_pct: w/100, btc_pct: b/100, updown_pct: u/100 }),
+  });
+  const d = await r.json();
+  if (d.ok) {
+    _allocInputsDirty = false;
+    fetchStatus();
+    fetchDashboard();  // actualizar tabla de asignación inmediatamente
+  } else {
+    warn.textContent = d.msg || 'Error al guardar';
+    warn.style.display = 'block';
+  }
+}
+
+async function resetAllocation() {
+  // Resetear a defaults 60/20/20 y recalcular
+  document.getElementById('alloc-inp-w').value = 60;
+  document.getElementById('alloc-inp-b').value = 20;
+  document.getElementById('alloc-inp-u').value = 20;
+  document.getElementById('alloc-sum-warn').style.display = 'none';
+  _allocInputsDirty = true;
+  await saveAllocation();
+}
+
+// ── Dashboard tab ──────────────────────────────────────────────────────────
+
+let _dbAllocChart = null, _dbTypeChart = null, _dbPnlChart = null;
+
+async function fetchDashboard() {
+  try {
+    const r = await fetch('/api/stats');
+    if (!r.ok) return;
+    renderDashboard(await r.json());
+  } catch(e) {}
+}
+
+function renderDashboard(d) {
+  // KPI cards
+  const totalEl = document.getElementById('db-total');
+  const pnlEl   = document.getElementById('db-pnl');
+  if (totalEl) totalEl.textContent = `$${(d.total_value||0).toFixed(2)}`;
+  if (pnlEl) {
+    const pnl = d.portfolio_pnl || 0;
+    pnlEl.textContent = `${pnl>=0?'+':''}$${pnl.toFixed(2)}`;
+    pnlEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  const tradesEl = document.getElementById('db-trades');
+  if (tradesEl) tradesEl.textContent = d.total_trades || 0;
+  const dlEl = document.getElementById('db-dloss');
+  if (dlEl) dlEl.textContent = `$${(d.daily_loss_usdc||0).toFixed(2)}`;
+  const deltaEl = document.getElementById('db-total-delta');
+  if (deltaEl && d.daily_start_balance) {
+    const delta = (d.total_value||0) - d.daily_start_balance;
+    deltaEl.textContent = `${delta>=0?'+':''}$${delta.toFixed(2)} hoy`;
+    deltaEl.style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // Allocation donut
+  const alloc = d.allocation || {};
+  const aW = alloc.weather || {}, aB = alloc.btc || {}, aU = alloc.updown || {};
+  const depW = aW.deployed||0, depB = aB.deployed||0, depU = aU.deployed||0;
+  const avW  = aW.available||0, avB = aB.available||0, avU = aU.available||0;
+  const budW = aW.budget||0, budB = aB.budget||0, budU = aU.budget||0;
+
+  const allocCtx = document.getElementById('db-alloc-chart');
+  if (allocCtx) {
+    if (_dbAllocChart) _dbAllocChart.destroy();
+    _dbAllocChart = new Chart(allocCtx.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Weather (dep)', 'Weather (avail)', 'BTC (dep)', 'BTC (avail)', 'UpDown (dep)', 'UpDown (avail)'],
+        datasets: [{
+          data: [depW, avW, depB, avB, depU, avU],
+          backgroundColor: ['#2563eb','#93c5fd','#d97706','#fcd34d','#7c3aed','#c4b5fd'],
+          borderWidth: 0,
+          hoverOffset: 4,
+        }],
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: {
+          callbacks: { label: ctx => ` $${ctx.parsed.toFixed(2)}` }
+        }},
+        cutout: '65%',
+      },
+    });
+  }
+
+  const legEl = document.getElementById('db-alloc-legend');
+  if (legEl) {
+    legEl.innerHTML = [
+      { color:'#60a5fa', label:`⛅ Weather`, budget:budW, dep:depW, avail:avW },
+      { color:'#f59e0b', label:`₿ BTC`,     budget:budB, dep:depB, avail:avB },
+      { color:'#a78bfa', label:`⚡ UpDown`,  budget:budU, dep:depU, avail:avU },
+    ].map(t => `<div>
+      <span style="color:${t.color};font-weight:600">${t.label}</span>
+      <span style="color:var(--muted)"> $${t.budget.toFixed(2)} budget · </span>
+      <span style="color:var(--yellow)">$${t.dep.toFixed(2)} dep</span>
+      <span style="color:var(--muted)"> · </span>
+      <span style="color:var(--green)">$${t.avail.toFixed(2)} libre</span>
+    </div>`).join('');
+  }
+
+  // Allocation detail table
+  const tbl = document.getElementById('db-alloc-table');
+  if (tbl) {
+    const rows = [
+      { icon:'⛅', name:'Weather', a: aW },
+      { icon:'₿',  name:'BTC',    a: aB },
+      { icon:'⚡', name:'UpDown', a: aU },
+    ];
+    tbl.innerHTML = rows.map(r => {
+      const usedPct   = Math.min(100, r.a.used_pct != null ? r.a.used_pct : (r.a.budget > 0 ? (r.a.deployed/r.a.budget*100) : 0));
+      const overBudget = r.a.over_budget || false;
+      const barColor  = usedPct >= 100 ? 'var(--red)' : usedPct > 80 ? 'var(--red)' : usedPct > 50 ? 'var(--yellow)' : 'var(--green)';
+      const pctLabel  = overBudget ? `<span title="Deployed supera el budget de esta categoría" style="color:var(--red);font-family:monospace;font-size:.75rem">100% ⚠</span>`
+                                   : `<span style="font-family:monospace;font-size:.75rem;color:${barColor}">${usedPct.toFixed(1)}%</span>`;
+      return `<tr>
+        <td>${r.icon} ${r.name}</td>
+        <td style="color:var(--muted)">${Math.round((r.a.pct||0)*100)}%</td>
+        <td style="font-family:monospace">$${(r.a.budget||0).toFixed(2)}</td>
+        <td style="font-family:monospace;color:var(--yellow)">$${(r.a.deployed||0).toFixed(2)}</td>
+        <td style="font-family:monospace;color:var(--green)">$${(r.a.available||0).toFixed(2)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;background:var(--bg3);border-radius:2px;height:5px;overflow:hidden">
+              <div style="height:100%;background:${barColor};width:${usedPct}%;transition:width .5s"></div>
+            </div>
+            ${pctLabel}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Trades by type bar chart
+  const typeCtx = document.getElementById('db-type-chart');
+  if (typeCtx) {
+    const bt = d.by_type || {};
+    if (_dbTypeChart) _dbTypeChart.destroy();
+    _dbTypeChart = new Chart(typeCtx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ['⛅ Weather', '₿ BTC', '⚡ UpDown'],
+        datasets: [
+          { label: 'Trades',      data: [(bt.WEATHER||{}).count||0, (bt.BTC||{}).count||0, (bt.BTC_UPDOWN||{}).count||0], backgroundColor: ['#2563eb','#d97706','#7c3aed'], borderRadius: 4 },
+          { label: 'Capital ($)', data: [(bt.WEATHER||{}).cost||0,  (bt.BTC||{}).cost||0,  (bt.BTC_UPDOWN||{}).cost||0],  backgroundColor: ['#93c5fd80','#fcd34d80','#c4b5fd80'], borderRadius: 4, yAxisID: 'y2' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color:'#8b949e', font:{size:10} } } },
+        scales: {
+          x:  { ticks:{color:'#8b949e',font:{size:10}}, grid:{color:'#21262d'} },
+          y:  { ticks:{color:'#8b949e',font:{size:10}}, grid:{color:'#21262d'}, title:{display:true,text:'Trades',color:'#8b949e',font:{size:9}} },
+          y2: { position:'right', ticks:{color:'#8b949e',font:{size:10},callback:v=>`$${v.toFixed(1)}`}, grid:{display:false}, title:{display:true,text:'Capital $',color:'#8b949e',font:{size:9}} },
+        },
+      },
+    });
+  }
+
+  // P&L history line chart
+  const pnlHist = d.pnl_history || [];
+  const pnlCtx  = document.getElementById('db-pnl-chart');
+  const pnlEmpty = document.getElementById('db-pnl-empty');
+  if (pnlCtx) {
+    if (!pnlHist.length) {
+      pnlCtx.style.display = 'none';
+      if (pnlEmpty) pnlEmpty.style.display = 'block';
+    } else {
+      pnlCtx.style.display = '';
+      if (pnlEmpty) pnlEmpty.style.display = 'none';
+      const labels = pnlHist.map(p => p.time ? p.time.substring(11,16) : '');
+      const values = pnlHist.map(p => p.pnl);
+      const lastPnl = values[values.length-1] || 0;
+      const lineColor = lastPnl >= 0 ? '#3fb950' : '#f85149';
+      if (_dbPnlChart) _dbPnlChart.destroy();
+      const ctx2 = pnlCtx.getContext('2d');
+      const grad = ctx2.createLinearGradient(0,0,0,180);
+      grad.addColorStop(0, lastPnl >= 0 ? 'rgba(63,185,80,.25)' : 'rgba(248,81,73,.25)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      _dbPnlChart = new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'P&L acumulado', data: values,
+            borderColor: lineColor, backgroundColor: grad,
+            borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend:{display:false}, tooltip:{ backgroundColor:'#21262d', borderColor:'#30363d', borderWidth:1, callbacks:{ label: ctx => ` P&L: ${ctx.parsed.y>=0?'+':''}$${ctx.parsed.y.toFixed(4)}` } } },
+          scales: {
+            x: { ticks:{color:'#8b949e',maxTicksLimit:8,font:{size:9}}, grid:{color:'#21262d'} },
+            y: { ticks:{color:'#8b949e',font:{size:9},callback:v=>`${v>=0?'+':''}$${v.toFixed(2)}`}, grid:{color:'#21262d'} },
+          },
+        },
+      });
+    }
+  }
+}
+
+// Reloj UTC — actualiza cada segundo para que el usuario vea la hora que usa el bot
+function _tickBotClock() {
+  const now = new Date();
+  const h = String(now.getUTCHours()).padStart(2,'0');
+  const m = String(now.getUTCMinutes()).padStart(2,'0');
+  const s = String(now.getUTCSeconds()).padStart(2,'0');
+  const el = document.getElementById('bot-clock');
+  if (el) el.textContent = `${h}:${m}:${s} UTC`;
+}
+_tickBotClock();
+setInterval(_tickBotClock, 1000);
+
 // Init — el WebSocket se encarga de status, posiciones y oportunidades en tiempo real
+_restoreTab();
 connectWS();
 loadParams();
 fetchHistory();
@@ -1088,8 +3101,219 @@ fetchHistory();
 // Polling solo para lo que no llega por WebSocket
 fetchPortfolioAnalysis();
 fetchHistory();
+fetchBtcOpportunities();
+fetchOpenOrders();
+fetchDashboard();
 setInterval(fetchPortfolioAnalysis, 60000);
 setInterval(fetchHistory, 60000);
+setInterval(fetchBtcOpportunities, 60000);
+setInterval(fetchOpenOrders, 15000);
+setInterval(fetchDashboard, 30000);
+fetchUpdownLearn();
+setInterval(fetchUpdownLearn, 30000);
+fetchStrategies();
+setInterval(fetchStrategies, 60000);
+
+// ── ESTRATEGIAS ──────────────────────────────────────────────────────────────
+
+async function fetchStrategies() {
+  try {
+    const [perfR, notesR, learnR] = await Promise.all([
+      fetch('/api/strategy/performance'),
+      fetch('/api/strategy/notes'),
+      fetch('/api/updown/learn'),
+    ]);
+    const perf  = await perfR.json();
+    const notes = await notesR.json();
+    const learn = await learnR.json();
+    _renderStratPerf(perf);
+    _renderStratParams(perf);
+    _renderStratLearner(learn);
+    _loadNoteFields(notes);
+  } catch(e) {}
+}
+
+function _renderStratPerf(perf) {
+  const el = document.getElementById('strat-perf-cards');
+  if (!el) return;
+  const cards = [
+    { key:'WEATHER',    icon:'⛅', label:'Clima',          color:'#60a5fa' },
+    { key:'BTC',        icon:'₿',  label:'BTC Predicción', color:'#f59e0b' },
+    { key:'BTC_UPDOWN', icon:'⚡', label:'UpDown',         color:'#a78bfa' },
+  ];
+  el.innerHTML = cards.map(c => {
+    const s = perf[c.key] || {};
+    const wr = s.win_rate != null ? (s.win_rate * 100).toFixed(0) + '%' : '—';
+    const wrColor = s.win_rate == null ? 'var(--muted)' : s.win_rate >= 0.5 ? 'var(--green)' : s.win_rate >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+    return `<div class="panel" style="padding:14px;text-align:center">
+      <div style="font-size:1.4rem">${c.icon}</div>
+      <div style="font-size:.8rem;color:${c.color};font-weight:700;margin:4px 0">${c.label}</div>
+      <div style="font-size:1.4rem;font-weight:700;color:${wrColor}">${wr}</div>
+      <div style="font-size:.7rem;color:var(--muted)">win rate</div>
+      <div style="display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:.72rem">
+        <span style="color:var(--green)">✓ ${s.wins||0} wins</span>
+        <span style="color:var(--red)">✗ ${s.losses||0} loss</span>
+        <span style="color:var(--muted)">⏳ ${s.pending||0} pend</span>
+      </div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:4px">$${(s.total_cost||0).toFixed(2)} invertido</div>
+    </div>`;
+  }).join('');
+}
+
+function _renderStratParams(perf) {
+  // Weather params
+  const wp = document.getElementById('strat-weather-params');
+  if (wp) {
+    const d = window._lastStatus || {};
+    const bp = d.bot_params || {};
+    wp.innerHTML = `
+      <b>EV mínimo:</b> ${((bp.min_ev_threshold||0.15)*100).toFixed(0)}% &nbsp;
+      <b>Kelly:</b> ${bp.kelly_fraction||0.25} &nbsp;
+      <b>Pos máx:</b> $${bp.max_position_usdc||5}<br>
+      <b>Liquidez mín:</b> $${bp.min_liquidity_usdc||50} &nbsp;
+      <b>Spread máx:</b> ${((bp.max_spread_pct||0.6)*100).toFixed(0)}%<br>
+      <b>Std dev incertidumbre:</b> 2.5°F (hoy) / 3.5°F (mañana) / 5.0°F (2+ días)
+    `;
+  }
+  // BTC params
+  const bp2 = document.getElementById('strat-btc-params');
+  if (bp2) {
+    const d = window._lastStatus || {};
+    const bp = d.bot_params || {};
+    bp2.innerHTML = `
+      <b>Pos máx:</b> $${bp.btc_max_position_usdc||3} &nbsp;
+      <b>Max horas al cierre:</b> ${bp.btc_max_hours_to_resolution||96}h<br>
+      <b>Modelo:</b> log-normal (precio, volatilidad histórica, horizonte temporal)<br>
+      <b>Confirmación TA:</b> RSI + recomendación TradingView requeridos
+    `;
+  }
+  // UpDown params from learner + config
+  const up = document.getElementById('strat-updown-params');
+  if (up) {
+    const d = window._lastStatus || {};
+    const bp = d.bot_params || {};
+    const s = (perf.BTC_UPDOWN || {});
+    const ap5  = (s.learner_5m  || {}).adaptive || {};
+    const ap15 = (s.learner_15m || {}).adaptive || {};
+    up.innerHTML = `
+      <b>Monto:</b> $${bp.updown_max_usdc||1} por trade (enteros) &nbsp; <b>Mín shares:</b> 5<br>
+      <b>Señal mín 5m:</b> ${ap5.min_signal != null ? ap5.min_signal.toFixed(2) : '0.10'} &nbsp;
+      <b>15m:</b> ${ap15.min_signal != null ? ap15.min_signal.toFixed(2) : '0.10'}<br>
+      <b>Invertir señal 5m:</b> ${ap5.invert_signal ? '⚠️ SÍ' : 'No'} &nbsp;
+      <b>15m:</b> ${ap15.invert_signal ? '⚠️ SÍ' : 'No'}<br>
+      <b>Razón ajuste 5m:</b> ${ap5.reason || '(defaults)'}
+    `;
+  }
+}
+
+function _renderStratLearner(data) {
+  const el = document.getElementById('strat-learner-detail');
+  if (!el) return;
+  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>' : `<span style="color:${v>=0.5?'var(--green)':v>=0.4?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+  const rows = [
+    ['Intervalo','Total','Win Rate','Reciente','Acc TA','Señal mín','Inv señal','Razón ajuste'],
+    ...['5m','15m'].map(k => {
+      const s = data[k] || {};
+      const ap = s.adaptive || {};
+      return [k, s.total||0, pct(s.win_rate), pct(s.recent_wr), pct(s.ta_accuracy),
+              ap.min_signal?.toFixed(2)||'—', ap.invert_signal?'⚠️ SÍ':'No',
+              `<span style="font-size:.68rem">${ap.reason||'—'}</span>`];
+    }),
+  ];
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.72rem">
+    ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border)">
+      ${r.map(c=>`<${i===0?'th':'td'} style="padding:5px 8px;${i===0?'color:var(--muted);font-weight:600;text-transform:uppercase;font-size:.65rem':'color:var(--text)'}">${c}</${i===0?'th':'td'}>`).join('')}
+    </tr>`).join('')}
+  </table>
+  <div style="margin-top:10px">
+    ${['5m','15m'].map(k => {
+      const s = data[k] || {};
+      const bs = s.by_signal || {};
+      const bt = s.by_side   || {};
+      const be = s.by_elapsed|| {};
+      const p = v => v==null?'—':(v*100).toFixed(0)+'%';
+      return `<div style="display:inline-block;vertical-align:top;margin-right:20px;margin-top:8px">
+        <b style="color:var(--muted);font-size:.7rem">${k} — Por señal:</b>
+        débil ${p(bs.weak)} · media ${p(bs.med)} · fuerte ${p(bs.strong)}<br>
+        <b style="color:var(--muted);font-size:.7rem">Por lado:</b>
+        UP ${p(bt.UP)} · DOWN ${p(bt.DOWN)}<br>
+        <b style="color:var(--muted);font-size:.7rem">Por timing:</b>
+        temprano ${p(be.early)} · medio ${p(be.mid)} · tardío ${p(be.late)}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function _loadNoteFields(notes) {
+  const fields = ['weather','btc','updown','general'];
+  fields.forEach(f => {
+    const el = document.getElementById('note-' + f);
+    if (el && notes[f] != null && el.value === '') el.value = notes[f];
+  });
+}
+
+async function saveStrategyNotes() {
+  const notes = {
+    weather: document.getElementById('note-weather')?.value || '',
+    btc:     document.getElementById('note-btc')?.value || '',
+    updown:  document.getElementById('note-updown')?.value || '',
+    general: document.getElementById('note-general')?.value || '',
+  };
+  const r = await fetch('/api/strategy/notes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(notes) });
+  const st = document.getElementById('notes-save-status');
+  if (st) { st.textContent = '✓ Guardado'; setTimeout(()=>{ st.textContent=''; },2500); }
+}
+
+async function askClaudeStrategyReview() {
+  const notes = {
+    weather: document.getElementById('note-weather')?.value || '',
+    btc:     document.getElementById('note-btc')?.value || '',
+    updown:  document.getElementById('note-updown')?.value || '',
+    general: document.getElementById('note-general')?.value || '',
+  };
+  await saveStrategyNotes();
+  // Construir mensaje para Claude
+  const parts = [];
+  if (notes.general)  parts.push(`Notas generales: ${notes.general}`);
+  if (notes.weather)  parts.push(`Observaciones clima: ${notes.weather}`);
+  if (notes.btc)      parts.push(`Observaciones BTC: ${notes.btc}`);
+  if (notes.updown)   parts.push(`Observaciones UpDown: ${notes.updown}`);
+  const msg = `Analiza el rendimiento actual del bot y mis observaciones:\n\n${parts.join('\n\n')}\n\nBasa tu análisis en el historial de trades y los parámetros actuales. Dame sugerencias concretas de mejora para cada estrategia.`;
+
+  // Enviar al chat y mostrar respuesta
+  const sugg = document.getElementById('strat-claude-suggestions');
+  if (sugg) sugg.innerHTML = '<span style="color:var(--muted)">Consultando a Claude...</span>';
+
+  try {
+    // Usar el chat normal para enviar el mensaje
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: [{ role:'user', content: msg }] })
+    });
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let full = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ')) {
+          try {
+            const d = JSON.parse(line.slice(6));
+            if (d.text) full += d.text;
+          } catch(e) {}
+        }
+      }
+    }
+    if (sugg && full) {
+      sugg.innerHTML = full.replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+    }
+  } catch(e) {
+    if (sugg) sugg.innerHTML = '<span style="color:var(--red)">Error al consultar Claude.</span>';
+  }
+}
 
 // ── GRAFICA DE POSICION ─────────────────────────────────────────────────────
 let _posChart = null;
@@ -1107,6 +3331,17 @@ async function openPositionChart(idx) {
   document.getElementById('pos-modal-meta').textContent =
     `${pos.outcome} · ${pos.size} shares · ${ind.apuestaLabel} · Cierra: ${closeStr}`;
 
+  // Link a Polymarket
+  const polyLinkEl = document.getElementById('pos-modal-polylink');
+  if (polyLinkEl) {
+    if (pos.poly_url) {
+      polyLinkEl.href = pos.poly_url;
+      polyLinkEl.style.display = 'inline-flex';
+    } else {
+      polyLinkEl.style.display = 'none';
+    }
+  }
+
   // Stats
   const isWin = pos.pnl_usdc >= 0;
   document.getElementById('pm-entry').textContent   = `${(pos.avg_price * 100).toFixed(1)}¢`;
@@ -1118,16 +3353,8 @@ async function openPositionChart(idx) {
   pnlEl.style.color = isWin ? 'var(--green)' : 'var(--red)';
 
   // Analisis Claude para esta posicion
-  const recEl = document.getElementById('pm-claude-rec');
-  const rec = _portfolioRecs.find(r => r.token_id === pos.token_id);
-  if (rec) {
-    const actionColor = rec.action === 'MANTENER' ? 'var(--yellow)' : rec.action === 'SALIR' ? 'var(--red)' : 'var(--green)';
-    recEl.innerHTML = `<span style="color:${actionColor};font-weight:bold">${rec.action}</span> — ${escHtml(rec.reason)}`;
-    recEl.parentElement.style.display = 'block';
-  } else {
-    recEl.innerHTML = '<span style="color:var(--muted)">Sin análisis disponible (el bot debe estar corriendo para que Claude analice el portafolio)</span>';
-    recEl.parentElement.style.display = 'block';
-  }
+  _currentModalTokenId = pos.token_id;
+  _renderModalClaudeRec(pos.token_id);
 
   overlay.classList.add('open');
 
@@ -1240,6 +3467,7 @@ function renderPositionChart(history, entryPrice, curPrice) {
 function closePositionModal() {
   document.getElementById('pos-modal-overlay').classList.remove('open');
   if (_posChart) { _posChart.destroy(); _posChart = null; }
+  _currentModalTokenId = null;
 }
 
 // ── Chat con Claude ────────────────────────────────────────────────────────
@@ -1450,7 +3678,12 @@ async function sendChat() {
               // Insertar burbuja de acción antes de la burbuja de texto del asistente
               const actionDiv = document.createElement('div');
               actionDiv.className = 'chat-msg assistant';
-              const toolNames = { sell_position: '🔴 Vendiendo posición', buy_opportunity: '🟢 Comprando oportunidad' };
+              const toolNames = {
+                sell_position:     '🔴 Vendiendo posición',
+                buy_opportunity:   '🟢 Comprando oportunidad clima',
+                buy_btc_opportunity: '₿ Comprando BTC',
+                set_btc_auto_mode: '⚙️ Configurando auto BTC',
+              };
               const label = toolNames[d.tool_call.name] || ('🔧 ' + d.tool_call.name);
               const detail = d.tool_call.input?.title || d.tool_call.input?.condition_id?.slice(0,12) || '';
               const reason = d.tool_call.input?.reason || '';
@@ -1504,6 +3737,10 @@ async function sendChat() {
     <button class="modal-close" onclick="closePositionModal()">✕ Cerrar</button>
     <h3 id="pos-modal-title">—</h3>
     <div class="meta" id="pos-modal-meta"></div>
+    <a id="pos-modal-polylink" href="#" target="_blank" rel="noopener"
+       style="display:none;font-size:.8rem;color:#60a5fa;text-decoration:none;margin-bottom:12px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid #1e3a5f;border-radius:6px;background:#0f1a2e">
+      🔗 Ver en Polymarket ↗
+    </a>
     <div class="pos-stats-row">
       <div class="pos-stat">
         <div class="lbl">Precio entrada</div>
@@ -1527,7 +3764,11 @@ async function sendChat() {
       </div>
     </div>
     <div id="pm-claude-wrap" style="display:none;background:#0f1a2e;border:1px solid #1e3a5f;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.85rem">
-      <span style="color:#60a5fa;font-weight:bold;font-size:.75rem">ANALISIS CLAUDE — </span>
+      <div style="color:#60a5fa;font-weight:bold;font-size:.75rem;margin-bottom:4px">RECOMENDACIÓN CLAUDE (¿mantener o vender?)</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-bottom:6px">
+        "A FAVOR" en la tabla = el mercado cree que vas a ganar (precio actual).
+        Esta recomendación es independiente: Claude evalúa si conviene <em>vender ahora</em> o esperar a resolución.
+      </div>
       <span id="pm-claude-rec"></span>
     </div>
     <div id="chart-wrap"><canvas id="pos-chart"></canvas></div>
@@ -1535,6 +3776,19 @@ async function sendChat() {
 </div>
 
 <div id="help-popup"></div>
+
+<!-- MODAL DETALLE ORDEN ABIERTA -->
+<div id="ord-modal-overlay" onclick="if(event.target===this)closeOrderModal()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1100;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px 28px;width:min(680px,95vw);max-height:90vh;overflow-y:auto;position:relative;">
+    <button onclick="closeOrderModal()"
+            style="position:absolute;top:14px;right:16px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px;">
+      ✕ Cerrar
+    </button>
+    <h3 id="ord-modal-title" style="color:var(--blue);margin-bottom:16px;padding-right:80px;">—</h3>
+    <div id="ord-modal-body"></div>
+  </div>
+</div>
 
 </body>
 </html>

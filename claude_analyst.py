@@ -83,15 +83,7 @@ async def analyze_opportunity(
 
     model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
 
-    bucket_desc = (
-        f"{opportunity['temp_low']}-{opportunity['temp_high']}°F"
-        if opportunity["temp_low"] > -900 and opportunity["temp_high"] < 900
-        else (
-            f"{opportunity['temp_high']}°F o menos"
-            if opportunity["temp_low"] <= -900
-            else f"{opportunity['temp_low']}°F o mas"
-        )
-    )
+    is_btc = opportunity.get("asset") == "BTC"
 
     spread_pct = opportunity.get("spread_pct", 0)
     vol_24h = opportunity.get("volume_24h", 0)
@@ -103,7 +95,54 @@ async def analyze_opportunity(
     last_trade = opportunity.get("last_trade_price", opportunity["entry_price"])
     book_depth = opportunity.get("book_depth", {})
 
-    user_msg = f"""OPORTUNIDAD DE TRADE #{opportunity.get('condition_id', '')[:8]}
+    if is_btc:
+        dir_sym = ">" if opportunity["direction"] == "above" else "<"
+        ta_line = ""
+        if opportunity.get("ta_recommendation") and opportunity["ta_recommendation"] != "NEUTRAL":
+            ta_line = f"\nSignal TradingView ({opportunity.get('ta_recommendation')}): RSI/EMA apuntan {'alcista' if opportunity['ta_signal'] > 0 else 'bajista'}"
+
+        user_msg = f"""OPORTUNIDAD DE TRADE BTC #{opportunity.get('condition_id', '')[:8]}
+
+═══ MERCADO ═══
+Titulo: {opportunity['market_title']}
+Condicion: BTC {dir_sym} ${opportunity['threshold']:,.0f}
+Lado a operar: {opportunity['side']}
+Minutos hasta cierre: {opportunity['minutes_to_close']:.0f} min ({opportunity['hours_to_close']:.1f}h)
+
+═══ DATOS DE PRECIO ═══
+Precio BTC ahora: ${opportunity['btc_price_at_eval']:,.2f}
+Distancia al umbral: {opportunity['pct_from_threshold']:+.2f}%
+Volatilidad usada: {opportunity['vol_per_minute']:.4f}% por minuto{ta_line}
+
+═══ PROBABILIDAD Y EDGE ═══
+Nuestra probabilidad (log-normal): {opportunity['our_prob']:.1%}
+Precio del mercado (prob. implicita): {opportunity['market_prob']:.1%}
+EV calculado: +{opportunity['ev_pct']}%
+Precio de entrada: {opportunity['entry_price']:.3f}
+
+═══ CALIDAD DEL MERCADO ═══
+Spread bid-ask: {best_bid:.3f} / {best_ask:.3f} ({spread_pct*100:.1f}% del ask)
+Volumen 24h: ${vol_24h:.0f} USDC
+Liquidez: ${opportunity['liquidity']:.0f} USDC
+
+═══ SIZING ═══
+Tamano de posicion (Kelly fraccionado): ${opportunity['size_usdc']:.2f} USDC
+Shares a comprar: {opportunity['shares']:.1f}
+Cash disponible: ${balance_usdc:.2f} USDC
+Exposicion: {opportunity['size_usdc']/balance_usdc*100:.1f}% del cash
+"""
+    else:
+        bucket_desc = (
+            f"{opportunity['temp_low']}-{opportunity['temp_high']}°F"
+            if opportunity["temp_low"] > -900 and opportunity["temp_high"] < 900
+            else (
+                f"{opportunity['temp_high']}°F o menos"
+                if opportunity["temp_low"] <= -900
+                else f"{opportunity['temp_low']}°F o mas"
+            )
+        )
+
+        user_msg = f"""OPORTUNIDAD DE TRADE #{opportunity.get('condition_id', '')[:8]}
 
 ═══ MERCADO ═══
 Titulo: {opportunity['market_title']}
@@ -207,23 +246,196 @@ Considera el portafolio completo al decidir si abrir esta posicion adicional."""
         }
 
 
+UPDOWN_SYSTEM_PROMPT = """Eres el analista técnico de BTC de una cuenta de trading real en Polymarket con dinero real.
+
+Tu trabajo es revisar operaciones en mercados "BTC Up/Down": el mercado resuelve UP si el precio de BTC al cierre de la ventana (5 o 15 min) es >= al precio de inicio, DOWN si es menor. El precio de los shares refleja lo que otros creen — no lo uses para decidir la dirección.
+
+ANALIZA SOLO el precio de BTC:
+1. Señal TradingView (todos los indicadores: RSI, MACD, EMA, Bollinger, etc.)
+2. Posición del RSI: <40 = sobreventa (favorece UP), >60 = sobrecompra (favorece DOWN), 40-60 = neutral
+3. EMA cross: EMA20 > EMA50 = tendencia alcista, EMA20 < EMA50 = bajista
+4. Momentum en la ventana: si BTC ya subió 0.05%+ en los primeros minutos, puede continuar
+5. Tendencia macro 1h: contexto amplio de dirección
+
+PUEDES CAMBIAR LA DIRECCIÓN si ves señales más fuertes en el lado contrario.
+
+RECHAZA si: señales completamente contradictorias sin dirección clara, o si quedan <1.5 minutos en la ventana.
+
+Responde SIEMPRE en este formato exacto:
+DECISION: APROBAR o RECHAZAR
+DIRECCION: UP o DOWN
+RAZON: [2-3 oraciones sobre las señales técnicas de BTC]
+CONFIANZA: ALTA, MEDIA o BAJA"""
+
+
+async def analyze_updown_opportunity(
+    opportunity: dict,
+    ta_data: dict,
+    btc_price_now: float,
+    btc_price_start: float,
+    cmc_data: Optional[dict] = None,
+) -> dict:
+    """
+    Pide a Claude que analice una oportunidad UpDown.
+    Claude puede aprobar, rechazar, o cambiar la dirección del trade.
+
+    Returns:
+        {
+            "approved": bool,
+            "direction": str,       # "UP" o "DOWN" — puede diferir del original
+            "direction_changed": bool,
+            "reason": str,
+            "confidence": str,
+            "raw": str,
+            "skipped": bool,
+        }
+    """
+    client = get_client()
+
+    if client is None:
+        return {
+            "approved": False,
+            "direction": opportunity.get("side", "UP"),
+            "direction_changed": False,
+            "reason": "Claude no configurado — trade bloqueado. Configura ANTHROPIC_API_KEY en .env",
+            "confidence": "N/A",
+            "raw": "",
+            "skipped": True,
+        }
+
+    model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+
+    interval  = opportunity.get("interval_minutes", 5)
+    side      = opportunity.get("side", "UP")
+    elapsed   = opportunity.get("elapsed_minutes", 0)
+    minutes_left = opportunity.get("minutes_to_close", 0)
+    confidence_pct = opportunity.get("confidence", 0)
+    combined  = opportunity.get("combined_signal", 0)
+    momentum  = opportunity.get("window_momentum", 0)
+
+    sig = opportunity.get("signal_breakdown", {})
+    rsi   = ta_data.get("rsi")
+    ema20 = ta_data.get("ema20")
+    ema50 = ta_data.get("ema50")
+    macd  = ta_data.get("macd")
+    rec   = ta_data.get("recommendation", "NEUTRAL")
+    buy_c = ta_data.get("buy", 0)
+    sel_c = ta_data.get("sell", 0)
+    neu_c = ta_data.get("neutral", 0)
+
+    btc_move_pct = ((btc_price_now - btc_price_start) / btc_price_start * 100) if btc_price_start else 0
+
+    cmc_1h = (cmc_data or {}).get("percent_change_1h", 0)
+
+    user_msg = f"""OPERACIÓN UPDOWN {interval}m — Revisar antes de ejecutar
+
+═══ MERCADO ═══
+Ventana: {interval} minutos | Transcurrido: {elapsed:.1f}min | Quedan: {minutes_left:.1f}min
+Dirección propuesta: {side}
+Confianza del sistema: {confidence_pct:.1f}%
+
+═══ PRECIO BTC ═══
+Precio al inicio de ventana: ${btc_price_start:,.2f}
+Precio actual:               ${btc_price_now:,.2f}
+Movimiento en ventana:       {btc_move_pct:+.4f}%
+
+═══ ANÁLISIS TÉCNICO (TradingView {interval}min candles) ═══
+Recomendación global:  {rec}
+Indicadores BUY/NEUTRAL/SELL: {buy_c} / {neu_c} / {sel_c}
+Señal continua (-1 a +1):     {ta_data.get('signal', 0):.3f}
+RSI actual:    {f'{rsi:.1f}' if rsi else 'N/D'} {'⚠ SOBRECOMPRA' if rsi and rsi > 70 else ('⚠ SOBREVENTA' if rsi and rsi < 30 else '')}
+EMA20:         {f'${ema20:,.2f}' if ema20 else 'N/D'}
+EMA50:         {f'${ema50:,.2f}' if ema50 else 'N/D'}
+EMA cross:     {'EMA20 > EMA50 (alcista)' if ema20 and ema50 and ema20 > ema50 else ('EMA20 < EMA50 (bajista)' if ema20 and ema50 else 'N/D')}
+MACD:          {f'{macd:.2f}' if macd else 'N/D'}
+
+═══ CONTEXTO MACRO ═══
+Tendencia BTC última hora (CMC): {cmc_1h:+.3f}%
+
+═══ SEÑAL COMBINADA ═══
+Señal TA compuesta:    {sig.get('ta', combined):.3f}
+Momentum intraventana: {momentum:+.3f} ({'BTC subió en ventana' if momentum > 0.05 else ('BTC bajó en ventana' if momentum < -0.05 else 'sin movimiento relevante')})
+Macro 1h:              {sig.get('macro', 0):.3f}
+COMBINADO FINAL:       {combined:+.3f} → {'UP' if combined > 0 else 'DOWN'}
+
+═══ SIZING ═══
+Tamaño: ${opportunity.get('size_usdc', 1):.2f} USDC
+Precio share {side}: {opportunity.get('entry_price', 0.5):.3f}
+
+¿Apruebas esta operación? ¿O ves señales más fuertes para el lado contrario?"""
+
+    try:
+        response = await client.messages.create(
+            model=model,
+            max_tokens=300,
+            system=UPDOWN_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+
+        raw = response.content[0].text.strip()
+
+        approved  = "APROBAR" in raw.upper()
+        direction = side  # default: la propuesta
+        reason    = "Sin razón especificada."
+        confidence_str = "MEDIA"
+
+        for line in raw.splitlines():
+            upper = line.upper().strip()
+            if upper.startswith("DECISION:"):
+                approved = "APROBAR" in upper
+            elif upper.startswith("DIRECCION:"):
+                val = line.split(":", 1)[1].strip().upper()
+                if "UP" in val and "DOWN" not in val:
+                    direction = "UP"
+                elif "DOWN" in val:
+                    direction = "DOWN"
+            elif upper.startswith("RAZON:"):
+                reason = line.split(":", 1)[1].strip()
+            elif upper.startswith("CONFIANZA:"):
+                confidence_str = line.split(":", 1)[1].strip().upper()
+
+        direction_changed = direction != side
+
+        return {
+            "approved":          approved,
+            "direction":         direction,
+            "direction_changed": direction_changed,
+            "reason":            reason,
+            "confidence":        confidence_str,
+            "raw":               raw,
+            "skipped":           False,
+        }
+
+    except Exception as e:
+        return {
+            "approved":          False,
+            "direction":         side,
+            "direction_changed": False,
+            "reason":            f"Error consultando Claude ({e}) — trade bloqueado.",
+            "confidence":        "N/A",
+            "raw":               "",
+            "skipped":           False,
+        }
+
+
 PORTFOLIO_SYSTEM_PROMPT = """Eres un gestor de riesgo especializado en mercados de predicción de clima en Polymarket. Gestionas dinero real en USDC.
 
-Tu rol es revisar el portafolio y decidir qué posiciones MANTENER, SALIR (vender ahora para recuperar lo que quede), o AGREGAR MAS.
+CONCEPTO CLAVE: cada share paga exactamente $1.00 si el outcome es correcto al cierre, o $0.00 si es incorrecto. El precio actual es solo la opinión del mercado en este momento — NO afecta el pago final si se mantiene hasta resolución. Fluctuaciones de precio durante la vida del mercado son normales y NO indican que la predicción sea incorrecta.
 
-CRITERIOS PARA SALIR (venta de mercado):
-- El precio cayó >50% desde la entrada y quedan >12h → el mercado se movió en contra, salir limita pérdidas
-- Quedan <3h y el precio está por debajo del 30% de la entrada → improbable recuperación
-- P&L negativo >60% del capital invertido en esa posición
+Tu rol es revisar el portafolio y decidir qué posiciones MANTENER, SALIR (vender ahora) o AGREGAR MAS.
 
-CRITERIOS PARA MANTENER:
-- P&L positivo o negativo pequeño (<30%)
-- El precio se está recuperando
-- Quedan pocas horas y la posición está ganando
+CRITERIOS PARA SALIR (solo casos extremos — el precio intermedio NO es razón suficiente):
+- Precio actual por debajo de $0.08 (mercado >92% en contra) → pérdida casi total inevitable, recuperar algo
+- P&L negativo >85% del capital invertido → posición prácticamente perdida
+- Quedan <2h, precio <0.10 y tendencia bajista confirmada
+
+CRITERIOS PARA MANTENER (default — la mayoría de posiciones deberían mantenerse):
+- Cualquier posición con precio >0.10 y tiempo restante → esperar a resolución
+- Fluctuaciones de precio normales (<50% de pérdida sobre precio de entrada) → mantener
+- Posición "en contra" pero con horas por delante → la predicción puede aún ser correcta
 
 CRITERIOS PARA AGREGAR MAS:
-- P&L positivo y tendencia favorable
-- El mercado ofrece mejor precio que la entrada original
+- Precio actual significativamente mejor que precio de entrada original y análisis meteo favorable
 
 USA ESTE FORMATO EXACTO para cada posición (el índice DEBE coincidir con el número de la lista):
 POS_1: MANTENER | razón breve
@@ -297,10 +509,12 @@ Al final incluye el resumen global del portafolio."""
         raw = response.content[0].text.strip()
 
         # Parsear recomendaciones estructuradas POS_N: ACCION | razon
+        # Acepta formato plano y markdown bold (**POS_1: MANTENER** | ...)
         import re as _re
         recommendations = []
         for line in raw.splitlines():
-            m = _re.match(r"POS_(\d+):\s*(MANTENER|SALIR|AGREGAR MAS)\s*\|\s*(.+)", line.strip(), _re.IGNORECASE)
+            clean = line.strip().replace("**", "").replace("*", "")
+            m = _re.match(r"POS_(\d+):\s*(MANTENER|SALIR|AGREGAR MAS)\s*\|\s*(.+)", clean, _re.IGNORECASE)
             if m:
                 idx = int(m.group(1)) - 1  # 0-based
                 action = m.group(2).upper().strip()

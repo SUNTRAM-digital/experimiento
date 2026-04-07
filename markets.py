@@ -319,6 +319,56 @@ async def get_live_price(token_id: str) -> Optional[float]:
 
 DATA_API_BASE = "https://data-api.polymarket.com"
 
+# Cache conditionId → slug para no hacer N llamadas por refresh
+_slug_cache: dict[str, str] = {}
+
+
+async def _fetch_slug_for_condition(client: httpx.AsyncClient, condition_id: str) -> str:
+    """
+    Devuelve el EVENT slug para construir URLs de Polymarket.
+    Prioridad: campo eventSlug/event del mercado → events[0].slug → slug del mercado.
+    """
+    if not condition_id:
+        return ""
+    if condition_id in _slug_cache:
+        return _slug_cache[condition_id]
+    try:
+        resp = await client.get(
+            f"{GAMMA_BASE}/markets",
+            params={"conditionId": condition_id},
+            headers=HEADERS,
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            market = None
+            if isinstance(data, list) and data:
+                market = data[0]
+            elif isinstance(data, dict) and data:
+                market = data
+
+            if market:
+                # 1) campo directo eventSlug o event.slug
+                event_slug = (
+                    market.get("eventSlug")
+                    or market.get("event_slug")
+                    or (market.get("event") or {}).get("slug")
+                )
+                # 2) events array  [{"slug": "..."}]
+                if not event_slug:
+                    events_list = market.get("events") or []
+                    if events_list and isinstance(events_list, list):
+                        event_slug = events_list[0].get("slug", "")
+                # 3) fallback: slug del mercado (suele coincidir con el evento para binarios)
+                if not event_slug:
+                    event_slug = market.get("slug", "")
+                if event_slug:
+                    _slug_cache[condition_id] = event_slug
+                return event_slug or ""
+    except Exception:
+        pass
+    return ""
+
 
 async def get_polymarket_positions(wallet_address: str) -> list[dict]:
     """
@@ -395,9 +445,19 @@ async def get_polymarket_positions(wallet_address: str) -> list[dict]:
                         except Exception:
                             pass
 
+                # Construir URL de Polymarket usando slug real (Gamma API si es necesario)
+                condition_id = p.get("conditionId", "")
+                event_slug = (
+                    p.get("slug") or p.get("eventSlug") or p.get("event_slug")
+                    or p.get("marketSlug") or ""
+                )
+                if not event_slug and condition_id:
+                    event_slug = await _fetch_slug_for_condition(client, condition_id)
+                poly_url = f"https://polymarket.com/event/{event_slug}" if event_slug else ""
+
                 positions.append({
                     "token_id":       p.get("asset", ""),
-                    "condition_id":   p.get("conditionId", ""),
+                    "condition_id":   condition_id,
                     "market_title":   p.get("title", ""),
                     "outcome":        p.get("outcome", "YES"),
                     "size":           round(size, 2),
@@ -411,6 +471,7 @@ async def get_polymarket_positions(wallet_address: str) -> list[dict]:
                     "end_date":       end_date_iso,
                     "redeemable":     bool(p.get("redeemable", False)),
                     "mergeable":      bool(p.get("mergeable", False)),
+                    "poly_url":       poly_url,
                 })
             return positions
 
