@@ -84,11 +84,23 @@ def calc_kelly_size(
 def evaluate_market(market: dict, forecast: dict, balance_usdc: float) -> Optional[dict]:
     """
     Evalua si un mercado ofrece edge suficiente para tradear.
+    forecast puede ser el resultado de get_ensemble_high() (campos extendidos)
+    o el antiguo get_forecast_high() (compatibilidad hacia atras).
+    """
+    """
+    Evalua si un mercado ofrece edge suficiente para tradear.
 
     Returns dict con la oportunidad o None si no hay edge.
     """
     high_f = forecast["high_f"]
     std_dev = forecast["std_dev"]
+
+    # Reducir std_dev si hay alto consenso multi-modelo (confidence_boost del ensemble)
+    # Un boost de 0.30 (todos los modelos coinciden en <1°F) reduce la incertidumbre 30%
+    confidence_boost = forecast.get("confidence_boost", 0.0)
+    if confidence_boost > 0:
+        std_dev = std_dev * (1.0 - confidence_boost * 0.5)
+        std_dev = max(std_dev, 1.0)  # minimo 1°F siempre
 
     our_prob = calc_bucket_probability(
         forecast_high=high_f,
@@ -152,6 +164,15 @@ def evaluate_market(market: dict, forecast: dict, balance_usdc: float) -> Option
         "forecast_std": std_dev,
         "temp_low": market["temp_low"],
         "temp_high": market["temp_high"],
+        # Ensemble multi-modelo (campos adicionales si viene de get_ensemble_high)
+        "forecast_confidence": forecast.get("confidence", "unknown"),
+        "forecast_sources": forecast.get("sources_used", []),
+        "noaa_high_f": forecast.get("noaa_high_f"),
+        "openmeteo_high_f": forecast.get("openmeteo_high_f"),
+        "current_obs_f": forecast.get("current_obs_f"),
+        "models_available": forecast.get("models_available", 0),
+        "consensus_std": forecast.get("consensus_std", 0),
+        "peak_locked": forecast.get("peak_locked", False),
         # Calidad de mercado (para Claude y UI)
         "hours_to_close": market["hours_to_close"],
         "liquidity": market["liquidity"],

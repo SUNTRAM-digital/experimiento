@@ -28,7 +28,12 @@ Tu aprobación es OBLIGATORIA para ejecutar cualquier trade. Sin tu APROBAR expl
 
 Evalúa cada oportunidad considerando CINCO dimensiones:
 
-1. METEOROLOGIA: ¿El forecast de temperatura es coherente con la época del año y la ciudad? ¿Las horas restantes al cierre dan tiempo suficiente?
+1. METEOROLOGIA Y CONSENSO MULTI-MODELO:
+   - ¿Cuántos modelos respaldan el forecast (NOAA, GFS, ECMWF)?
+   - ¿Hay consenso o divergencia entre modelos? (consensus_std < 1.5°F = bueno, >3°F = peligroso)
+   - ¿La observacion actual de la estacion es consistente con el forecast?
+   - ¿El pico de temperatura ya ocurrio (peak_locked)? Si es asi, hay mucha mas certeza.
+   - ¿El forecast es coherente con la epoca del año y la ciudad?
 
 2. EDGE MATEMÁTICO: ¿La diferencia entre nuestra probabilidad y el precio del mercado es real y suficiente? ¿El EV ajustado por spread sigue siendo positivo?
 
@@ -151,9 +156,16 @@ Bucket de temperatura: {bucket_desc}
 Lado a operar: {opportunity['side']}
 Horas hasta cierre: {opportunity['hours_to_close']:.1f}h
 
-═══ DATOS METEOROLOGICOS (weather.gov oficial) ═══
-Temperatura maxima pronosticada: {opportunity['forecast_high']:.1f}°F
-Incertidumbre del forecast (±1σ): ±{opportunity['forecast_std']:.1f}°F
+═══ DATOS METEOROLOGICOS (ensemble multi-modelo) ═══
+Forecast NOAA (weather.gov):    {f"{opportunity['noaa_high_f']:.1f}°F" if opportunity.get('noaa_high_f') else 'N/D'}
+Forecast OpenMeteo (GFS+ECMWF): {f"{opportunity['openmeteo_high_f']:.1f}°F" if opportunity.get('openmeteo_high_f') else 'N/D'}
+Observacion actual estacion:    {f"{opportunity['current_obs_f']:.1f}°F" if opportunity.get('current_obs_f') else 'N/D'}
+Estimacion FINAL (ensemble):    {opportunity['forecast_high']:.1f}°F ±{opportunity['forecast_std']:.1f}°F
+Confianza del ensemble:         {opportunity.get('forecast_confidence','?').upper()}
+Desacuerdo entre modelos (std): {opportunity.get('consensus_std', 0):.1f}°F {'✓ CONSENSO ALTO' if opportunity.get('consensus_std', 99) < 1.5 else ('⚠ MODELOS DIVERGEN' if opportunity.get('consensus_std', 0) > 3.0 else '')}
+Modelos disponibles:            {opportunity.get('models_available', 0)}
+Pico de temperatura ya ocurrio: {'SI - alta certeza' if opportunity.get('peak_locked') else 'NO - aun puede subir'}
+Fuentes usadas:                 {', '.join(opportunity.get('forecast_sources', []))}
 Probabilidad real calculada (dist. normal): {opportunity['our_prob']:.1%}
 
 ═══ PRECIO Y EDGE ═══

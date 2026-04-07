@@ -13,14 +13,16 @@ import httpx
 
 from config import STATION_COORDS
 
-BASE_URL = "https://api.open-meteo.com/v1/forecast"
-
-# Modelos a consultar (en orden de confianza)
-MODELS = ["gfs_seamless", "ecmwf_ifs025", "gfs_global"]
-
 HEADERS = {
     "User-Agent": "WeatherbotPolymarket/1.0",
     "Accept": "application/json",
+}
+
+# Cada modelo tiene su propio endpoint en Open-Meteo
+MODEL_ENDPOINTS = {
+    "best_match": "https://api.open-meteo.com/v1/forecast",
+    "gfs":        "https://api.open-meteo.com/v1/gfs",
+    "ecmwf":      "https://api.open-meteo.com/v1/ecmwf",
 }
 
 
@@ -32,6 +34,7 @@ async def _fetch_model(
     client: httpx.AsyncClient,
 ) -> Optional[float]:
     """Obtiene la temperatura maxima del dia para un modelo especifico."""
+    url = MODEL_ENDPOINTS.get(model, MODEL_ENDPOINTS["best_match"])
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -40,10 +43,9 @@ async def _fetch_model(
         "timezone": "UTC",
         "start_date": target_date.isoformat(),
         "end_date": target_date.isoformat(),
-        "models": model,
     }
     try:
-        resp = await client.get(BASE_URL, params=params, headers=HEADERS, timeout=10)
+        resp = await client.get(url, params=params, headers=HEADERS, timeout=12)
         resp.raise_for_status()
         data = resp.json()
         temps = data.get("daily", {}).get("temperature_2m_max", [])
@@ -76,13 +78,14 @@ async def get_ensemble_forecast(
 
     lat, lon = coords
 
+    models = list(MODEL_ENDPOINTS.keys())
     async with httpx.AsyncClient() as client:
-        tasks = [_fetch_model(lat, lon, target_date, m, client) for m in MODELS]
+        tasks = [_fetch_model(lat, lon, target_date, m, client) for m in models]
         results = await asyncio.gather(*tasks)
 
     model_highs = {}
     valid_temps = []
-    for model, temp in zip(MODELS, results):
+    for model, temp in zip(models, results):
         if temp is not None:
             model_highs[model] = round(temp, 1)
             valid_temps.append(temp)
