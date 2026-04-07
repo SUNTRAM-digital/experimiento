@@ -95,6 +95,11 @@ class BotState:
         self.updown_ta_5m: dict = {}                        # último TA usado
         self.updown_ta_15m: dict = {}
         self.updown_recent_trades: list[dict] = []          # historial reciente (últimos 30)
+        # Capital Velocity (Fase 3): total_volume_traded / avg_capital_deployed
+        # Target: >20x (indica uso eficiente del capital via posiciones de corta duracion)
+        self.capital_velocity: float = 0.0
+        self.total_volume_traded: float = 0.0             # USDC total comprado (acumulado)
+        self.avg_capital_deployed: float = 0.0            # promedio movil del capital desplegado
 
 
 state = BotState()
@@ -172,6 +177,9 @@ def _save_state():
             "updown_recent_trades": state.updown_recent_trades,
             "last_scan": state.last_scan,
             "error_count": state.error_count,
+            "total_volume_traded": state.total_volume_traded,
+            "avg_capital_deployed": state.avg_capital_deployed,
+            "capital_velocity": state.capital_velocity,
         }
         STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
@@ -193,6 +201,9 @@ def _load_state():
         state.updown_recent_trades = payload.get("updown_recent_trades", [])
         state.last_scan           = payload.get("last_scan")
         state.error_count         = int(payload.get("error_count", 0))
+        state.total_volume_traded  = float(payload.get("total_volume_traded", 0))
+        state.avg_capital_deployed = float(payload.get("avg_capital_deployed", 0))
+        state.capital_velocity     = float(payload.get("capital_velocity", 0))
         raw_date = payload.get("daily_date")
         if raw_date:
             state.daily_date = date.fromisoformat(raw_date)
@@ -428,6 +439,8 @@ def _execute_trade(opportunity: dict) -> bool:
             state.balance_usdc -= cost
             # No sumamos cost a daily_loss — la perdida real se calcula en _daily_loss_limit_reached
             state.total_trades += 1
+            # Capital Velocity: acumular volumen total tradeado
+            state.total_volume_traded += cost
 
             trade = {
                 "id": response.get("orderID", ""),
@@ -503,11 +516,23 @@ async def _scan_cycle():
     state.available_btc     = round(_hb * _ratio, 2)
     state.available_updown  = round(_hu * _ratio, 2)
 
+    # ── Capital Velocity (Fase 3) ─────────────────────────────────────────────
+    # Calcula cuantas veces hemos rotado el capital (target: >20x)
+    # avg_capital_deployed se actualiza como promedio movil exponencial (alpha=0.1)
+    current_deployed = _total_deployed
+    if state.avg_capital_deployed == 0.0 and current_deployed > 0:
+        state.avg_capital_deployed = current_deployed
+    elif current_deployed > 0:
+        state.avg_capital_deployed = 0.9 * state.avg_capital_deployed + 0.1 * current_deployed
+    if state.avg_capital_deployed > 0:
+        state.capital_velocity = round(state.total_volume_traded / state.avg_capital_deployed, 2)
+
     _log(
         "INFO",
         f"Capital — Weather: ${state.budget_weather:.2f} (dep ${state.deployed_weather:.2f} / avail ${state.available_weather:.2f}) | "
         f"BTC: ${state.budget_btc:.2f} (dep ${state.deployed_btc:.2f} / avail ${state.available_btc:.2f}) | "
-        f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f})",
+        f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f}) | "
+        f"Velocity: {state.capital_velocity:.1f}x (target >20x)",
     )
 
     _check_daily_reset()

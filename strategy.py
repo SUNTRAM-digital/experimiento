@@ -94,6 +94,83 @@ def detect_contrarian_signal(
     return None
 
 
+# ── Bayesian Updating ─────────────────────────────────────────────────────────
+# Cuando llega una observacion de temperatura actual, actualizamos la probabilidad
+# del bucket usando el teorema de Bayes:
+#   P(bucket | obs) ∝ P(obs | bucket) × P(bucket)
+#
+# P(obs | bucket) se modela como la densidad normal evaluada en la obs,
+# centrada en el punto medio del bucket con std_dev igual al error observacional.
+# La normalizacion se hace sobre los buckets posibles del mercado.
+#
+# Uso tipico: llamar bayesian_update() al recibir la observacion de temperatura
+# del dia (via weather.py o Kalman), antes de ejecutar evaluate_market().
+
+def bayesian_update(
+    prior_prob: float,
+    obs_temp_f: float,
+    bucket_low: float,
+    bucket_high: float,
+    bucket_type: str,
+    forecast_high: float,
+    std_dev: float,
+    obs_error_f: float = 2.5,
+) -> float:
+    """
+    Actualiza la probabilidad del bucket al llegar una observacion de temperatura.
+
+    P(bucket | obs) ∝ P(obs | bucket_center) × prior_prob
+
+    Args:
+        prior_prob:     probabilidad previa del bucket (0-1)
+        obs_temp_f:     temperatura observada en °F
+        bucket_low:     limite inferior del bucket en °F
+        bucket_high:    limite superior del bucket en °F
+        bucket_type:    "range" | "below" | "above"
+        forecast_high:  forecast de temperatura maxima en °F (para el bucket complementario)
+        std_dev:        desviacion estandar del forecast
+        obs_error_f:    error estandar de la observacion (default 2.5°F)
+
+    Returns:
+        probabilidad actualizada (0.0-1.0), con suavizado Laplace para evitar 0/1 exactos
+    """
+    from scipy.stats import norm as _norm
+
+    # Centro del bucket para evaluar la likelihood
+    if bucket_type == "range":
+        bucket_center = (bucket_low + bucket_high) / 2
+    elif bucket_type == "below":
+        bucket_center = bucket_high - std_dev * 0.5   # Punto representativo del bucket
+    elif bucket_type == "above":
+        bucket_center = bucket_low + std_dev * 0.5
+    else:
+        return prior_prob
+
+    # Likelihood: densidad normal de observar obs_temp_f dado que el bucket es correcto
+    # Usamos el centro del bucket como temperatura "verdadera" estimada
+    likelihood_bucket = _norm.pdf(obs_temp_f, loc=bucket_center, scale=obs_error_f)
+
+    # Likelihood del outcome complementario (usando el forecast como centro alternativo)
+    # Si el bucket es "above X" y observamos bajo, el complementario es mas probable
+    complement_center = forecast_high
+    likelihood_complement = _norm.pdf(obs_temp_f, loc=complement_center, scale=obs_error_f + std_dev)
+
+    # Bayes: P_new ∝ likelihood × prior
+    prior_complement = 1.0 - prior_prob
+    posterior_bucket     = likelihood_bucket     * prior_prob
+    posterior_complement = likelihood_complement * prior_complement
+
+    total = posterior_bucket + posterior_complement
+    if total <= 0:
+        return prior_prob
+
+    updated = posterior_bucket / total
+
+    # Suavizado: evitar colapsar a 0 o 1 (minimo 1%, maximo 99%)
+    updated = max(0.01, min(0.99, updated))
+    return round(float(updated), 4)
+
+
 # ── Calculos base ─────────────────────────────────────────────────────────────
 
 def calc_bucket_probability(
