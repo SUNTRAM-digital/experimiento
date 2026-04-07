@@ -20,6 +20,8 @@ from markets_btc import fetch_btc_markets
 from strategy_btc import evaluate_btc_market
 from markets_updown import fetch_updown_market
 from strategy_updown import evaluate_updown_market
+from exit_manager import evaluate_exit_batch
+from category_tracker import get_category_status, record_trade_result, get_all_stats
 
 logger = logging.getLogger("weatherbot")
 
@@ -535,6 +537,9 @@ async def _scan_cycle():
                     if cur_price > 0.95:
                         # Ganamos — redimir para cobrar
                         _log("INFO", f"POSICIÓN GANADA PENDIENTE DE COBRO | {pos['market_title'][:50]} — ${pos['cur_value_usdc']:.2f} USDC")
+                        # Patron 2: registrar resultado para win rate tracking
+                        _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
+                        record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -542,6 +547,9 @@ async def _scan_cycle():
                     elif cur_price < 0.05:
                         # Perdimos — redimir a $0 para limpiar el portafolio
                         _log("WARN", f"POSICIÓN PERDIDA (${pos['pnl_usdc']:.2f}) | {pos['market_title'][:50]} — limpiando portafolio")
+                        # Patron 2: registrar resultado para win rate tracking
+                        _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
+                        record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -551,6 +559,56 @@ async def _scan_cycle():
         state.open_orders = open_orders
         if open_orders:
             _log("INFO", f"Ordenes abiertas pendientes: {len(open_orders)}")
+
+        # ── Patrones 3+5: Exit Manager (Disposition Coefficient + Swing) ────────
+        # Revisar en cada ciclo si alguna posicion debe cerrarse por edge agotado
+        # o stop loss, sin esperar al settlement.
+        if state.poly_positions:
+            # Obtener precios actuales de cada token
+            current_prices = {}
+            for pos in state.poly_positions:
+                tid = pos.get("token_id")
+                if tid:
+                    lp = await get_live_price(tid)
+                    if lp:
+                        current_prices[tid] = lp
+
+            # Usar el precio actual como proxy de la prob estimada (sin forecast disponible aqui)
+            # Para una estimacion mas precisa, el exit_manager usaria el ensemble,
+            # pero para el monitoreo continuo el precio de mercado es suficiente
+            estimated_probs = {
+                pos.get("condition_id", ""): pos.get("cur_price", pos.get("avg_price", 0.5))
+                for pos in state.poly_positions
+            }
+
+            exits = evaluate_exit_batch(state.poly_positions, current_prices, estimated_probs)
+            for exit_pos in exits:
+                urgency = exit_pos.get("exit_urgency", "low")
+                reason  = exit_pos.get("exit_reason", "")
+                details = exit_pos.get("exit_details", "")
+                pnl_pct = exit_pos.get("exit_pnl_pct", 0)
+
+                log_level = "WARN" if urgency == "high" else "INFO"
+                _log(log_level,
+                     f"[EXIT P{3 if 'stop' in reason else 5}] "
+                     f"{exit_pos.get('market_title','')[:50]} | "
+                     f"Razon: {reason} | P&L: {pnl_pct:+.1%} | {details}"
+                )
+
+                # Solo ejecutar salida automatica si auto_trade_mode activo
+                # En modo normal, la salida la aprueba Claude via analisis de portafolio
+                if state.auto_trade_mode and urgency in ("high", "medium"):
+                    _log("WARN", f"[EXIT AUTO] Cerrando posicion: {exit_pos.get('market_title','')[:50]}")
+                    tid = exit_pos.get("token_id")
+                    size = exit_pos.get("size", 0)
+                    if tid and size:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda e=exit_pos: _sell_position(
+                                e["token_id"], e["size"],
+                                e.get("market_title",""), details
+                            ),
+                        )
 
         # Analisis de portafolio con Claude (max una vez cada 12 horas)
         _portfolio_analysis_interval_h = 12
@@ -594,6 +652,21 @@ async def _scan_cycle():
         _log("WARN", f"Limite de perdida diaria alcanzado ({bot_params.max_daily_loss_pct*100:.0f}%). Bot pausado.")
         return
 
+    # ── Patron 2: Verificar estado de categorias (Win Rate Decay) ────────────
+    cat_stats = get_all_stats()
+    for cat_name, cat_info in cat_stats.items():
+        if cat_info.get("total_trades", 0) > 0:
+            if not cat_info["allowed"]:
+                _log("WARN", f"[P2] {cat_info['message']}")
+            elif cat_info.get("warning"):
+                _log("INFO", f"[P2] {cat_info['message']}")
+
+    # ── Patron 2: Bloquear weather si categoria sin edge ─────────────────────
+    weather_cat = cat_stats.get("weather", {})
+    if not weather_cat.get("allowed", True):
+        _log("WARN", "[P2] Weather BLOQUEADO por win rate bajo — saltando scan de clima")
+        # No return — continua con BTC si esta habilitado
+
     # ── Ciclo Weather ─────────────────────────────────────────────────────────
     if not bot_params.weather_enabled:
         _log("INFO", "Weather DESACTIVADO — saltando scan de mercados de clima")
@@ -633,18 +706,27 @@ async def _scan_cycle():
         opportunity = evaluate_market(market, forecast, state.budget_weather)
         if opportunity:
             opportunities.append(opportunity)
+            # Patron 1: mostrar bonus temporal y retorno anualizado estimado
+            time_tag = f" [+{opportunity['time_bonus']:.2f} time bonus]" if opportunity.get("time_bonus", 0) > 0 else ""
+            ann_tag  = f" ~{opportunity.get('annualized_return', 0):.0f}% anual" if opportunity.get("annualized_return") else ""
+            # Patron 4: señal contrarian
+            contra_tag = ""
+            if opportunity.get("is_contrarian") and opportunity.get("contrarian_signal"):
+                cs = opportunity["contrarian_signal"]
+                contra_tag = f" ⚡CONTRARIAN({cs['signal']})"
             _log(
                 "INFO",
                 f"OPORTUNIDAD | {opportunity['side']} {market['city'].title()} "
                 f"[{market['temp_low']}-{market['temp_high']}°F] | "
                 f"Forecast: {forecast['high_f']:.1f}°F | "
                 f"Mercado: {market['yes_price']:.2f} | "
-                f"Nuestra prob: {opportunity['our_prob']:.2%} | "
-                f"EV: {opportunity['ev_pct']}%",
+                f"Prob: {opportunity['our_prob']:.2%} | "
+                f"EV: {opportunity['ev_pct']}%{time_tag}{ann_tag}{contra_tag}",
             )
 
-    # Ordenar por EV descendente
-    opportunities.sort(key=lambda x: x["ev_pct"], reverse=True)
+    # Patron 1 (72-hour rule): ordenar por priority_score (EV + bonus temporal)
+    # Mercados que resuelven pronto suben en el ranking aunque tengan EV similar
+    opportunities.sort(key=lambda x: x.get("priority_score", x["ev_pct"] / 100), reverse=True)
     state.opportunities = opportunities
 
     if not opportunities:

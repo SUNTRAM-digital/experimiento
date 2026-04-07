@@ -82,7 +82,7 @@ def detect_contrarian_signal(
         }
 
     # Crowd sobrecalentado a la baja: YES muy barato, mercado subestima el outcome
-    if yes_price < CONTRARIAN_LOW_THRESHOLD and our_prob_yes > yes_price + CONTRARIAN_MIN_DEVIATION:
+    if yes_price <= CONTRARIAN_LOW_THRESHOLD and our_prob_yes > yes_price + CONTRARIAN_MIN_DEVIATION:
         return {
             "signal": "BUY_YES",
             "market_price": yes_price,
