@@ -156,17 +156,19 @@ def extract_icao_from_title(title: str) -> Optional[str]:
         if candidate in all_icao:
             return candidate
 
-    # 2. Alias primero (mas especificos)
+    # 2. Alias — usar word boundary para evitar falsos positivos ("la" en "dallas")
     for alias, canonical in _TITLE_ALIASES.items():
-        if alias in title_lower:
+        if re.search(r'\b' + re.escape(alias) + r'\b', title_lower):
             icao = ICAO_MAP.get(canonical)
             if icao:
                 return icao
 
-    # 3. Nombre de ciudad directo
-    for city, icao in ICAO_MAP.items():
-        if city in title_lower:
-            return icao
+    # 3. Nombre de ciudad directo — ordenar por longitud desc para evitar
+    # que "la" (Los Angeles) matchee antes que "dallas", "philadelphia", etc.
+    for city in sorted(ICAO_MAP.keys(), key=len, reverse=True):
+        # Usar boundary de palabra para evitar falsos positivos ("la" en "dallas")
+        if re.search(r'\b' + re.escape(city) + r'\b', title_lower):
+            return ICAO_MAP[city]
 
     return None
 
@@ -216,6 +218,13 @@ def extract_bucket_thresholds(title: str) -> Optional[dict]:
         or None if not detected.
     """
     title_lower = title.lower()
+    # Detectar patron de rango explicito: "85-90°F" o "85 to 90°F"
+    range_match = re.search(r"(\d{2,3})\s*[-–]\s*(\d{2,3})\s*°?\s*[FCfc]?\b", title)
+    if range_match:
+        v1, v2 = float(range_match.group(1)), float(range_match.group(2))
+        if 20 <= v1 <= 130 and 20 <= v2 <= 130:
+            return {"type": "range", "low": min(v1, v2), "high": max(v1, v2)}
+
     temps = _TEMP_PATTERN.findall(title)
     values = [float(t[0]) for t in temps]
 
@@ -235,7 +244,7 @@ def extract_bucket_thresholds(title: str) -> Optional[dict]:
     if any(kw in title_lower for kw in ["below", "under", "less than", "or lower", "at most"]):
         return {"type": "below", "low": -999.0, "high": values[0]}
 
-    if len(values) >= 2 or any(kw in title_lower for kw in ["between", "-", "to", "and"]):
+    if len(values) >= 2 and any(kw in title_lower for kw in ["between", "to", "and", "-"]):
         vals = sorted(values[:2])
         return {"type": "range", "low": vals[0], "high": vals[1]}
 

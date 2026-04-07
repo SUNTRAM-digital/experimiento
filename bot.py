@@ -21,6 +21,7 @@ from strategy_btc import evaluate_btc_market
 from markets_updown import fetch_updown_market
 from strategy_updown import evaluate_updown_market
 from exit_manager import evaluate_exit_batch
+from rules_parser import parse_market_rules, detect_boundary_zone, format_rules_for_analyst
 from category_tracker import get_category_status, record_trade_result, get_all_stats
 
 logger = logging.getLogger("weatherbot")
@@ -727,9 +728,27 @@ async def _scan_cycle():
         if live_price:
             market["yes_price"] = live_price
 
+        # Fase 4: Analizar reglas de resolucion del mercado (Lawyer's Edge)
+        rules    = parse_market_rules(market.get("market_title", ""), market.get("condition_id", ""))
+        boundary = detect_boundary_zone(
+            forecast_high_f=forecast["high_f"],
+            std_dev=forecast["std_dev"],
+            bucket={"type": market.get("bucket_type","range"),
+                    "low":  market.get("temp_low", -999.0),
+                    "high": market.get("temp_high",  999.0)},
+        )
+        if rules.get("warnings"):
+            for w in rules["warnings"]:
+                _log("WARN", f"[Lawyer] {w}")
+        if boundary.get("in_boundary_zone"):
+            _log("INFO", f"[Lawyer] {boundary['message']}")
+
         # Evaluar oportunidad (usa budget_weather para sizing)
         opportunity = evaluate_market(market, forecast, state.budget_weather)
         if opportunity:
+            opportunity["rules"]    = rules
+            opportunity["boundary"] = boundary
+            opportunity["rules_summary"] = format_rules_for_analyst(rules, boundary)
             opportunities.append(opportunity)
             # Patron 1: mostrar bonus temporal y retorno anualizado estimado
             time_tag = f" [+{opportunity['time_bonus']:.2f} time bonus]" if opportunity.get("time_bonus", 0) > 0 else ""
