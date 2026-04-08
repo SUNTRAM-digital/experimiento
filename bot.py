@@ -23,6 +23,8 @@ from strategy_updown import evaluate_updown_market
 from exit_manager import evaluate_exit_batch
 from rules_parser import parse_market_rules, detect_boundary_zone, format_rules_for_analyst
 from category_tracker import get_category_status, record_trade_result, get_all_stats
+from strategy_nearzero import evaluate_nearzero, scan_nearzero_opportunities
+from wallet_tracker import wallet_tracker
 
 logger = logging.getLogger("weatherbot")
 
@@ -857,12 +859,98 @@ async def _scan_cycle():
             weather_spent += opp["size_usdc"]
             await asyncio.sleep(2)  # Pausa entre trades
 
+    # ── Fase 5: Near-Zero scan ─────────────────────────────────────────────
+    # Escanea todos los mercados weather por oportunidades <8c con EV alto
+    if bot_params.weather_enabled and state.available_weather > 0:
+        await _scan_nearzero(markets)
+
     # ── Ciclo BTC (mercados de precio) ─────────────────────────────────────
     if bot_params.btc_enabled:
         await _scan_btc_markets()
 
     # Guardar estado al final de cada ciclo
     _save_state()
+
+
+async def _scan_nearzero(markets: list[dict]):
+    """
+    Fase 5: Escanea mercados weather buscando entradas near-zero (<8c).
+    Consulta señales de smart wallets para cada candidato antes de decidir.
+    """
+    from strategy import calc_bucket_probability
+
+    _log("INFO", "Near-Zero | Escaneando mercados con precio <8c...")
+
+    def _prob_estimator(market: dict) -> float | None:
+        """Estima prob usando el ultimo forecast disponible (sin llamada extra a NOAA)."""
+        # Usamos el forecast ya calculado en state si lo tenemos, o retornamos None
+        # para no duplicar llamadas a la API en este ciclo
+        opp_match = next(
+            (o for o in state.opportunities if o.get("condition_id") == market.get("condition_id")),
+            None,
+        )
+        if opp_match:
+            return opp_match.get("our_prob")
+        # Si el mercado tiene yes_price muy bajo y no tenemos forecast, usar heuristica
+        # basada en el precio con descuento conservador del 30%
+        yes_price = market.get("yes_price", 1.0)
+        if yes_price <= 0.08:
+            return min(yes_price * 3.0, 0.25)   # heuristica muy conservadora
+        return None
+
+    # Señales de smart wallets para mercados near-zero
+    nearzero_candidates = [m for m in markets if m.get("yes_price", 1.0) <= 0.08]
+    wallet_signals_map: dict[str, list] = {}
+
+    if nearzero_candidates:
+        _log("INFO", f"Near-Zero | {len(nearzero_candidates)} candidatos — consultando smart wallets...")
+        signal_tasks = [
+            wallet_tracker.get_signals_for_market(m.get("condition_id", ""))
+            for m in nearzero_candidates
+        ]
+        all_signals = await asyncio.gather(*signal_tasks)
+        for market, signals in zip(nearzero_candidates, all_signals):
+            cid = market.get("condition_id", "")
+            if signals:
+                wallet_signals_map[cid] = signals
+                _log("INFO", f"Near-Zero | Señal wallet en {market.get('market_title','')[:50]}: "
+                     f"{[s['wallet_name'] for s in signals]}")
+
+    opps = scan_nearzero_opportunities(
+        markets=markets,
+        prob_estimator=_prob_estimator,
+        balance_usdc=state.balance_usdc,
+        wallet_signals_by_cid=wallet_signals_map,
+    )
+
+    if not opps:
+        _log("INFO", "Near-Zero | Sin oportunidades near-zero en este ciclo.")
+        return
+
+    _log("INFO", f"Near-Zero | {len(opps)} oportunidades encontradas:")
+    for opp in opps[:5]:
+        wallet_tag = f" [wallets: {opp['wallet_count']}]" if opp["wallet_count"] > 0 else ""
+        _log(
+            "INFO",
+            f"Near-Zero [{opp['quality']}] | {opp['market_title'][:50]} | "
+            f"Precio: {opp['entry_price']:.3f} | EV: +{opp['ev_pct']}% | "
+            f"Size: ${opp['size_usdc']} | Payout: {opp['payout_ratio']}:1{wallet_tag}",
+        )
+
+    # Ejecutar solo las A+ y A con confirmacion de wallets (las mas seguras)
+    for opp in opps:
+        if opp["quality"] not in ("A+", "A"):
+            continue
+        if state.balance_usdc < opp["size_usdc"]:
+            break
+        # No entrar si ya tenemos posicion en este mercado
+        if any(p.get("condition_id") == opp["condition_id"] for p in state.poly_positions):
+            continue
+
+        _log("INFO", f"Near-Zero | AUTO-EJECUTANDO [{opp['quality']}]: {opp['market_title'][:50]}")
+        success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
+        if success:
+            await asyncio.sleep(1)
 
 
 async def _scan_btc_markets():
