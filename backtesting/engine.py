@@ -248,7 +248,12 @@ async def run_backtest(
     # Obtener mercados historicos
     markets = await get_resolved_weather_markets(limit=limit_markets, city_filter=city_filter)
     if not markets:
-        return {"error": "No se pudieron obtener mercados historicos", "trades": [], "metrics": {}}
+        from backtesting.metrics import _empty_metrics
+        return {
+            "error": "No se pudieron obtener mercados historicos",
+            "trades": [], "metrics": _empty_metrics("Sin mercados historicos"),
+            "strategy": strategy, "n_markets_analyzed": 0, "n_trades": 0,
+        }
 
     trades = []
     n_analyzed = 0
