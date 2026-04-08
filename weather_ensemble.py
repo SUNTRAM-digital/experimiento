@@ -6,10 +6,13 @@ Combina tres fuentes de datos en un forecast unificado:
   2. Open-Meteo multi-modelo  - consenso GFS + ECMWF + ensemble
   3. Observacion actual       - temperatura medida en la estacion ICAO ahora mismo
 
+Fase 7: los pesos NOAA/OpenMeteo son dinamicos (EnsembleCalibrator por estacion+temporada)
+         y el forecast final se ajusta segun el modelo WarmingModel (+/-2 F).
+
 Flujo:
   get_ensemble_high()
     └── NOAA forecast  ──┐
-    └── OpenMeteo multi  ├──► blend ponderado ──► Kalman correction ──► resultado final
+    └── OpenMeteo multi  ├──► blend calibrado ──► Kalman ──► warming adjust ──► resultado
     └── current obs    ──┘
 
 El resultado incluye:
@@ -25,20 +28,38 @@ from typing import Optional
 from weather import get_forecast_high, get_current_temp
 from weather_openmeteo import get_ensemble_forecast
 from weather_kalman import apply_kalman_correction
+from ml.ensemble_calibrator import ensemble_calibrator
+from ml.warming_model import WarmingModel
 
+_warming_model = WarmingModel()
 
-# Pesos base de cada fuente (se ajustan segun disponibilidad)
-WEIGHT_NOAA       = 0.45   # NOAA es la fuente de settlement para mercados US
-WEIGHT_OPENMETEO  = 0.45   # consenso multi-modelo
-WEIGHT_OBS_BONUS  = 0.10   # bonus extra si la obs actual esta disponible
+# Pesos base de cada fuente — se usan solo si EnsembleCalibrator no tiene historial
+WEIGHT_NOAA       = 0.45
+WEIGHT_OPENMETEO  = 0.45
+WEIGHT_OBS_BONUS  = 0.10
 
 
 async def get_ensemble_high(
     station: str,
     target_date: date,
+    ml_features: Optional[dict] = None,
 ) -> Optional[dict]:
     """
     Obtiene la mejor estimacion posible de la temperatura maxima del dia.
+
+    Args:
+        station:     codigo ICAO (ej. "KLGA")
+        target_date: fecha objetivo
+        ml_features: features opcionales para el WarmingModel (Fase 7):
+            {
+                "pressure_change_3h":  float,  # hPa, positivo = subida
+                "pressure_change_12h": float,
+                "predawn_wind_speed":  float,  # mph
+                "cloud_cover_pct":     float,  # 0-100
+                "temp_trend_3d":       float,  # F/dia promedio 3 dias
+                "rained_yesterday":    bool | int,
+            }
+            El mes se deriva automaticamente de target_date.
 
     Returns None si no hay suficientes datos (todas las fuentes fallaron).
 
@@ -66,6 +87,11 @@ async def get_ensemble_high(
         "wind_discount_f": float,
 
         "sources_used":    list[str],
+
+        # Fase 7 — ML
+        "ensemble_weights":     dict,   # {"noaa": float, "openmeteo": float, "calibrated": bool}
+        "warming_prediction":   dict | None,   # resultado WarmingModel
+        "warming_adjustment_f": float,         # ajuste aplicado al forecast (F)
     }
     """
     now_utc = datetime.now(timezone.utc)
@@ -89,6 +115,11 @@ async def get_ensemble_high(
     model_highs    = openmeteo_result["model_highs"] if openmeteo_result else {}
     models_avail   = openmeteo_result["models_available"] if openmeteo_result else 0
 
+    # Fase 7: obtener pesos calibrados por estacion + temporada
+    cal_weights = ensemble_calibrator.get_weights(station, target_date.month)
+    w_noaa      = cal_weights["noaa"]
+    w_om        = cal_weights["openmeteo"]
+
     sources_used = []
     forecast_values = []
     forecast_weights = []
@@ -96,12 +127,12 @@ async def get_ensemble_high(
     if noaa_high is not None:
         sources_used.append("NOAA")
         forecast_values.append(noaa_high)
-        forecast_weights.append(WEIGHT_NOAA)
+        forecast_weights.append(w_noaa)
 
     if openmeteo_high is not None:
         sources_used.append("OpenMeteo")
         forecast_values.append(openmeteo_high)
-        forecast_weights.append(WEIGHT_OPENMETEO)
+        forecast_weights.append(w_om)
 
     if not forecast_values:
         return None  # Sin datos no hay nada que hacer
@@ -135,6 +166,17 @@ async def get_ensemble_high(
     if current_obs is not None:
         sources_used.append("Obs")
 
+    # Fase 7: aplicar ajuste del WarmingModel si hay features disponibles
+    warming_prediction   = None
+    warming_adjustment_f = 0.0
+    if ml_features is not None:
+        features_with_month = {**ml_features, "month": target_date.month}
+        warming_prediction = _warming_model.predict(features_with_month)
+        warming_adjustment_f = _warming_model.to_forecast_adjustment(
+            warming_prediction, final_high
+        )
+        final_high = final_high + warming_adjustment_f
+
     # Determinar nivel de confianza general
     n_sources = len(sources_used)
     if n_sources >= 3 and consensus_std < 1.5:
@@ -164,4 +206,9 @@ async def get_ensemble_high(
         "wind_discount_f":  kalman["wind_discount_f"],
 
         "sources_used":     sources_used,
+
+        # Fase 7 — ML
+        "ensemble_weights":     cal_weights,
+        "warming_prediction":   warming_prediction,
+        "warming_adjustment_f": round(warming_adjustment_f, 2),
     }

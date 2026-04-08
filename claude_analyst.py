@@ -41,6 +41,8 @@ Evalúa cada oportunidad considerando SEIS dimensiones:
    - ¿La observacion actual de la estacion es consistente con el forecast?
    - ¿El pico de temperatura ya ocurrio (peak_locked)? Si es asi, hay mucha mas certeza.
    - ¿El forecast es coherente con la epoca del año y la ciudad?
+   - WarmingModel (ML): si predice WARMING con alta confianza, el forecast sube hasta +2°F. Si predice COOLING, baja hasta -2°F. Considera esta señal al evaluar la certeza del forecast.
+   - Pesos calibrados: si el calibrador tiene historial (calibrated=True), los pesos NOAA/OpenMeteo ya reflejan cuál ha sido mas preciso en esa ciudad y temporada. Mayor confianza si los pesos estan calibrados.
 
 3. EDGE MATEMÁTICO: ¿La diferencia entre nuestra probabilidad y el precio del mercado es real y suficiente? ¿El EV ajustado por spread sigue siendo positivo?
 
@@ -61,6 +63,44 @@ DECISION: APROBAR o RECHAZAR
 RAZON: [2-3 oraciones cubriendo los factores más relevantes]
 CONFIANZA: ALTA, MEDIA o BAJA
 RIESGO_EJECUCION: BAJO, MEDIO o ALTO"""
+
+
+def _format_ml_section(opportunity: dict) -> str:
+    """Genera la seccion de ML (WarmingModel + EnsembleCalibrator) para el analisis."""
+    lines = []
+
+    warming = opportunity.get("warming_prediction")
+    adj_f   = opportunity.get("warming_adjustment_f", 0.0)
+    weights = opportunity.get("ensemble_weights", {})
+
+    if warming:
+        label  = warming.get("label", "?")
+        prob   = warming.get("prob_warming", 0.5)
+        conf   = warming.get("confidence", "?")
+        n_feat = warming.get("n_features", 0)
+        adj_str = f"{adj_f:+.1f}°F" if adj_f != 0.0 else "0°F (STABLE)"
+        lines.append(
+            f"═══ ML — WARMING MODEL ═══\n"
+            f"Prediccion: {label} (prob_warming={prob:.0%}, confianza={conf.upper()})\n"
+            f"Ajuste aplicado al forecast: {adj_str} | Features usados: {n_feat}"
+        )
+
+    if weights:
+        cal = weights.get("calibrated", False)
+        n_obs = weights.get("n_obs", 0)
+        noaa_mae = weights.get("noaa_mae")
+        om_mae   = weights.get("om_mae")
+        cal_label = f"SI ({n_obs} obs)" if cal else f"NO (< 20 obs, usando pesos base)"
+        mae_str = ""
+        if noaa_mae is not None and om_mae is not None:
+            mae_str = f" | MAE: NOAA={noaa_mae:.1f}°F, OpenMeteo={om_mae:.1f}°F"
+        lines.append(
+            f"═══ ML — PESOS CALIBRADOS ═══\n"
+            f"Calibrado: {cal_label}{mae_str}\n"
+            f"Pesos: NOAA={weights.get('noaa', 0.45):.0%}, OpenMeteo={weights.get('openmeteo', 0.45):.0%}"
+        )
+
+    return "\n".join(lines) + "\n" if lines else ""
 
 
 async def analyze_opportunity(
@@ -177,6 +217,7 @@ Pico de temperatura ya ocurrio: {'SI - alta certeza' if opportunity.get('peak_lo
 Fuentes usadas:                 {', '.join(opportunity.get('forecast_sources', []))}
 Probabilidad real calculada (dist. normal): {opportunity['our_prob']:.1%}
 
+{_format_ml_section(opportunity)}
 ═══ PRECIO Y EDGE ═══
 Precio del mercado (prob. implicita): {opportunity['market_prob']:.1%}
 Nuestro edge: {opportunity['our_prob']:.1%} vs {opportunity['market_prob']:.1%} mercado
