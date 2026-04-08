@@ -12,3 +12,4 @@ pydantic-settings==2.5.2
 python-dateutil==2.9.0
 aiofiles==24.1.0
 tradingview-ta>=3.3.0
+psutil>=5.9.0

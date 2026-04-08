@@ -679,6 +679,7 @@
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
+      <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -1232,6 +1233,86 @@
         <div id="strat-claude-suggestions" style="font-size:.75rem;color:var(--muted);line-height:1.7">
           Haz clic en "Pedir análisis a Claude" para obtener sugerencias basadas en tu historial de trades y tus observaciones.
         </div>
+      </div>
+    </div>
+
+    <!-- RECURSOS / PERFORMANCE -->
+    <div id="tab-perf" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+
+        <!-- CPU -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px">CPU — Proceso Bot</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+            <span id="perf-cpu-now" style="font-size:2rem;font-weight:700;color:var(--blue)">—</span>
+            <span style="color:var(--muted);font-size:.8rem">% ahora</span>
+            <span style="margin-left:auto;font-size:.75rem;color:var(--muted)">prom 1m: <span id="perf-cpu-avg" style="color:var(--text)">—</span>%</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">
+            <div id="perf-cpu-bar" style="height:100%;background:var(--blue);border-radius:4px;transition:width .5s;width:0%"></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--muted)">Sistema total: <span id="perf-cpu-sys" style="color:var(--text)">—</span>%</div>
+          <canvas id="chart-cpu" height="60" style="margin-top:10px;width:100%"></canvas>
+        </div>
+
+        <!-- RAM -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px">Memoria — Proceso Bot</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+            <span id="perf-ram-now" style="font-size:2rem;font-weight:700;color:var(--purple)">—</span>
+            <span style="color:var(--muted);font-size:.8rem">MB ahora</span>
+            <span style="margin-left:auto;font-size:.75rem;color:var(--muted)">prom 1m: <span id="perf-ram-avg" style="color:var(--text)">—</span> MB</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">
+            <div id="perf-ram-bar" style="height:100%;background:var(--purple);border-radius:4px;transition:width .5s;width:0%"></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--muted)">Sistema: <span id="perf-ram-used" style="color:var(--text)">—</span> / <span id="perf-ram-total" style="color:var(--text)">—</span> MB (<span id="perf-ram-sys-pct" style="color:var(--text)">—</span>%)</div>
+          <canvas id="chart-ram" height="60" style="margin-top:10px;width:100%"></canvas>
+        </div>
+      </div>
+
+      <!-- Metricas del ciclo del bot -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Ciclos de Escaneo</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+          <div style="text-align:center">
+            <div id="perf-scan-count" style="font-size:1.5rem;font-weight:700;color:var(--green)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">ciclos totales</div>
+          </div>
+          <div style="text-align:center">
+            <div id="perf-last-scan-ms" style="font-size:1.5rem;font-weight:700;color:var(--yellow)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">ms último ciclo</div>
+          </div>
+          <div style="text-align:center">
+            <div id="perf-markets-scan" style="font-size:1.5rem;font-weight:700;color:var(--blue)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">mercados/ciclo</div>
+          </div>
+          <div style="text-align:center">
+            <div id="perf-opps-found" style="font-size:1.5rem;font-weight:700;color:var(--green)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">opps encontradas</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tiempos por componente -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Tiempos por Componente</div>
+        <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+          <thead>
+            <tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+              <th style="text-align:left;padding:4px 8px">Componente</th>
+              <th style="text-align:right;padding:4px 8px">Último</th>
+              <th style="text-align:right;padding:4px 8px">Promedio</th>
+              <th style="text-align:right;padding:4px 8px">P95</th>
+              <th style="text-align:right;padding:4px 8px">Máx</th>
+              <th style="text-align:right;padding:4px 8px">Calls</th>
+              <th style="text-align:right;padding:4px 8px">Errores</th>
+              <th style="text-align:right;padding:4px 8px" title="Barra visual proporcional al promedio">Visual</th>
+            </tr>
+          </thead>
+          <tbody id="perf-timings-body"></tbody>
+        </table>
+        <div id="perf-no-data" style="text-align:center;color:var(--muted);padding:20px;font-size:.8rem">Sin datos aún — espera el primer ciclo de escaneo</div>
       </div>
     </div>
   </div>
@@ -2223,6 +2304,7 @@ function showTab(id) {
   }
   if (id === 'tab-dashboard')  fetchDashboard();
   if (id === 'tab-strategies') fetchStrategies();
+  if (id === 'tab-perf')       fetchPerformance();
   // Persistir en localStorage para sobrevivir refresco
   try { localStorage.setItem('wb_active_tab', id); } catch(e) {}
 }
@@ -3790,5 +3872,197 @@ async function sendChat() {
   </div>
 </div>
 
+<script>
+// ── Performance Monitor ────────────────────────────────────────────────────
+
+let _perfChartCPU = null;
+let _perfChartRAM = null;
+let _perfInterval = null;
+
+const COMPONENT_LABELS = {
+  scan_cycle_total:       'Ciclo completo',
+  fetch_weather_markets:  'Fetch mercados',
+  ensemble_forecast:      'Forecast ensemble',
+  live_price:             'Precio en vivo',
+  claude_analysis:        'Análisis Claude',
+  noaa_forecast:          'NOAA forecast',
+  openmeteo_forecast:     'OpenMeteo forecast',
+  kalman_correction:      'Kalman correction',
+  btc_price:              'BTC precio',
+  portfolio_analysis:     'Análisis portafolio',
+};
+
+function _msColor(ms) {
+  if (ms === null || ms === undefined) return 'var(--muted)';
+  if (ms < 200)   return 'var(--green)';
+  if (ms < 1000)  return 'var(--yellow)';
+  if (ms < 5000)  return '#f97316';
+  return 'var(--red)';
+}
+
+function _barWidth(ms, maxMs) {
+  if (!ms || !maxMs) return '2%';
+  return Math.max(2, Math.min(100, (ms / maxMs) * 100)).toFixed(1) + '%';
+}
+
+function _initPerfCharts() {
+  const cpuCtx = document.getElementById('chart-cpu');
+  const ramCtx = document.getElementById('chart-ram');
+  if (!cpuCtx || !ramCtx) return;
+  if (_perfChartCPU) { _perfChartCPU.destroy(); _perfChartCPU = null; }
+  if (_perfChartRAM) { _perfChartRAM.destroy(); _perfChartRAM = null; }
+
+  const commonOpts = {
+    responsive: true,
+    animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { display: true, ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#1e2a38' } },
+    },
+  };
+
+  _perfChartCPU = new Chart(cpuCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }] },
+    options: { ...commonOpts, scales: { ...commonOpts.scales, y: { ...commonOpts.scales.y, min: 0, max: 100 } } },
+  });
+
+  _perfChartRAM = new Chart(ramCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }] },
+    options: commonOpts,
+  });
+}
+
+function _updatePerfCharts(history) {
+  if (!_perfChartCPU || !_perfChartRAM) return;
+  const labels = history.ts.map((_, i) => i);
+  _perfChartCPU.data.labels = labels;
+  _perfChartCPU.data.datasets[0].data = history.cpu;
+  _perfChartCPU.update('none');
+  _perfChartRAM.data.labels = labels;
+  _perfChartRAM.data.datasets[0].data = history.ram_mb;
+  _perfChartRAM.update('none');
+}
+
+async function fetchPerformance() {
+  try {
+    const d = await fetch('/api/performance').then(r => r.json());
+    _renderPerformance(d);
+  } catch(e) {
+    console.warn('fetchPerformance error', e);
+  }
+}
+
+function _renderPerformance(d) {
+  const proc = d.process || {};
+  const sys  = d.system  || {};
+  const bot  = d.bot     || {};
+  const hist = d.history || {};
+  const tim  = d.timings || {};
+
+  // CPU
+  const cpuNow = proc.cpu_pct ?? 0;
+  document.getElementById('perf-cpu-now').textContent = cpuNow.toFixed(1);
+  document.getElementById('perf-cpu-avg').textContent = (proc.cpu_avg_1m ?? 0).toFixed(1);
+  document.getElementById('perf-cpu-bar').style.width = Math.min(100, cpuNow) + '%';
+  document.getElementById('perf-cpu-bar').style.background = cpuNow > 80 ? 'var(--red)' : cpuNow > 50 ? 'var(--yellow)' : 'var(--blue)';
+  document.getElementById('perf-cpu-sys').textContent = (sys.cpu_pct ?? 0).toFixed(1);
+
+  // RAM
+  const ramNow = proc.ram_mb ?? 0;
+  const ramMax = sys.ram_total_mb || 1;
+  document.getElementById('perf-ram-now').textContent = ramNow.toFixed(0);
+  document.getElementById('perf-ram-avg').textContent = (proc.ram_avg_1m ?? 0).toFixed(0);
+  document.getElementById('perf-ram-bar').style.width = Math.min(100, (ramNow / ramMax * 100)) + '%';
+  document.getElementById('perf-ram-used').textContent = (sys.ram_used_mb ?? 0).toFixed(0);
+  document.getElementById('perf-ram-total').textContent = (sys.ram_total_mb ?? 0).toFixed(0);
+  document.getElementById('perf-ram-sys-pct').textContent = (sys.ram_pct ?? 0).toFixed(1);
+
+  // Bot ciclos
+  document.getElementById('perf-scan-count').textContent  = bot.scan_count ?? 0;
+  document.getElementById('perf-last-scan-ms').textContent = bot.last_scan_ms ? bot.last_scan_ms.toFixed(0) : '—';
+  document.getElementById('perf-markets-scan').textContent = bot.markets_per_scan ?? '—';
+  document.getElementById('perf-opps-found').textContent   = bot.opps_found ?? 0;
+
+  // Charts
+  if (hist.len > 0) {
+    if (!_perfChartCPU) _initPerfCharts();
+    _updatePerfCharts(hist);
+  }
+
+  // Timings table
+  const tbody = document.getElementById('perf-timings-body');
+  const noData = document.getElementById('perf-no-data');
+  const keys = Object.keys(tim);
+
+  if (keys.length === 0) {
+    tbody.innerHTML = '';
+    noData.style.display = 'block';
+    return;
+  }
+  noData.style.display = 'none';
+
+  // Calcular max avg para la barra proporcional
+  const maxAvg = Math.max(...keys.map(k => tim[k].avg_ms || 0), 1);
+
+  // Ordenar: scan_cycle_total primero, luego por avg_ms desc
+  const sorted = keys.sort((a, b) => {
+    if (a === 'scan_cycle_total') return -1;
+    if (b === 'scan_cycle_total') return  1;
+    return (tim[b].avg_ms || 0) - (tim[a].avg_ms || 0);
+  });
+
+  tbody.innerHTML = sorted.map(k => {
+    const t = tim[k];
+    const label = COMPONENT_LABELS[k] || k;
+    const avg   = t.avg_ms  != null ? t.avg_ms.toFixed(0)  : '—';
+    const last  = t.last_ms != null ? t.last_ms.toFixed(0) : '—';
+    const p95   = t.p95_ms  != null ? t.p95_ms.toFixed(0)  : '—';
+    const max   = t.max_ms  != null ? t.max_ms.toFixed(0)  : '—';
+    const errColor = t.errors > 0 ? 'var(--red)' : 'var(--muted)';
+    const barW  = _barWidth(t.avg_ms, maxAvg);
+    const barC  = _msColor(t.avg_ms);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:600;color:var(--text)">${label}</td>
+      <td style="text-align:right;padding:5px 8px;color:${_msColor(t.last_ms)}">${last} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:${_msColor(t.avg_ms)}">${avg} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--muted)">${p95} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--muted)">${max} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--muted)">${t.calls}</td>
+      <td style="text-align:right;padding:5px 8px;color:${errColor}">${t.errors}</td>
+      <td style="padding:5px 8px;min-width:80px">
+        <div style="background:var(--bg3);border-radius:2px;height:8px;overflow:hidden">
+          <div style="height:100%;background:${barC};border-radius:2px;width:${barW}"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// Auto-refresh cuando el tab está visible
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && _perfInterval) {
+    clearInterval(_perfInterval);
+    _perfInterval = null;
+  }
+});
+
+// Inicializar charts cuando el tab se abre por primera vez
+const _origShowTab = showTab;
+// Refresh automático cada 3s cuando el tab de recursos está activo
+setInterval(() => {
+  const perfTab = document.getElementById('tab-perf');
+  if (perfTab && perfTab.classList.contains('active')) {
+    fetchPerformance();
+  }
+}, 3000);
+
+// Inicializar charts al cargar (por si el tab queda activo)
+setTimeout(() => {
+  _initPerfCharts();
+}, 500);
+</script>
 </body>
 </html>

@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import bot
 from config import bot_params, settings
+from performance_monitor import perf
 
 # ── Chat history storage ───────────────────────────────────────────────────
 CHATS_FILE = Path(__file__).parent / "data" / "chats.json"
@@ -888,6 +889,12 @@ async def get_stats():
             "updown":  _alloc(bot_params.alloc_updown_pct,  dep_u, bud_u, avail_u),
         },
     }
+
+
+@app.get("/api/performance")
+async def get_performance():
+    """Metricas de recursos del sistema y tiempos de ejecucion por componente."""
+    return perf.get_stats()
 
 
 @app.post("/api/allocation")

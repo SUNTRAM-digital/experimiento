@@ -26,6 +26,7 @@ from category_tracker import get_category_status, record_trade_result, get_all_s
 from strategy_nearzero import evaluate_nearzero, scan_nearzero_opportunities
 from wallet_tracker import wallet_tracker
 from risk_manager import risk_manager
+from performance_monitor import perf
 
 logger = logging.getLogger("weatherbot")
 
@@ -484,6 +485,7 @@ def _execute_trade(opportunity: dict) -> bool:
 
 
 async def _scan_cycle():
+    _cycle_t0 = __import__("time").perf_counter()
     _log("INFO", "Iniciando escaneo de mercados...")
     state.last_scan = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
 
@@ -714,7 +716,8 @@ async def _scan_cycle():
         # Saltar al resto del ciclo (BTC sigue adelante abajo)
         markets = []
     else:
-        markets = await fetch_weather_markets()
+        with perf.timer("fetch_weather_markets"):
+            markets = await fetch_weather_markets()
         _log("INFO", f"Mercados encontrados: {len(markets)}")
 
     opportunities = []
@@ -723,7 +726,8 @@ async def _scan_cycle():
             continue
 
         # Obtener forecast (ensemble: NOAA + OpenMeteo + observacion actual)
-        forecast = await get_ensemble_high(market["station"], market["target_date"])
+        with perf.timer("ensemble_forecast"):
+            forecast = await get_ensemble_high(market["station"], market["target_date"])
         if not forecast:
             _log("WARN", f"Sin forecast para {market['station']} en {market['target_date']}")
             continue
@@ -739,7 +743,8 @@ async def _scan_cycle():
         )
 
         # Precio en vivo (mas preciso que el de Gamma)
-        live_price = await get_live_price(market["yes_token_id"])
+        with perf.timer("live_price"):
+            live_price = await get_live_price(market["yes_token_id"])
         if live_price:
             market["yes_price"] = live_price
 
@@ -866,7 +871,8 @@ async def _scan_cycle():
             _log("INFO", f"AUTO-TRADE | Ejecutando sin aprobación: {opp['market_title'][:55]}...")
         else:
             _log("INFO", f"Consultando a Claude sobre: {opp['market_title'][:55]}...")
-            analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
+            with perf.timer("claude_analysis"):
+                analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
 
             if analysis["skipped"] or not analysis["approved"]:
                 if analysis["skipped"]:
@@ -903,6 +909,16 @@ async def _scan_cycle():
 
     # Guardar estado al final de cada ciclo
     _save_state()
+
+    # Registrar tiempo total del ciclo
+    _cycle_ms = (__import__("time").perf_counter() - _cycle_t0) * 1000
+    perf.record_scan(
+        markets_analyzed=len(markets),
+        opps_found=len(state.opportunities),
+        trades_evaluated=len(state.opportunities),
+        scan_ms=_cycle_ms,
+    )
+    perf.record_time("scan_cycle_total", _cycle_ms)
 
 
 async def _scan_nearzero(markets: list[dict]):
