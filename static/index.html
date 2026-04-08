@@ -1294,6 +1294,28 @@
         </div>
       </div>
 
+      <!-- Log en tiempo real -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Log en Tiempo Real</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <label style="font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="checkbox" id="perf-log-scroll" checked style="cursor:pointer"> auto-scroll
+            </label>
+            <select id="perf-log-filter" onchange="_perfLogFilter()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;cursor:pointer">
+              <option value="ALL">Todo</option>
+              <option value="INFO">INFO</option>
+              <option value="WARN">WARN</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+            <button onclick="_clearPerfLog()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;cursor:pointer">Limpiar</button>
+          </div>
+        </div>
+        <div id="perf-log-container" style="font-family:monospace;font-size:11px;line-height:1.6;height:220px;overflow-y:auto;background:var(--bg);border-radius:4px;padding:8px;border:1px solid var(--border)">
+          <div style="color:var(--muted)" id="perf-log-empty">Esperando logs...</div>
+        </div>
+      </div>
+
       <!-- Tiempos por componente -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Tiempos por Componente</div>
@@ -1468,7 +1490,7 @@ function connectWS() {
   ws.onopen = () => loadHistoricalLogs();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    if (msg.type === 'log')          appendLog(msg.data);
+    if (msg.type === 'log')          { appendLog(msg.data); _appendPerfLog(msg.data); }
     if (msg.type === 'status')       renderStatus(msg.data);
     if (msg.type === 'positions')    renderPositions(msg.data);
     if (msg.type === 'open_orders')  renderOpenOrders(msg.data);
@@ -2304,7 +2326,7 @@ function showTab(id) {
   }
   if (id === 'tab-dashboard')  fetchDashboard();
   if (id === 'tab-strategies') fetchStrategies();
-  if (id === 'tab-perf')       fetchPerformance();
+  if (id === 'tab-perf')       { fetchPerformance(); _loadPerfLogHistory(); }
   // Persistir en localStorage para sobrevivir refresco
   try { localStorage.setItem('wb_active_tab', id); } catch(e) {}
 }
@@ -4039,6 +4061,75 @@ function _renderPerformance(d) {
       </td>
     </tr>`;
   }).join('');
+}
+
+// ── Log espejo en tab Recursos ────────────────────────────────────────────
+
+const _PERF_LOG_MAX = 200;
+let _perfLogFilter = 'ALL';
+
+function _perfLogFilter() {
+  _perfLogFilter = document.getElementById('perf-log-filter').value;
+  // Re-aplicar filtro ocultando/mostrando líneas ya renderizadas
+  const c = document.getElementById('perf-log-container');
+  if (!c) return;
+  Array.from(c.querySelectorAll('.log-line')).forEach(el => {
+    const lvl = el.dataset.level || 'INFO';
+    el.style.display = (_perfLogFilter === 'ALL' || lvl === _perfLogFilter) ? '' : 'none';
+  });
+}
+
+function _clearPerfLog() {
+  const c = document.getElementById('perf-log-container');
+  if (!c) return;
+  c.innerHTML = '<div style="color:var(--muted)" id="perf-log-empty">Log limpiado.</div>';
+}
+
+function _appendPerfLog(entry) {
+  const c = document.getElementById('perf-log-container');
+  if (!c) return;
+
+  // Quitar placeholder inicial
+  const empty = document.getElementById('perf-log-empty');
+  if (empty) empty.remove();
+
+  const filter = document.getElementById('perf-log-filter');
+  const activeFilter = filter ? filter.value : 'ALL';
+
+  const colorMap = { INFO: '#58a6ff', WARN: '#d29922', ERROR: '#f85149' };
+  const color = colorMap[entry.level] || 'var(--muted)';
+
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.dataset.level = entry.level;
+  div.style.display = (activeFilter === 'ALL' || activeFilter === entry.level) ? '' : 'none';
+  div.innerHTML = `<span style="color:#555">[${entry.time}]</span> <span style="color:${color};font-weight:600">${entry.level}</span> <span style="color:var(--text)">${escHtml(entry.msg)}</span>`;
+  c.appendChild(div);
+
+  // Limitar cantidad de líneas
+  while (c.querySelectorAll('.log-line').length > _PERF_LOG_MAX) {
+    const first = c.querySelector('.log-line');
+    if (first) first.remove();
+  }
+
+  // Auto-scroll si checkbox activo
+  const scrollCb = document.getElementById('perf-log-scroll');
+  if (scrollCb && scrollCb.checked) {
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+// Cargar historial de logs al abrir el tab
+async function _loadPerfLogHistory() {
+  try {
+    const logs = await fetch('/api/logs').then(r => r.json());
+    const c = document.getElementById('perf-log-container');
+    if (!c) return;
+    c.innerHTML = '';
+    // Mostrar solo los últimos 100 para no saturar
+    const recent = logs.slice(-100);
+    recent.forEach(entry => _appendPerfLog(entry));
+  } catch(e) {}
 }
 
 // Auto-refresh cuando el tab está visible
