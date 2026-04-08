@@ -25,6 +25,7 @@ from rules_parser import parse_market_rules, detect_boundary_zone, format_rules_
 from category_tracker import get_category_status, record_trade_result, get_all_stats
 from strategy_nearzero import evaluate_nearzero, scan_nearzero_opportunities
 from wallet_tracker import wallet_tracker
+from risk_manager import risk_manager
 
 logger = logging.getLogger("weatherbot")
 
@@ -540,6 +541,16 @@ async def _scan_cycle():
 
     _check_daily_reset()
 
+    # ── Fase 6: Risk Manager update ───────────────────────────────────────────
+    _total_account = state.balance_usdc + _total_deployed
+    risk_manager.update(_total_account, state.poly_positions)
+    _log("INFO", risk_manager.status_summary(_total_account))
+    if risk_manager.circuit_breaker_active:
+        _log("WARN", f"RISK | {risk_manager.circuit_breaker_reason}")
+        _log("WARN", "RISK | Bot pausado por circuit breaker — no se ejecutaran trades.")
+        _save_state()
+        return
+
     # Actualizar posiciones reales y ordenes abiertas desde Polymarket
     if settings.poly_wallet_address:
         positions = await get_polymarket_positions(settings.poly_wallet_address)
@@ -568,6 +579,7 @@ async def _scan_cycle():
                         # Patron 2: registrar resultado para win rate tracking
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
+                        risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -578,6 +590,7 @@ async def _scan_cycle():
                         # Patron 2: registrar resultado para win rate tracking
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
+                        risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -792,6 +805,26 @@ async def _scan_cycle():
         if _daily_loss_limit_reached():
             _log("WARN", "Limite de perdida diaria alcanzado. Deteniendo trades.")
             break
+
+        # ── Fase 6: Risk Manager check ────────────────────────────────────────
+        _total_acc = state.balance_usdc + state.deployed_weather + state.deployed_btc + state.deployed_updown
+        risk_check = risk_manager.check_trade(
+            size_usdc           = opp["size_usdc"],
+            total_account_value = _total_acc,
+            cash_available      = state.balance_usdc,
+            open_positions      = state.poly_positions,
+            city                = opp.get("city", ""),
+            hours_to_close      = opp.get("hours_to_close", 48.0),
+        )
+        if not risk_check["allowed"]:
+            _log("WARN", f"RISK | Trade bloqueado: {risk_check['reason']}")
+            continue
+        for w in risk_check.get("warnings", []):
+            _log("INFO", f"RISK | {w}")
+        if risk_check["adjusted_size"] != opp["size_usdc"]:
+            _log("INFO", f"RISK | Tamaño ajustado: ${opp['size_usdc']:.2f} → ${risk_check['adjusted_size']:.2f}")
+            opp["size_usdc"] = risk_check["adjusted_size"]
+            opp["shares"]    = round(opp["size_usdc"] / opp["entry_price"], 1)
 
         # Verificar que no tengamos ya posicion en este mercado exacto (condition_id)
         if any(p.get("condition_id") == opp.get("condition_id") for p in state.poly_positions):
