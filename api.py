@@ -897,6 +897,12 @@ async def get_performance():
     return perf.get_stats()
 
 
+@app.get("/api/performance/log")
+async def get_performance_log(limit: int = 200):
+    """Resource log: llamadas a APIs, spikes de CPU/RAM, resúmenes de ciclos."""
+    return perf.get_resource_log(limit=limit)
+
+
 @app.post("/api/allocation")
 async def set_allocation(data: dict):
     """

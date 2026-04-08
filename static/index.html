@@ -1294,25 +1294,38 @@
         </div>
       </div>
 
-      <!-- Log en tiempo real -->
+      <!-- Resource Log -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Log en Tiempo Real</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">
+            Log de Recursos
+            <span style="font-size:.65rem;color:#555;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">APIs · Memoria · Ciclos · Alertas</span>
+          </div>
           <div style="display:flex;gap:6px;align-items:center">
             <label style="font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer">
               <input type="checkbox" id="perf-log-scroll" checked style="cursor:pointer"> auto-scroll
             </label>
-            <select id="perf-log-filter" onchange="_perfLogFilter()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;cursor:pointer">
+            <select id="perf-log-level" onchange="_perfLogFilter()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;cursor:pointer">
               <option value="ALL">Todo</option>
               <option value="INFO">INFO</option>
               <option value="WARN">WARN</option>
               <option value="ERROR">ERROR</option>
             </select>
+            <select id="perf-log-cat" onchange="_perfLogFilter()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;cursor:pointer">
+              <option value="ALL">Todas</option>
+              <option value="API">API</option>
+              <option value="FORECAST">FORECAST</option>
+              <option value="AI">AI</option>
+              <option value="CYCLE">CICLO</option>
+              <option value="MEMORY">MEMORIA</option>
+              <option value="CPU">CPU</option>
+              <option value="COMPUTE">COMPUTE</option>
+            </select>
             <button onclick="_clearPerfLog()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;cursor:pointer">Limpiar</button>
           </div>
         </div>
-        <div id="perf-log-container" style="font-family:monospace;font-size:11px;line-height:1.6;height:220px;overflow-y:auto;background:var(--bg);border-radius:4px;padding:8px;border:1px solid var(--border)">
-          <div style="color:var(--muted)" id="perf-log-empty">Esperando logs...</div>
+        <div id="perf-log-container" style="font-family:monospace;font-size:11px;line-height:1.8;height:260px;overflow-y:auto;background:var(--bg);border-radius:4px;padding:8px 10px;border:1px solid var(--border)">
+          <div style="color:var(--muted);font-style:italic" id="perf-log-empty">Esperando eventos de recursos...</div>
         </div>
       </div>
 
@@ -1490,7 +1503,7 @@ function connectWS() {
   ws.onopen = () => loadHistoricalLogs();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    if (msg.type === 'log')          { appendLog(msg.data); _appendPerfLog(msg.data); }
+    if (msg.type === 'log')          appendLog(msg.data);
     if (msg.type === 'status')       renderStatus(msg.data);
     if (msg.type === 'positions')    renderPositions(msg.data);
     if (msg.type === 'open_orders')  renderOpenOrders(msg.data);
@@ -4063,72 +4076,115 @@ function _renderPerformance(d) {
   }).join('');
 }
 
-// ── Log espejo en tab Recursos ────────────────────────────────────────────
+// ── Resource Log ──────────────────────────────────────────────────────────
 
-const _PERF_LOG_MAX = 200;
-let _activeLogLevel = 'ALL';
+const _PERF_LOG_MAX = 500;
+
+// Colores por nivel
+const _LEVEL_COLOR = { INFO: '#58a6ff', WARN: '#d29922', ERROR: '#f85149' };
+
+// Badge de categoría
+const _CAT_STYLE = {
+  API:      'background:#0f2a1f;color:#3fb950;border:1px solid #1a4a2e',
+  FORECAST: 'background:#0e1f3d;color:#58a6ff;border:1px solid #1e3a5f',
+  AI:       'background:#1a0e3d;color:#bc8cff;border:1px solid #3a1c7a',
+  CYCLE:    'background:#1a1a0e;color:#d29922;border:1px solid #5a4a00',
+  MEMORY:   'background:#2a0e0e;color:#f97316;border:1px solid #7a2a00',
+  CPU:      'background:#3a1c1c;color:#f85149;border:1px solid #7a1c1c',
+  COMPUTE:  'background:#0e2a2a;color:#22d3ee;border:1px solid #0e5a5a',
+  OTHER:    'background:var(--bg3);color:var(--muted);border:1px solid var(--border)',
+};
 
 function _perfLogFilter() {
-  _activeLogLevel = document.getElementById('perf-log-filter').value;
-  // Re-aplicar filtro ocultando/mostrando líneas ya renderizadas
+  const lvlSel = document.getElementById('perf-log-level');
+  const catSel = document.getElementById('perf-log-cat');
+  const lvl = lvlSel ? lvlSel.value : 'ALL';
+  const cat = catSel ? catSel.value : 'ALL';
   const c = document.getElementById('perf-log-container');
   if (!c) return;
-  Array.from(c.querySelectorAll('.log-line')).forEach(el => {
-    const lvl = el.dataset.level || 'INFO';
-    el.style.display = (_activeLogLevel === 'ALL' || lvl === _activeLogLevel) ? '' : 'none';
+  Array.from(c.querySelectorAll('.rlog-line')).forEach(el => {
+    const elLvl = el.dataset.level || 'INFO';
+    const elCat = el.dataset.cat   || 'OTHER';
+    const show = (lvl === 'ALL' || elLvl === lvl) && (cat === 'ALL' || elCat === cat);
+    el.style.display = show ? '' : 'none';
   });
 }
 
 function _clearPerfLog() {
   const c = document.getElementById('perf-log-container');
   if (!c) return;
-  c.innerHTML = '<div style="color:var(--muted)" id="perf-log-empty">Log limpiado.</div>';
+  c.innerHTML = '<div style="color:var(--muted);font-style:italic" id="perf-log-empty">Log limpiado.</div>';
 }
 
-function _appendPerfLog(entry) {
+function _renderResourceLog(entries) {
   const c = document.getElementById('perf-log-container');
   if (!c) return;
 
-  // Quitar placeholder inicial
+  const lvlSel = document.getElementById('perf-log-level');
+  const catSel = document.getElementById('perf-log-cat');
+  const activeLvl = lvlSel ? lvlSel.value : 'ALL';
+  const activeCat = catSel ? catSel.value : 'ALL';
+
+  // Renderizar solo entradas nuevas (comparar por longitud actual)
+  const existing = c.querySelectorAll('.rlog-line').length;
+  const toAdd = entries.slice(existing);
+  if (toAdd.length === 0) return;
+
+  // Quitar placeholder
   const empty = document.getElementById('perf-log-empty');
   if (empty) empty.remove();
 
-  const filter = document.getElementById('perf-log-filter');
-  const activeFilter = filter ? filter.value : 'ALL';
+  toAdd.forEach(entry => {
+    const lvl  = entry.level    || 'INFO';
+    const cat  = entry.category || 'OTHER';
+    const lvlColor  = _LEVEL_COLOR[lvl]  || 'var(--muted)';
+    const catStyle  = _CAT_STYLE[cat]    || _CAT_STYLE.OTHER;
 
-  const colorMap = { INFO: '#58a6ff', WARN: '#d29922', ERROR: '#f85149' };
-  const color = colorMap[entry.level] || 'var(--muted)';
+    // Detalles extra (ms, ram_mb, etc.)
+    let detailStr = '';
+    const d = entry.detail || {};
+    if (d.ms   != null) detailStr += ` <span style="color:#666">${d.ms} ms</span>`;
+    if (d.ram_mb != null && cat === 'MEMORY') detailStr += ` <span style="color:#f97316">${d.ram_mb} MB</span>`;
+    if (d.markets != null) detailStr += ` <span style="color:#555">${d.markets} mercados</span>`;
+    if (d.opps != null && d.opps > 0) detailStr += ` <span style="color:#3fb950">${d.opps} opps</span>`;
 
-  const div = document.createElement('div');
-  div.className = 'log-line';
-  div.dataset.level = entry.level;
-  div.style.display = (activeFilter === 'ALL' || activeFilter === entry.level) ? '' : 'none';
-  div.innerHTML = `<span style="color:#555">[${entry.time}]</span> <span style="color:${color};font-weight:600">${entry.level}</span> <span style="color:var(--text)">${escHtml(entry.msg)}</span>`;
-  c.appendChild(div);
+    const show = (activeLvl === 'ALL' || activeLvl === lvl) && (activeCat === 'ALL' || activeCat === cat);
 
-  // Limitar cantidad de líneas
-  while (c.querySelectorAll('.log-line').length > _PERF_LOG_MAX) {
-    const first = c.querySelector('.log-line');
+    const div = document.createElement('div');
+    div.className = 'rlog-line';
+    div.dataset.level = lvl;
+    div.dataset.cat   = cat;
+    div.style.display = show ? '' : 'none';
+    div.style.cssText += ';padding:2px 0;border-bottom:1px solid #1a1a1a;';
+    div.innerHTML =
+      `<span style="color:#444;margin-right:6px">[${entry.time}]</span>` +
+      `<span style="font-size:.65rem;padding:1px 5px;border-radius:3px;margin-right:5px;${catStyle}">${cat}</span>` +
+      `<span style="color:${lvlColor};font-weight:600;margin-right:5px">${lvl}</span>` +
+      `<span style="color:var(--text)">${escHtml(entry.msg)}</span>` +
+      detailStr;
+    c.appendChild(div);
+  });
+
+  // Limitar
+  const all = c.querySelectorAll('.rlog-line');
+  while (all.length > _PERF_LOG_MAX) {
+    const first = c.querySelector('.rlog-line');
     if (first) first.remove();
   }
 
-  // Auto-scroll si checkbox activo
+  // Auto-scroll
   const scrollCb = document.getElementById('perf-log-scroll');
-  if (scrollCb && scrollCb.checked) {
-    c.scrollTop = c.scrollHeight;
-  }
+  if (scrollCb && scrollCb.checked) c.scrollTop = c.scrollHeight;
 }
 
-// Cargar historial de logs al abrir el tab
+// Cargar resource log al abrir el tab
 async function _loadPerfLogHistory() {
   try {
-    const logs = await fetch('/api/logs').then(r => r.json());
+    const entries = await fetch('/api/performance/log').then(r => r.json());
     const c = document.getElementById('perf-log-container');
     if (!c) return;
-    c.innerHTML = '';
-    // Mostrar solo los últimos 100 para no saturar
-    const recent = logs.slice(-100);
-    recent.forEach(entry => _appendPerfLog(entry));
+    c.innerHTML = '';  // reset
+    _renderResourceLog(entries);
   } catch(e) {}
 }
 
@@ -4143,11 +4199,15 @@ document.addEventListener('visibilitychange', () => {
 // Inicializar charts cuando el tab se abre por primera vez
 const _origShowTab = showTab;
 // Refresh automático cada 3s cuando el tab de recursos está activo
-setInterval(() => {
+setInterval(async () => {
   const perfTab = document.getElementById('tab-perf');
-  if (perfTab && perfTab.classList.contains('active')) {
-    fetchPerformance();
-  }
+  if (!perfTab || !perfTab.classList.contains('active')) return;
+  fetchPerformance();
+  // Resource log: pedir solo las ultimas entradas
+  try {
+    const entries = await fetch('/api/performance/log').then(r => r.json());
+    _renderResourceLog(entries);
+  } catch(e) {}
 }, 3000);
 
 // Inicializar charts al cargar (por si el tab queda activo)
