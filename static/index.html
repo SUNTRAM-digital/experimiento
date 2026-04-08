@@ -4066,16 +4066,16 @@ function _renderPerformance(d) {
 // ── Log espejo en tab Recursos ────────────────────────────────────────────
 
 const _PERF_LOG_MAX = 200;
-let _perfLogFilter = 'ALL';
+let _activeLogLevel = 'ALL';
 
 function _perfLogFilter() {
-  _perfLogFilter = document.getElementById('perf-log-filter').value;
+  _activeLogLevel = document.getElementById('perf-log-filter').value;
   // Re-aplicar filtro ocultando/mostrando líneas ya renderizadas
   const c = document.getElementById('perf-log-container');
   if (!c) return;
   Array.from(c.querySelectorAll('.log-line')).forEach(el => {
     const lvl = el.dataset.level || 'INFO';
-    el.style.display = (_perfLogFilter === 'ALL' || lvl === _perfLogFilter) ? '' : 'none';
+    el.style.display = (_activeLogLevel === 'ALL' || lvl === _activeLogLevel) ? '' : 'none';
   });
 }
 
