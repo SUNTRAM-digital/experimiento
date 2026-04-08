@@ -21,7 +21,11 @@ from strategy_btc import evaluate_btc_market
 from markets_updown import fetch_updown_market
 from strategy_updown import evaluate_updown_market
 from exit_manager import evaluate_exit_batch
+from rules_parser import parse_market_rules, detect_boundary_zone, format_rules_for_analyst
 from category_tracker import get_category_status, record_trade_result, get_all_stats
+from strategy_nearzero import evaluate_nearzero, scan_nearzero_opportunities
+from wallet_tracker import wallet_tracker
+from risk_manager import risk_manager
 
 logger = logging.getLogger("weatherbot")
 
@@ -537,6 +541,16 @@ async def _scan_cycle():
 
     _check_daily_reset()
 
+    # ── Fase 6: Risk Manager update ───────────────────────────────────────────
+    _total_account = state.balance_usdc + _total_deployed
+    risk_manager.update(_total_account, state.poly_positions)
+    _log("INFO", risk_manager.status_summary(_total_account))
+    if risk_manager.circuit_breaker_active:
+        _log("WARN", f"RISK | {risk_manager.circuit_breaker_reason}")
+        _log("WARN", "RISK | Bot pausado por circuit breaker — no se ejecutaran trades.")
+        _save_state()
+        return
+
     # Actualizar posiciones reales y ordenes abiertas desde Polymarket
     if settings.poly_wallet_address:
         positions = await get_polymarket_positions(settings.poly_wallet_address)
@@ -565,6 +579,7 @@ async def _scan_cycle():
                         # Patron 2: registrar resultado para win rate tracking
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
+                        risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -575,6 +590,7 @@ async def _scan_cycle():
                         # Patron 2: registrar resultado para win rate tracking
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
+                        risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -727,9 +743,27 @@ async def _scan_cycle():
         if live_price:
             market["yes_price"] = live_price
 
+        # Fase 4: Analizar reglas de resolucion del mercado (Lawyer's Edge)
+        rules    = parse_market_rules(market.get("market_title", ""), market.get("condition_id", ""))
+        boundary = detect_boundary_zone(
+            forecast_high_f=forecast["high_f"],
+            std_dev=forecast["std_dev"],
+            bucket={"type": market.get("bucket_type","range"),
+                    "low":  market.get("temp_low", -999.0),
+                    "high": market.get("temp_high",  999.0)},
+        )
+        if rules.get("warnings"):
+            for w in rules["warnings"]:
+                _log("WARN", f"[Lawyer] {w}")
+        if boundary.get("in_boundary_zone"):
+            _log("INFO", f"[Lawyer] {boundary['message']}")
+
         # Evaluar oportunidad (usa budget_weather para sizing)
         opportunity = evaluate_market(market, forecast, state.budget_weather)
         if opportunity:
+            opportunity["rules"]    = rules
+            opportunity["boundary"] = boundary
+            opportunity["rules_summary"] = format_rules_for_analyst(rules, boundary)
             opportunities.append(opportunity)
             # Patron 1: mostrar bonus temporal y retorno anualizado estimado
             time_tag = f" [+{opportunity['time_bonus']:.2f} time bonus]" if opportunity.get("time_bonus", 0) > 0 else ""
@@ -771,6 +805,26 @@ async def _scan_cycle():
         if _daily_loss_limit_reached():
             _log("WARN", "Limite de perdida diaria alcanzado. Deteniendo trades.")
             break
+
+        # ── Fase 6: Risk Manager check ────────────────────────────────────────
+        _total_acc = state.balance_usdc + state.deployed_weather + state.deployed_btc + state.deployed_updown
+        risk_check = risk_manager.check_trade(
+            size_usdc           = opp["size_usdc"],
+            total_account_value = _total_acc,
+            cash_available      = state.balance_usdc,
+            open_positions      = state.poly_positions,
+            city                = opp.get("city", ""),
+            hours_to_close      = opp.get("hours_to_close", 48.0),
+        )
+        if not risk_check["allowed"]:
+            _log("WARN", f"RISK | Trade bloqueado: {risk_check['reason']}")
+            continue
+        for w in risk_check.get("warnings", []):
+            _log("INFO", f"RISK | {w}")
+        if risk_check["adjusted_size"] != opp["size_usdc"]:
+            _log("INFO", f"RISK | Tamaño ajustado: ${opp['size_usdc']:.2f} → ${risk_check['adjusted_size']:.2f}")
+            opp["size_usdc"] = risk_check["adjusted_size"]
+            opp["shares"]    = round(opp["size_usdc"] / opp["entry_price"], 1)
 
         # Verificar que no tengamos ya posicion en este mercado exacto (condition_id)
         if any(p.get("condition_id") == opp.get("condition_id") for p in state.poly_positions):
@@ -838,12 +892,98 @@ async def _scan_cycle():
             weather_spent += opp["size_usdc"]
             await asyncio.sleep(2)  # Pausa entre trades
 
+    # ── Fase 5: Near-Zero scan ─────────────────────────────────────────────
+    # Escanea todos los mercados weather por oportunidades <8c con EV alto
+    if bot_params.weather_enabled and state.available_weather > 0:
+        await _scan_nearzero(markets)
+
     # ── Ciclo BTC (mercados de precio) ─────────────────────────────────────
     if bot_params.btc_enabled:
         await _scan_btc_markets()
 
     # Guardar estado al final de cada ciclo
     _save_state()
+
+
+async def _scan_nearzero(markets: list[dict]):
+    """
+    Fase 5: Escanea mercados weather buscando entradas near-zero (<8c).
+    Consulta señales de smart wallets para cada candidato antes de decidir.
+    """
+    from strategy import calc_bucket_probability
+
+    _log("INFO", "Near-Zero | Escaneando mercados con precio <8c...")
+
+    def _prob_estimator(market: dict) -> float | None:
+        """Estima prob usando el ultimo forecast disponible (sin llamada extra a NOAA)."""
+        # Usamos el forecast ya calculado en state si lo tenemos, o retornamos None
+        # para no duplicar llamadas a la API en este ciclo
+        opp_match = next(
+            (o for o in state.opportunities if o.get("condition_id") == market.get("condition_id")),
+            None,
+        )
+        if opp_match:
+            return opp_match.get("our_prob")
+        # Si el mercado tiene yes_price muy bajo y no tenemos forecast, usar heuristica
+        # basada en el precio con descuento conservador del 30%
+        yes_price = market.get("yes_price", 1.0)
+        if yes_price <= 0.08:
+            return min(yes_price * 3.0, 0.25)   # heuristica muy conservadora
+        return None
+
+    # Señales de smart wallets para mercados near-zero
+    nearzero_candidates = [m for m in markets if m.get("yes_price", 1.0) <= 0.08]
+    wallet_signals_map: dict[str, list] = {}
+
+    if nearzero_candidates:
+        _log("INFO", f"Near-Zero | {len(nearzero_candidates)} candidatos — consultando smart wallets...")
+        signal_tasks = [
+            wallet_tracker.get_signals_for_market(m.get("condition_id", ""))
+            for m in nearzero_candidates
+        ]
+        all_signals = await asyncio.gather(*signal_tasks)
+        for market, signals in zip(nearzero_candidates, all_signals):
+            cid = market.get("condition_id", "")
+            if signals:
+                wallet_signals_map[cid] = signals
+                _log("INFO", f"Near-Zero | Señal wallet en {market.get('market_title','')[:50]}: "
+                     f"{[s['wallet_name'] for s in signals]}")
+
+    opps = scan_nearzero_opportunities(
+        markets=markets,
+        prob_estimator=_prob_estimator,
+        balance_usdc=state.balance_usdc,
+        wallet_signals_by_cid=wallet_signals_map,
+    )
+
+    if not opps:
+        _log("INFO", "Near-Zero | Sin oportunidades near-zero en este ciclo.")
+        return
+
+    _log("INFO", f"Near-Zero | {len(opps)} oportunidades encontradas:")
+    for opp in opps[:5]:
+        wallet_tag = f" [wallets: {opp['wallet_count']}]" if opp["wallet_count"] > 0 else ""
+        _log(
+            "INFO",
+            f"Near-Zero [{opp['quality']}] | {opp['market_title'][:50]} | "
+            f"Precio: {opp['entry_price']:.3f} | EV: +{opp['ev_pct']}% | "
+            f"Size: ${opp['size_usdc']} | Payout: {opp['payout_ratio']}:1{wallet_tag}",
+        )
+
+    # Ejecutar solo las A+ y A con confirmacion de wallets (las mas seguras)
+    for opp in opps:
+        if opp["quality"] not in ("A+", "A"):
+            continue
+        if state.balance_usdc < opp["size_usdc"]:
+            break
+        # No entrar si ya tenemos posicion en este mercado
+        if any(p.get("condition_id") == opp["condition_id"] for p in state.poly_positions):
+            continue
+
+        _log("INFO", f"Near-Zero | AUTO-EJECUTANDO [{opp['quality']}]: {opp['market_title'][:50]}")
+        success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
+        if success:
+            await asyncio.sleep(1)
 
 
 async def _scan_btc_markets():
