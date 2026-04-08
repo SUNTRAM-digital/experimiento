@@ -98,7 +98,10 @@ async def fetch_weather_markets() -> list[dict]:
     Retorna lista de mercados parseados y listos para analizar.
     """
     markets = []
-    async with httpx.AsyncClient() as client:
+    # Limite por pagina reducido a 100 para evitar OSError(34, 'Result too large')
+    # en Windows cuando la respuesta supera ~3MB en un solo read del socket.
+    _PAGE_SIZE = 100
+    async with httpx.AsyncClient(timeout=httpx.Timeout(25.0)) as client:
         # Paginar mercados activos para encontrar todos los de temperatura
         raw_markets = []
         offset = 0
@@ -109,12 +112,11 @@ async def fetch_weather_markets() -> list[dict]:
                     params={
                         "active": "true",
                         "closed": "false",
-                        "limit": 500,
+                        "limit": _PAGE_SIZE,
                         "offset": offset,
                         "order": "volume",
                     },
                     headers=HEADERS,
-                    timeout=20,
                 )
                 resp.raise_for_status()
                 batch = resp.json()
@@ -128,7 +130,7 @@ async def fetch_weather_markets() -> list[dict]:
                 )
                 if fahr_count >= 60:
                     break
-                offset += 500
+                offset += _PAGE_SIZE
             except Exception:
                 break
 
