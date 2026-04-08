@@ -26,29 +26,81 @@ SYSTEM_PROMPT = """Eres el gestor de riesgo de una cuenta de trading real en Pol
 
 Tu aprobación es OBLIGATORIA para ejecutar cualquier trade. Sin tu APROBAR explícito, el bot NO opera.
 
-Evalúa cada oportunidad considerando CINCO dimensiones:
+Evalúa cada oportunidad considerando SEIS dimensiones:
 
-1. METEOROLOGIA: ¿El forecast de temperatura es coherente con la época del año y la ciudad? ¿Las horas restantes al cierre dan tiempo suficiente?
+1. REGLAS DE RESOLUCION (Lawyer's Edge — PRIORITARIO):
+   - ¿La estacion ICAO de settlement es la correcta? NYC=KLGA (no JFK), Dallas=KDAL (no DFW), Houston=KHOU (no IAH)
+   - ¿El tipo de dato coincide con nuestro forecast? (intraday HIGH vs settlement price vs average son DISTINTOS)
+   - Jerarquia de datos: METAR raw > NOAA API > GFS/ECMWF > apps de clima
+   - ¿El forecast esta en zona critica (±1.5°F del limite del bucket)? → maxima oportunidad pero maxima incertidumbre
+   - RECHAZA si hay ambiguedad critica en la estacion ICAO o en las reglas de settlement
 
-2. EDGE MATEMÁTICO: ¿La diferencia entre nuestra probabilidad y el precio del mercado es real y suficiente? ¿El EV ajustado por spread sigue siendo positivo?
+2. METEOROLOGIA Y CONSENSO MULTI-MODELO:
+   - ¿Cuántos modelos respaldan el forecast (NOAA, GFS, ECMWF)?
+   - ¿Hay consenso o divergencia entre modelos? (consensus_std < 1.5°F = bueno, >3°F = peligroso)
+   - ¿La observacion actual de la estacion es consistente con el forecast?
+   - ¿El pico de temperatura ya ocurrio (peak_locked)? Si es asi, hay mucha mas certeza.
+   - ¿El forecast es coherente con la epoca del año y la ciudad?
+   - WarmingModel (ML): si predice WARMING con alta confianza, el forecast sube hasta +2°F. Si predice COOLING, baja hasta -2°F. Considera esta señal al evaluar la certeza del forecast.
+   - Pesos calibrados: si el calibrador tiene historial (calibrated=True), los pesos NOAA/OpenMeteo ya reflejan cuál ha sido mas preciso en esa ciudad y temporada. Mayor confianza si los pesos estan calibrados.
 
-3. CALIDAD DEL MERCADO:
+3. EDGE MATEMÁTICO: ¿La diferencia entre nuestra probabilidad y el precio del mercado es real y suficiente? ¿El EV ajustado por spread sigue siendo positivo?
+
+4. CALIDAD DEL MERCADO:
    - Volumen 24h y total: ¿hay actividad real o es un mercado muerto?
    - Spread bid-ask: ¿es razonable?
    - Score competitivo: ¿indica market makers activos?
    - Profundidad del libro: ¿hay liquidez suficiente?
 
-4. RIESGO DE EJECUCION: ¿El tamaño es razonable dado el balance disponible? ¿La exposición total del portafolio es aceptable?
+5. RIESGO DE EJECUCION: ¿El tamaño es razonable dado el balance disponible? ¿La exposición total del portafolio es aceptable?
 
-5. CONTEXTO DE PORTAFOLIO: ¿Tenemos ya demasiadas posiciones abiertas? ¿El cash disponible justifica abrir otra posición? ¿Estamos diversificados o concentrados en pocas ciudades?
+6. CONTEXTO DE PORTAFOLIO: ¿Tenemos ya demasiadas posiciones abiertas? ¿El cash disponible justifica abrir otra posición? ¿Estamos diversificados o concentrados en pocas ciudades?
 
-RECHAZA si: spread > 40% del precio, volumen 24h < $10, score competitivo < 0.3, cash < $2, o si abrir esta posición dejaría la cuenta sobreexpuesta.
+RECHAZA si: estacion ICAO ambigua, spread > 40% del precio, volumen 24h < $10, score competitivo < 0.3, cash < $2, o si abrir esta posición dejaría la cuenta sobreexpuesta.
 
 Sé conciso. Responde SIEMPRE en este formato exacto:
 DECISION: APROBAR o RECHAZAR
 RAZON: [2-3 oraciones cubriendo los factores más relevantes]
 CONFIANZA: ALTA, MEDIA o BAJA
 RIESGO_EJECUCION: BAJO, MEDIO o ALTO"""
+
+
+def _format_ml_section(opportunity: dict) -> str:
+    """Genera la seccion de ML (WarmingModel + EnsembleCalibrator) para el analisis."""
+    lines = []
+
+    warming = opportunity.get("warming_prediction")
+    adj_f   = opportunity.get("warming_adjustment_f", 0.0)
+    weights = opportunity.get("ensemble_weights", {})
+
+    if warming:
+        label  = warming.get("label", "?")
+        prob   = warming.get("prob_warming", 0.5)
+        conf   = warming.get("confidence", "?")
+        n_feat = warming.get("n_features", 0)
+        adj_str = f"{adj_f:+.1f}°F" if adj_f != 0.0 else "0°F (STABLE)"
+        lines.append(
+            f"═══ ML — WARMING MODEL ═══\n"
+            f"Prediccion: {label} (prob_warming={prob:.0%}, confianza={conf.upper()})\n"
+            f"Ajuste aplicado al forecast: {adj_str} | Features usados: {n_feat}"
+        )
+
+    if weights:
+        cal = weights.get("calibrated", False)
+        n_obs = weights.get("n_obs", 0)
+        noaa_mae = weights.get("noaa_mae")
+        om_mae   = weights.get("om_mae")
+        cal_label = f"SI ({n_obs} obs)" if cal else f"NO (< 20 obs, usando pesos base)"
+        mae_str = ""
+        if noaa_mae is not None and om_mae is not None:
+            mae_str = f" | MAE: NOAA={noaa_mae:.1f}°F, OpenMeteo={om_mae:.1f}°F"
+        lines.append(
+            f"═══ ML — PESOS CALIBRADOS ═══\n"
+            f"Calibrado: {cal_label}{mae_str}\n"
+            f"Pesos: NOAA={weights.get('noaa', 0.45):.0%}, OpenMeteo={weights.get('openmeteo', 0.45):.0%}"
+        )
+
+    return "\n".join(lines) + "\n" if lines else ""
 
 
 async def analyze_opportunity(
@@ -151,11 +203,21 @@ Bucket de temperatura: {bucket_desc}
 Lado a operar: {opportunity['side']}
 Horas hasta cierre: {opportunity['hours_to_close']:.1f}h
 
-═══ DATOS METEOROLOGICOS (weather.gov oficial) ═══
-Temperatura maxima pronosticada: {opportunity['forecast_high']:.1f}°F
-Incertidumbre del forecast (±1σ): ±{opportunity['forecast_std']:.1f}°F
+{opportunity.get('rules_summary', '')}
+
+═══ DATOS METEOROLOGICOS (ensemble multi-modelo) ═══
+Forecast NOAA (weather.gov):    {f"{opportunity['noaa_high_f']:.1f}°F" if opportunity.get('noaa_high_f') else 'N/D'}
+Forecast OpenMeteo (GFS+ECMWF): {f"{opportunity['openmeteo_high_f']:.1f}°F" if opportunity.get('openmeteo_high_f') else 'N/D'}
+Observacion actual estacion:    {f"{opportunity['current_obs_f']:.1f}°F" if opportunity.get('current_obs_f') else 'N/D'}
+Estimacion FINAL (ensemble):    {opportunity['forecast_high']:.1f}°F ±{opportunity['forecast_std']:.1f}°F
+Confianza del ensemble:         {opportunity.get('forecast_confidence','?').upper()}
+Desacuerdo entre modelos (std): {opportunity.get('consensus_std', 0):.1f}°F {'✓ CONSENSO ALTO' if opportunity.get('consensus_std', 99) < 1.5 else ('⚠ MODELOS DIVERGEN' if opportunity.get('consensus_std', 0) > 3.0 else '')}
+Modelos disponibles:            {opportunity.get('models_available', 0)}
+Pico de temperatura ya ocurrio: {'SI - alta certeza' if opportunity.get('peak_locked') else 'NO - aun puede subir'}
+Fuentes usadas:                 {', '.join(opportunity.get('forecast_sources', []))}
 Probabilidad real calculada (dist. normal): {opportunity['our_prob']:.1%}
 
+{_format_ml_section(opportunity)}
 ═══ PRECIO Y EDGE ═══
 Precio del mercado (prob. implicita): {opportunity['market_prob']:.1%}
 Nuestro edge: {opportunity['our_prob']:.1%} vs {opportunity['market_prob']:.1%} mercado

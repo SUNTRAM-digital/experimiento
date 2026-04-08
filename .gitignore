@@ -24,6 +24,9 @@ data/chats.json
 data/params.json
 data/updown_stats.json
 data/strategy_notes.json
+data/category_stats.json
+data/wallet_cache.json
+data/risk_state.json
 !data/.gitkeep
 
 # ══════════════════════════════════════════════════════════════════════════════

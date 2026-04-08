@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Callable
 from config import settings, bot_params
 from markets import fetch_weather_markets, get_live_price, get_order_book_depth, get_polymarket_positions
-from weather import get_forecast_high
+from weather_ensemble import get_ensemble_high
 from strategy import evaluate_market
 from claude_analyst import analyze_opportunity, analyze_portfolio, analyze_updown_opportunity
 from price_feed import (
@@ -20,6 +20,12 @@ from markets_btc import fetch_btc_markets
 from strategy_btc import evaluate_btc_market
 from markets_updown import fetch_updown_market
 from strategy_updown import evaluate_updown_market
+from exit_manager import evaluate_exit_batch
+from rules_parser import parse_market_rules, detect_boundary_zone, format_rules_for_analyst
+from category_tracker import get_category_status, record_trade_result, get_all_stats
+from strategy_nearzero import evaluate_nearzero, scan_nearzero_opportunities
+from wallet_tracker import wallet_tracker
+from risk_manager import risk_manager
 
 logger = logging.getLogger("weatherbot")
 
@@ -93,6 +99,11 @@ class BotState:
         self.updown_ta_5m: dict = {}                        # último TA usado
         self.updown_ta_15m: dict = {}
         self.updown_recent_trades: list[dict] = []          # historial reciente (últimos 30)
+        # Capital Velocity (Fase 3): total_volume_traded / avg_capital_deployed
+        # Target: >20x (indica uso eficiente del capital via posiciones de corta duracion)
+        self.capital_velocity: float = 0.0
+        self.total_volume_traded: float = 0.0             # USDC total comprado (acumulado)
+        self.avg_capital_deployed: float = 0.0            # promedio movil del capital desplegado
 
 
 state = BotState()
@@ -170,6 +181,9 @@ def _save_state():
             "updown_recent_trades": state.updown_recent_trades,
             "last_scan": state.last_scan,
             "error_count": state.error_count,
+            "total_volume_traded": state.total_volume_traded,
+            "avg_capital_deployed": state.avg_capital_deployed,
+            "capital_velocity": state.capital_velocity,
         }
         STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
@@ -191,6 +205,9 @@ def _load_state():
         state.updown_recent_trades = payload.get("updown_recent_trades", [])
         state.last_scan           = payload.get("last_scan")
         state.error_count         = int(payload.get("error_count", 0))
+        state.total_volume_traded  = float(payload.get("total_volume_traded", 0))
+        state.avg_capital_deployed = float(payload.get("avg_capital_deployed", 0))
+        state.capital_velocity     = float(payload.get("capital_velocity", 0))
         raw_date = payload.get("daily_date")
         if raw_date:
             state.daily_date = date.fromisoformat(raw_date)
@@ -426,6 +443,8 @@ def _execute_trade(opportunity: dict) -> bool:
             state.balance_usdc -= cost
             # No sumamos cost a daily_loss — la perdida real se calcula en _daily_loss_limit_reached
             state.total_trades += 1
+            # Capital Velocity: acumular volumen total tradeado
+            state.total_volume_traded += cost
 
             trade = {
                 "id": response.get("orderID", ""),
@@ -501,14 +520,36 @@ async def _scan_cycle():
     state.available_btc     = round(_hb * _ratio, 2)
     state.available_updown  = round(_hu * _ratio, 2)
 
+    # ── Capital Velocity (Fase 3) ─────────────────────────────────────────────
+    # Calcula cuantas veces hemos rotado el capital (target: >20x)
+    # avg_capital_deployed se actualiza como promedio movil exponencial (alpha=0.1)
+    current_deployed = _total_deployed
+    if state.avg_capital_deployed == 0.0 and current_deployed > 0:
+        state.avg_capital_deployed = current_deployed
+    elif current_deployed > 0:
+        state.avg_capital_deployed = 0.9 * state.avg_capital_deployed + 0.1 * current_deployed
+    if state.avg_capital_deployed > 0:
+        state.capital_velocity = round(state.total_volume_traded / state.avg_capital_deployed, 2)
+
     _log(
         "INFO",
         f"Capital — Weather: ${state.budget_weather:.2f} (dep ${state.deployed_weather:.2f} / avail ${state.available_weather:.2f}) | "
         f"BTC: ${state.budget_btc:.2f} (dep ${state.deployed_btc:.2f} / avail ${state.available_btc:.2f}) | "
-        f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f})",
+        f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f}) | "
+        f"Velocity: {state.capital_velocity:.1f}x (target >20x)",
     )
 
     _check_daily_reset()
+
+    # ── Fase 6: Risk Manager update ───────────────────────────────────────────
+    _total_account = state.balance_usdc + _total_deployed
+    risk_manager.update(_total_account, state.poly_positions)
+    _log("INFO", risk_manager.status_summary(_total_account))
+    if risk_manager.circuit_breaker_active:
+        _log("WARN", f"RISK | {risk_manager.circuit_breaker_reason}")
+        _log("WARN", "RISK | Bot pausado por circuit breaker — no se ejecutaran trades.")
+        _save_state()
+        return
 
     # Actualizar posiciones reales y ordenes abiertas desde Polymarket
     if settings.poly_wallet_address:
@@ -535,6 +576,10 @@ async def _scan_cycle():
                     if cur_price > 0.95:
                         # Ganamos — redimir para cobrar
                         _log("INFO", f"POSICIÓN GANADA PENDIENTE DE COBRO | {pos['market_title'][:50]} — ${pos['cur_value_usdc']:.2f} USDC")
+                        # Patron 2: registrar resultado para win rate tracking
+                        _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
+                        record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
+                        risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -542,6 +587,10 @@ async def _scan_cycle():
                     elif cur_price < 0.05:
                         # Perdimos — redimir a $0 para limpiar el portafolio
                         _log("WARN", f"POSICIÓN PERDIDA (${pos['pnl_usdc']:.2f}) | {pos['market_title'][:50]} — limpiando portafolio")
+                        # Patron 2: registrar resultado para win rate tracking
+                        _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
+                        record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
+                        risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -551,6 +600,56 @@ async def _scan_cycle():
         state.open_orders = open_orders
         if open_orders:
             _log("INFO", f"Ordenes abiertas pendientes: {len(open_orders)}")
+
+        # ── Patrones 3+5: Exit Manager (Disposition Coefficient + Swing) ────────
+        # Revisar en cada ciclo si alguna posicion debe cerrarse por edge agotado
+        # o stop loss, sin esperar al settlement.
+        if state.poly_positions:
+            # Obtener precios actuales de cada token
+            current_prices = {}
+            for pos in state.poly_positions:
+                tid = pos.get("token_id")
+                if tid:
+                    lp = await get_live_price(tid)
+                    if lp:
+                        current_prices[tid] = lp
+
+            # Usar el precio actual como proxy de la prob estimada (sin forecast disponible aqui)
+            # Para una estimacion mas precisa, el exit_manager usaria el ensemble,
+            # pero para el monitoreo continuo el precio de mercado es suficiente
+            estimated_probs = {
+                pos.get("condition_id", ""): pos.get("cur_price", pos.get("avg_price", 0.5))
+                for pos in state.poly_positions
+            }
+
+            exits = evaluate_exit_batch(state.poly_positions, current_prices, estimated_probs)
+            for exit_pos in exits:
+                urgency = exit_pos.get("exit_urgency", "low")
+                reason  = exit_pos.get("exit_reason", "")
+                details = exit_pos.get("exit_details", "")
+                pnl_pct = exit_pos.get("exit_pnl_pct", 0)
+
+                log_level = "WARN" if urgency == "high" else "INFO"
+                _log(log_level,
+                     f"[EXIT P{3 if 'stop' in reason else 5}] "
+                     f"{exit_pos.get('market_title','')[:50]} | "
+                     f"Razon: {reason} | P&L: {pnl_pct:+.1%} | {details}"
+                )
+
+                # Solo ejecutar salida automatica si auto_trade_mode activo
+                # En modo normal, la salida la aprueba Claude via analisis de portafolio
+                if state.auto_trade_mode and urgency in ("high", "medium"):
+                    _log("WARN", f"[EXIT AUTO] Cerrando posicion: {exit_pos.get('market_title','')[:50]}")
+                    tid = exit_pos.get("token_id")
+                    size = exit_pos.get("size", 0)
+                    if tid and size:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda e=exit_pos: _sell_position(
+                                e["token_id"], e["size"],
+                                e.get("market_title",""), details
+                            ),
+                        )
 
         # Analisis de portafolio con Claude (max una vez cada 12 horas)
         _portfolio_analysis_interval_h = 12
@@ -594,6 +693,21 @@ async def _scan_cycle():
         _log("WARN", f"Limite de perdida diaria alcanzado ({bot_params.max_daily_loss_pct*100:.0f}%). Bot pausado.")
         return
 
+    # ── Patron 2: Verificar estado de categorias (Win Rate Decay) ────────────
+    cat_stats = get_all_stats()
+    for cat_name, cat_info in cat_stats.items():
+        if cat_info.get("total_trades", 0) > 0:
+            if not cat_info["allowed"]:
+                _log("WARN", f"[P2] {cat_info['message']}")
+            elif cat_info.get("warning"):
+                _log("INFO", f"[P2] {cat_info['message']}")
+
+    # ── Patron 2: Bloquear weather si categoria sin edge ─────────────────────
+    weather_cat = cat_stats.get("weather", {})
+    if not weather_cat.get("allowed", True):
+        _log("WARN", "[P2] Weather BLOQUEADO por win rate bajo — saltando scan de clima")
+        # No return — continua con BTC si esta habilitado
+
     # ── Ciclo Weather ─────────────────────────────────────────────────────────
     if not bot_params.weather_enabled:
         _log("INFO", "Weather DESACTIVADO — saltando scan de mercados de clima")
@@ -608,33 +722,70 @@ async def _scan_cycle():
         if not market.get("target_date"):
             continue
 
-        # Obtener forecast
-        forecast = await get_forecast_high(market["station"], market["target_date"])
+        # Obtener forecast (ensemble: NOAA + OpenMeteo + observacion actual)
+        forecast = await get_ensemble_high(market["station"], market["target_date"])
         if not forecast:
             _log("WARN", f"Sin forecast para {market['station']} en {market['target_date']}")
             continue
+        sources_str = "+".join(forecast.get("sources_used", ["?"]))
+        _log(
+            "INFO",
+            f"Forecast {market['station']} | "
+            f"NOAA:{forecast.get('noaa_high_f','?')}°F "
+            f"OpenMeteo:{forecast.get('openmeteo_high_f','?')}°F "
+            f"Obs:{forecast.get('current_obs_f','?')}°F → "
+            f"Ensemble:{forecast['high_f']}°F ±{forecast['std_dev']}°F "
+            f"({forecast['confidence'].upper()}) [{sources_str}]"
+        )
 
         # Precio en vivo (mas preciso que el de Gamma)
         live_price = await get_live_price(market["yes_token_id"])
         if live_price:
             market["yes_price"] = live_price
 
+        # Fase 4: Analizar reglas de resolucion del mercado (Lawyer's Edge)
+        rules    = parse_market_rules(market.get("market_title", ""), market.get("condition_id", ""))
+        boundary = detect_boundary_zone(
+            forecast_high_f=forecast["high_f"],
+            std_dev=forecast["std_dev"],
+            bucket={"type": market.get("bucket_type","range"),
+                    "low":  market.get("temp_low", -999.0),
+                    "high": market.get("temp_high",  999.0)},
+        )
+        if rules.get("warnings"):
+            for w in rules["warnings"]:
+                _log("WARN", f"[Lawyer] {w}")
+        if boundary.get("in_boundary_zone"):
+            _log("INFO", f"[Lawyer] {boundary['message']}")
+
         # Evaluar oportunidad (usa budget_weather para sizing)
         opportunity = evaluate_market(market, forecast, state.budget_weather)
         if opportunity:
+            opportunity["rules"]    = rules
+            opportunity["boundary"] = boundary
+            opportunity["rules_summary"] = format_rules_for_analyst(rules, boundary)
             opportunities.append(opportunity)
+            # Patron 1: mostrar bonus temporal y retorno anualizado estimado
+            time_tag = f" [+{opportunity['time_bonus']:.2f} time bonus]" if opportunity.get("time_bonus", 0) > 0 else ""
+            ann_tag  = f" ~{opportunity.get('annualized_return', 0):.0f}% anual" if opportunity.get("annualized_return") else ""
+            # Patron 4: señal contrarian
+            contra_tag = ""
+            if opportunity.get("is_contrarian") and opportunity.get("contrarian_signal"):
+                cs = opportunity["contrarian_signal"]
+                contra_tag = f" ⚡CONTRARIAN({cs['signal']})"
             _log(
                 "INFO",
                 f"OPORTUNIDAD | {opportunity['side']} {market['city'].title()} "
                 f"[{market['temp_low']}-{market['temp_high']}°F] | "
                 f"Forecast: {forecast['high_f']:.1f}°F | "
                 f"Mercado: {market['yes_price']:.2f} | "
-                f"Nuestra prob: {opportunity['our_prob']:.2%} | "
-                f"EV: {opportunity['ev_pct']}%",
+                f"Prob: {opportunity['our_prob']:.2%} | "
+                f"EV: {opportunity['ev_pct']}%{time_tag}{ann_tag}{contra_tag}",
             )
 
-    # Ordenar por EV descendente
-    opportunities.sort(key=lambda x: x["ev_pct"], reverse=True)
+    # Patron 1 (72-hour rule): ordenar por priority_score (EV + bonus temporal)
+    # Mercados que resuelven pronto suben en el ranking aunque tengan EV similar
+    opportunities.sort(key=lambda x: x.get("priority_score", x["ev_pct"] / 100), reverse=True)
     state.opportunities = opportunities
 
     if not opportunities:
@@ -654,6 +805,26 @@ async def _scan_cycle():
         if _daily_loss_limit_reached():
             _log("WARN", "Limite de perdida diaria alcanzado. Deteniendo trades.")
             break
+
+        # ── Fase 6: Risk Manager check ────────────────────────────────────────
+        _total_acc = state.balance_usdc + state.deployed_weather + state.deployed_btc + state.deployed_updown
+        risk_check = risk_manager.check_trade(
+            size_usdc           = opp["size_usdc"],
+            total_account_value = _total_acc,
+            cash_available      = state.balance_usdc,
+            open_positions      = state.poly_positions,
+            city                = opp.get("city", ""),
+            hours_to_close      = opp.get("hours_to_close", 48.0),
+        )
+        if not risk_check["allowed"]:
+            _log("WARN", f"RISK | Trade bloqueado: {risk_check['reason']}")
+            continue
+        for w in risk_check.get("warnings", []):
+            _log("INFO", f"RISK | {w}")
+        if risk_check["adjusted_size"] != opp["size_usdc"]:
+            _log("INFO", f"RISK | Tamaño ajustado: ${opp['size_usdc']:.2f} → ${risk_check['adjusted_size']:.2f}")
+            opp["size_usdc"] = risk_check["adjusted_size"]
+            opp["shares"]    = round(opp["size_usdc"] / opp["entry_price"], 1)
 
         # Verificar que no tengamos ya posicion en este mercado exacto (condition_id)
         if any(p.get("condition_id") == opp.get("condition_id") for p in state.poly_positions):
@@ -721,12 +892,98 @@ async def _scan_cycle():
             weather_spent += opp["size_usdc"]
             await asyncio.sleep(2)  # Pausa entre trades
 
+    # ── Fase 5: Near-Zero scan ─────────────────────────────────────────────
+    # Escanea todos los mercados weather por oportunidades <8c con EV alto
+    if bot_params.weather_enabled and state.available_weather > 0:
+        await _scan_nearzero(markets)
+
     # ── Ciclo BTC (mercados de precio) ─────────────────────────────────────
     if bot_params.btc_enabled:
         await _scan_btc_markets()
 
     # Guardar estado al final de cada ciclo
     _save_state()
+
+
+async def _scan_nearzero(markets: list[dict]):
+    """
+    Fase 5: Escanea mercados weather buscando entradas near-zero (<8c).
+    Consulta señales de smart wallets para cada candidato antes de decidir.
+    """
+    from strategy import calc_bucket_probability
+
+    _log("INFO", "Near-Zero | Escaneando mercados con precio <8c...")
+
+    def _prob_estimator(market: dict) -> float | None:
+        """Estima prob usando el ultimo forecast disponible (sin llamada extra a NOAA)."""
+        # Usamos el forecast ya calculado en state si lo tenemos, o retornamos None
+        # para no duplicar llamadas a la API en este ciclo
+        opp_match = next(
+            (o for o in state.opportunities if o.get("condition_id") == market.get("condition_id")),
+            None,
+        )
+        if opp_match:
+            return opp_match.get("our_prob")
+        # Si el mercado tiene yes_price muy bajo y no tenemos forecast, usar heuristica
+        # basada en el precio con descuento conservador del 30%
+        yes_price = market.get("yes_price", 1.0)
+        if yes_price <= 0.08:
+            return min(yes_price * 3.0, 0.25)   # heuristica muy conservadora
+        return None
+
+    # Señales de smart wallets para mercados near-zero
+    nearzero_candidates = [m for m in markets if m.get("yes_price", 1.0) <= 0.08]
+    wallet_signals_map: dict[str, list] = {}
+
+    if nearzero_candidates:
+        _log("INFO", f"Near-Zero | {len(nearzero_candidates)} candidatos — consultando smart wallets...")
+        signal_tasks = [
+            wallet_tracker.get_signals_for_market(m.get("condition_id", ""))
+            for m in nearzero_candidates
+        ]
+        all_signals = await asyncio.gather(*signal_tasks)
+        for market, signals in zip(nearzero_candidates, all_signals):
+            cid = market.get("condition_id", "")
+            if signals:
+                wallet_signals_map[cid] = signals
+                _log("INFO", f"Near-Zero | Señal wallet en {market.get('market_title','')[:50]}: "
+                     f"{[s['wallet_name'] for s in signals]}")
+
+    opps = scan_nearzero_opportunities(
+        markets=markets,
+        prob_estimator=_prob_estimator,
+        balance_usdc=state.balance_usdc,
+        wallet_signals_by_cid=wallet_signals_map,
+    )
+
+    if not opps:
+        _log("INFO", "Near-Zero | Sin oportunidades near-zero en este ciclo.")
+        return
+
+    _log("INFO", f"Near-Zero | {len(opps)} oportunidades encontradas:")
+    for opp in opps[:5]:
+        wallet_tag = f" [wallets: {opp['wallet_count']}]" if opp["wallet_count"] > 0 else ""
+        _log(
+            "INFO",
+            f"Near-Zero [{opp['quality']}] | {opp['market_title'][:50]} | "
+            f"Precio: {opp['entry_price']:.3f} | EV: +{opp['ev_pct']}% | "
+            f"Size: ${opp['size_usdc']} | Payout: {opp['payout_ratio']}:1{wallet_tag}",
+        )
+
+    # Ejecutar solo las A+ y A con confirmacion de wallets (las mas seguras)
+    for opp in opps:
+        if opp["quality"] not in ("A+", "A"):
+            continue
+        if state.balance_usdc < opp["size_usdc"]:
+            break
+        # No entrar si ya tenemos posicion en este mercado
+        if any(p.get("condition_id") == opp["condition_id"] for p in state.poly_positions):
+            continue
+
+        _log("INFO", f"Near-Zero | AUTO-EJECUTANDO [{opp['quality']}]: {opp['market_title'][:50]}")
+        success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
+        if success:
+            await asyncio.sleep(1)
 
 
 async def _scan_btc_markets():
