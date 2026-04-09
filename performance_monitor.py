@@ -154,14 +154,35 @@ class PerformanceMonitor:
 
                 # Alertas fuera del lock para no bloquear
                 if cpu_pct >= _CPU_SPIKE_PCT:
+                    # Calcular promedio de CPU del ultimo minuto
+                    with self._lock:
+                        cpu_hist_snap = list(self._cpu_history)
+                    cpu_avg_1m = round(sum(cpu_hist_snap) / len(cpu_hist_snap), 1) if cpu_hist_snap else 0.0
                     self._rlog("WARN", "CPU",
                         f"CPU spike: {cpu_pct:.1f}% (proceso)",
-                        {"cpu_pct": cpu_pct, "ram_mb": round(ram_mb, 1)})
+                        {
+                            "cpu_pct":    round(cpu_pct, 1),
+                            "cpu_avg_1m": cpu_avg_1m,
+                            "ram_mb":     round(ram_mb, 1),
+                            "cause":      "El proceso consumio CPU por encima del umbral. "
+                                          "Puede ocurrir durante un scan de mercados, "
+                                          "llamada a Claude o calculo de ensemble.",
+                        })
 
                 if ram_delta >= _RAM_SPIKE_MB:
+                    with self._lock:
+                        ram_hist_snap = list(self._ram_mb_history)
+                    ram_avg_1m = round(sum(ram_hist_snap) / len(ram_hist_snap), 1) if ram_hist_snap else 0.0
                     self._rlog("WARN", "MEMORY",
                         f"RAM subio +{ram_delta:.1f} MB → {ram_mb:.1f} MB total",
-                        {"ram_mb": round(ram_mb, 1), "delta_mb": round(ram_delta, 1)})
+                        {
+                            "ram_mb":     round(ram_mb, 1),
+                            "delta_mb":   round(ram_delta, 1),
+                            "ram_avg_1m": ram_avg_1m,
+                            "cause":      "La memoria del proceso subio de golpe. "
+                                          "Tipicamente causado por cargar mercados de Gamma API, "
+                                          "respuesta grande de OpenMeteo o cache de posiciones.",
+                        })
 
             except Exception:
                 pass
@@ -199,14 +220,32 @@ class PerformanceMonitor:
             error = exc_type is not None
 
             with self._mon._lock:
+                history = list(self._mon._timings[self._name])
                 self._mon._timings[self._name].append(elapsed_ms)
                 self._mon._call_counts[self._name] += 1
                 if error:
                     self._mon._error_counts[self._name] += 1
+                total_calls  = self._mon._call_counts[self._name]
+                total_errors = self._mon._error_counts[self._name]
 
-            # Emitir al resource log
+            # Calcular estadisticas historicas para enriquecer el detalle
+            avg_ms = round(sum(history) / len(history), 1) if history else None
+            min_ms = round(min(history), 1) if history else None
+            max_ms = round(max(history), 1) if history else None
+            times_slower = round(elapsed_ms / avg_ms, 1) if avg_ms and avg_ms > 0 else None
+
             category = _COMPONENT_CATEGORY.get(self._name, "OTHER")
-            detail   = {"ms": round(elapsed_ms, 1), **self._extra}
+            detail   = {
+                "ms":           round(elapsed_ms, 1),
+                "avg_ms":       avg_ms,
+                "min_ms":       min_ms,
+                "max_ms":       max_ms,
+                "times_slower": times_slower,
+                "total_calls":  total_calls,
+                "total_errors": total_errors,
+                "component":    self._name,
+                **self._extra,
+            }
 
             if error:
                 self._mon._rlog("ERROR", category,

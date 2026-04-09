@@ -3912,6 +3912,19 @@ async function sendChat() {
 
 <div id="help-popup"></div>
 
+<!-- MODAL DETALLE WARN RECURSOS -->
+<div id="warn-modal-overlay" onclick="if(event.target===this)document.getElementById('warn-modal-overlay').style.display='none'"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:1200;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid #5a4a00;border-radius:12px;padding:24px 28px;width:min(560px,95vw);max-height:88vh;overflow-y:auto;position:relative;">
+    <button onclick="document.getElementById('warn-modal-overlay').style.display='none'"
+            style="position:absolute;top:12px;right:14px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;">
+      ✕ Cerrar
+    </button>
+    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#d29922;margin-bottom:14px">Detalle de Advertencia</div>
+    <div id="warn-modal-body"></div>
+  </div>
+</div>
+
 <!-- MODAL DETALLE ORDEN ABIERTA -->
 <div id="ord-modal-overlay" onclick="if(event.target===this)closeOrderModal()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1100;align-items:center;justify-content:center;">
@@ -4155,16 +4168,23 @@ function _renderResourceLog(entries) {
   toAdd.forEach(entry => {
     const lvl  = entry.level    || 'INFO';
     const cat  = entry.category || 'OTHER';
-    const lvlColor  = _LEVEL_COLOR[lvl]  || 'var(--muted)';
-    const catStyle  = _CAT_STYLE[cat]    || _CAT_STYLE.OTHER;
+    const lvlColor = _LEVEL_COLOR[lvl] || 'var(--muted)';
+    const catStyle = _CAT_STYLE[cat]   || _CAT_STYLE.OTHER;
+    const isWarn   = lvl === 'WARN' || lvl === 'ERROR';
 
-    // Detalles extra (ms, ram_mb, etc.)
-    let detailStr = '';
+    // Resumen inline (ms, ram, mercados)
     const d = entry.detail || {};
-    if (d.ms   != null) detailStr += ` <span style="color:#666">${d.ms} ms</span>`;
-    if (d.ram_mb != null && cat === 'MEMORY') detailStr += ` <span style="color:#f97316">${d.ram_mb} MB</span>`;
-    if (d.markets != null) detailStr += ` <span style="color:#555">${d.markets} mercados</span>`;
-    if (d.opps != null && d.opps > 0) detailStr += ` <span style="color:#3fb950">${d.opps} opps</span>`;
+    let inlineStr = '';
+    if (d.ms     != null) inlineStr += ` <span style="color:#666">${d.ms} ms</span>`;
+    if (d.delta_mb != null) inlineStr += ` <span style="color:#f97316">+${d.delta_mb} MB</span>`;
+    if (d.cpu_pct  != null && cat === 'CPU') inlineStr += ` <span style="color:#f85149">${d.cpu_pct}%</span>`;
+    if (d.markets  != null) inlineStr += ` <span style="color:#555">${d.markets} mkt</span>`;
+    if (d.opps     != null && d.opps > 0) inlineStr += ` <span style="color:#3fb950">${d.opps} opps</span>`;
+
+    // Indicador clickable para WARN/ERROR
+    const clickHint = isWarn
+      ? `<span style="font-size:.6rem;color:#555;margin-left:6px;border:1px solid #333;border-radius:3px;padding:0 4px;vertical-align:middle">ver detalle</span>`
+      : '';
 
     const show = (activeLvl === 'ALL' || activeLvl === lvl) && (activeCat === 'ALL' || activeCat === cat);
 
@@ -4173,13 +4193,17 @@ function _renderResourceLog(entries) {
     div.dataset.level = lvl;
     div.dataset.cat   = cat;
     div.style.display = show ? '' : 'none';
-    div.style.cssText += ';padding:2px 0;border-bottom:1px solid #1a1a1a;';
+    div.style.cssText += ';padding:3px 0;border-bottom:1px solid #1a1a1a;';
+    if (isWarn) {
+      div.style.cursor = 'pointer';
+      div.addEventListener('click', () => _showWarnDetail(entry));
+    }
     div.innerHTML =
       `<span style="color:#444;margin-right:6px">[${entry.time}]</span>` +
       `<span style="font-size:.65rem;padding:1px 5px;border-radius:3px;margin-right:5px;${catStyle}">${cat}</span>` +
       `<span style="color:${lvlColor};font-weight:600;margin-right:5px">${lvl}</span>` +
       `<span style="color:var(--text)">${escHtml(entry.msg)}</span>` +
-      detailStr;
+      inlineStr + clickHint;
     c.appendChild(div);
   });
 
@@ -4204,6 +4228,128 @@ async function _loadPerfLogHistory() {
     c.innerHTML = '';  // reset
     _renderResourceLog(entries);
   } catch(e) {}
+}
+
+// ── Modal de detalle WARN ─────────────────────────────────────────────────
+
+const _CAUSE_MAP = {
+  fetch_weather_markets:  "El fetch de mercados a la API Gamma de Polymarket tardó más de lo normal. "
+                        + "Puede deberse a alta latencia de red, servidor de Gamma lento, "
+                        + "o que se paginaron muchas páginas de resultados.",
+  ensemble_forecast:      "El ensemble de forecast (NOAA + OpenMeteo + observación) tardó demasiado. "
+                        + "Probablemente NOAA o OpenMeteo respondieron lento. "
+                        + "Revisa la tabla de tiempos para ver qué API fue la más lenta.",
+  live_price:             "La consulta del precio en vivo al CLOB de Polymarket tardó más de lo esperado. "
+                        + "Puede ser latencia de red o el mercado específico tiene poca liquidez.",
+  claude_analysis:        "La llamada a la API de Claude (Anthropic) tardó demasiado. "
+                        + "Puede ser alta demanda en los servidores de Anthropic o respuesta muy larga.",
+  noaa_forecast:          "La API de NOAA/NWS respondió lentamente. "
+                        + "NOAA tiene timeouts frecuentes en horas pico (06:00-09:00 UTC).",
+  openmeteo_forecast:     "La API de Open-Meteo tardó en responder. "
+                        + "Puede ser el modelo GFS o ECMWF aún calculando la corrida del día.",
+  scan_cycle_total:       "El ciclo completo de escaneo fue muy lento en total. "
+                        + "Revisa los tiempos individuales de cada componente para identificar el cuello de botella.",
+};
+
+function _showWarnDetail(entry) {
+  const d    = entry.detail || {};
+  const cat  = entry.category || 'OTHER';
+  const comp = d.component || '';
+
+  // Construir explicación
+  let explanation = d.cause || _CAUSE_MAP[comp] || 'Sin diagnóstico automático disponible.';
+
+  // Sección de métricas
+  let metricsHtml = '';
+
+  if (d.ms != null) {
+    const slowFactor = d.times_slower ? `<span style="color:#f85149;font-weight:700">${d.times_slower}× más lento</span> que el promedio` : '';
+    metricsHtml += `
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
+        <div style="background:#1a1a0e;border:1px solid #5a4a00;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#d29922;font-size:1.4rem;font-weight:700">${d.ms.toLocaleString()} ms</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">Esta ejecución</div>
+        </div>
+        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#3fb950;font-size:1.4rem;font-weight:700">${d.avg_ms != null ? d.avg_ms.toLocaleString() + ' ms' : '—'}</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">Promedio histórico</div>
+        </div>
+        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#58a6ff;font-size:1rem;font-weight:700">${d.min_ms != null ? d.min_ms.toLocaleString() + ' ms' : '—'}</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">Mínimo histórico</div>
+        </div>
+        <div style="background:#1a0e0e;border:1px solid #7a1c1c;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#f85149;font-size:1rem;font-weight:700">${d.max_ms != null ? d.max_ms.toLocaleString() + ' ms' : '—'}</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">Máximo histórico</div>
+        </div>
+      </div>
+      ${d.times_slower ? `<div style="background:#2a1a0e;border:1px solid #7a4a00;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:.8rem;color:#fb923c">
+        Esta ejecución fue ${slowFactor} (${d.avg_ms} ms de media)
+      </div>` : ''}`;
+  }
+
+  if (cat === 'CPU') {
+    metricsHtml += `
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
+        <div style="background:#1a0e0e;border:1px solid #7a1c1c;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#f85149;font-size:1.4rem;font-weight:700">${d.cpu_pct}%</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">CPU proceso (pico)</div>
+        </div>
+        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#3fb950;font-size:1.4rem;font-weight:700">${d.cpu_avg_1m != null ? d.cpu_avg_1m + '%' : '—'}</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">CPU promedio 1 min</div>
+        </div>
+        <div style="grid-column:1/-1;background:#0e1522;border:1px solid #1e3a5f;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#58a6ff;font-size:1.1rem;font-weight:700">${d.ram_mb} MB</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">RAM del proceso en ese momento</div>
+        </div>
+      </div>`;
+  }
+
+  if (cat === 'MEMORY') {
+    metricsHtml += `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+        <div style="background:#2a0e0e;border:1px solid #7a2a00;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#f97316;font-size:1.4rem;font-weight:700">+${d.delta_mb} MB</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">Subida en 1 seg</div>
+        </div>
+        <div style="background:#0e1522;border:1px solid #1e3a5f;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#58a6ff;font-size:1.4rem;font-weight:700">${d.ram_mb} MB</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">RAM total proceso</div>
+        </div>
+        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="color:#3fb950;font-size:1.1rem;font-weight:700">${d.ram_avg_1m != null ? d.ram_avg_1m + ' MB' : '—'}</div>
+          <div style="color:#888;font-size:.7rem;margin-top:2px">RAM promedio 1 min</div>
+        </div>
+      </div>`;
+  }
+
+  // Llamadas y errores totales del componente
+  if (d.total_calls != null) {
+    const errRate = d.total_calls > 0 ? ((d.total_errors / d.total_calls) * 100).toFixed(1) : 0;
+    metricsHtml += `<div style="font-size:.75rem;color:#666;margin-bottom:12px">
+      Historial del componente: <span style="color:var(--text)">${d.total_calls} llamadas</span>
+      · <span style="${d.total_errors > 0 ? 'color:#f85149' : 'color:#3fb950'}">${d.total_errors} errores (${errRate}%)</span>
+    </div>`;
+  }
+
+  const catStyle = _CAT_STYLE[cat] || _CAT_STYLE.OTHER;
+  const lvlColor = _LEVEL_COLOR[entry.level] || '#d29922';
+
+  document.getElementById('warn-modal-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:.65rem;padding:2px 8px;border-radius:3px;${catStyle}">${cat}</span>
+      <span style="color:${lvlColor};font-weight:700">${entry.level}</span>
+      <span style="color:#555;font-size:.75rem">[${entry.time}]</span>
+    </div>
+    <div style="color:var(--text);font-size:.9rem;font-weight:600;margin-bottom:14px">${escHtml(entry.msg)}</div>
+    ${metricsHtml}
+    <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:12px 14px">
+      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#555;margin-bottom:6px">Diagnóstico</div>
+      <div style="font-size:.8rem;color:#c9d1d9;line-height:1.7">${escHtml(explanation)}</div>
+    </div>
+  `;
+  document.getElementById('warn-modal-overlay').style.display = 'flex';
 }
 
 // Auto-refresh cuando el tab está visible
