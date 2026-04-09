@@ -789,7 +789,10 @@
     <div id="tab-positions" class="tab-content">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="color:#888;font-size:.8rem">Shares que posees actualmente en tu cuenta de Polymarket (actualizadas en cada escaneo)</div>
-        <button id="btn-refresh-analysis" onclick="refreshPortfolioAnalysis()" style="background:#1e3a5f;color:#60a5fa;border:1px solid #2d5a8e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Analizar portafolio</button>
+        <div style="display:flex;gap:6px">
+          <button onclick="refreshPositionsNow(this)" style="background:#1a2e1a;color:#3fb950;border:1px solid #1a4a2e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Actualizar</button>
+          <button id="btn-refresh-analysis" onclick="refreshPortfolioAnalysis()" style="background:#1e3a5f;color:#60a5fa;border:1px solid #2d5a8e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Analizar portafolio</button>
+        </div>
       </div>
       <div id="pos-conflict-warn" style="display:none;background:#3a1a00;border:1px solid #f97316;border-radius:6px;padding:8px 12px;margin-bottom:10px;color:#fb923c;font-size:.8rem"></div>
       <div id="portfolio-analysis-box" style="display:none;margin-bottom:14px">
@@ -2118,6 +2121,21 @@ async function sellPosition(tokenId, size, title) {
 async function fetchPositions() {
   const r = await fetch('/api/poly-positions');
   renderPositions(await r.json());
+}
+
+async function refreshPositionsNow(btn) {
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '...';
+  try {
+    const r = await fetch('/api/poly-positions');
+    renderPositions(await r.json());
+    btn.innerHTML = '&#10003;';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+  } catch(e) {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
 }
 
 let _openOrders = [];
