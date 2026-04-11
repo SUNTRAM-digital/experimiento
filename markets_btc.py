@@ -96,12 +96,14 @@ async def fetch_btc_markets() -> list[dict]:
     # Limite por pagina reducido a 100 para evitar OSError(34, 'Result too large')
     # en Windows cuando la respuesta supera ~3MB en un solo read del socket.
     _PAGE_SIZE = 100
+    import json as _json
     async with httpx.AsyncClient() as client:
         raw_markets = []
         offset = 0
         while offset < 2000:
             try:
-                resp = await client.get(
+                async with client.stream(
+                    "GET",
                     f"{GAMMA_BASE}/markets",
                     params={
                         "active":  "true",
@@ -109,13 +111,16 @@ async def fetch_btc_markets() -> list[dict]:
                         "limit":   _PAGE_SIZE,
                         "offset":  offset,
                         "order":   "volume",
-                        "tag":     "crypto",        # filtrar por categoría
+                        "tag":     "crypto",
                     },
                     headers=HEADERS,
                     timeout=20,
-                )
-                resp.raise_for_status()
-                batch = resp.json()
+                ) as resp:
+                    resp.raise_for_status()
+                    chunks = []
+                    async for chunk in resp.aiter_bytes(chunk_size=8192):
+                        chunks.append(chunk)
+                    batch = _json.loads(b"".join(chunks))
                 if not batch:
                     break
 
