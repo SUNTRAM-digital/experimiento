@@ -55,15 +55,20 @@ def _set_market_cache(interval_minutes: int, result: Optional[dict]) -> None:
 async def _get_events_by_slug(client: httpx.AsyncClient, slug: str) -> list:
     """Intenta obtener evento por slug exacto. Retorna lista (puede ser vacía)."""
     try:
-        resp = await client.get(
+        import json as _json
+        async with client.stream(
+            "GET",
             f"{GAMMA_BASE}/events",
             params={"slug": slug},
             headers=HEADERS,
             timeout=_REQUEST_TIMEOUT,
-        )
-        if resp.status_code != 200:
-            return []
-        data = resp.json()
+        ) as resp:
+            if resp.status_code != 200:
+                return []
+            chunks = []
+            async for chunk in resp.aiter_bytes(chunk_size=8192):
+                chunks.append(chunk)
+            data = _json.loads(b"".join(chunks))
         if not data:
             return []
         return data if isinstance(data, list) else [data]
@@ -80,7 +85,9 @@ async def _search_updown_by_markets(client: httpx.AsyncClient, interval_minutes:
     """
     label = f"{interval_minutes}m"
     try:
-        resp = await client.get(
+        import json as _json
+        async with client.stream(
+            "GET",
             f"{GAMMA_BASE}/markets",
             params={
                 "active": "true",
@@ -90,10 +97,13 @@ async def _search_updown_by_markets(client: httpx.AsyncClient, interval_minutes:
             },
             headers=HEADERS,
             timeout=_REQUEST_TIMEOUT,
-        )
-        if resp.status_code != 200:
-            return []
-        markets = resp.json()
+        ) as resp:
+            if resp.status_code != 200:
+                return []
+            chunks = []
+            async for chunk in resp.aiter_bytes(chunk_size=8192):
+                chunks.append(chunk)
+            markets = _json.loads(b"".join(chunks))
         if not isinstance(markets, list):
             return []
 
@@ -121,15 +131,20 @@ async def _search_updown_by_markets(client: httpx.AsyncClient, interval_minutes:
             if not event_id:
                 continue
             try:
-                ev_resp = await client.get(
+                import json as _json
+                async with client.stream(
+                    "GET",
                     f"{GAMMA_BASE}/events/{event_id}",
                     headers=HEADERS,
                     timeout=_REQUEST_TIMEOUT,
-                )
-                if ev_resp.status_code == 200:
-                    ev = ev_resp.json()
-                    if ev and isinstance(ev, dict):
-                        events_found.append(ev)
+                ) as ev_resp:
+                    if ev_resp.status_code == 200:
+                        ev_chunks = []
+                        async for chunk in ev_resp.aiter_bytes(chunk_size=8192):
+                            ev_chunks.append(chunk)
+                        ev = _json.loads(b"".join(ev_chunks))
+                        if ev and isinstance(ev, dict):
+                            events_found.append(ev)
             except Exception:
                 pass
 
@@ -148,15 +163,20 @@ async def _search_updown_events_keyword(client: httpx.AsyncClient, interval_minu
     """Búsqueda por keyword en endpoint /events (más amplia, 500 eventos)."""
     label = f"{interval_minutes}m"
     try:
-        resp = await client.get(
+        import json as _json
+        async with client.stream(
+            "GET",
             f"{GAMMA_BASE}/events",
             params={"active": "true", "closed": "false", "limit": 100},
             headers=HEADERS,
             timeout=_REQUEST_TIMEOUT,
-        )
-        if resp.status_code != 200:
-            return []
-        events = resp.json()
+        ) as resp:
+            if resp.status_code != 200:
+                return []
+            chunks = []
+            async for chunk in resp.aiter_bytes(chunk_size=8192):
+                chunks.append(chunk)
+            events = _json.loads(b"".join(chunks))
         if not isinstance(events, list):
             return []
         results = []

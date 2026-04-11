@@ -101,13 +101,15 @@ async def fetch_weather_markets() -> list[dict]:
     # Limite por pagina reducido a 100 para evitar OSError(34, 'Result too large')
     # en Windows cuando la respuesta supera ~3MB en un solo read del socket.
     _PAGE_SIZE = 100
+    import json as _json
     async with httpx.AsyncClient(timeout=httpx.Timeout(25.0)) as client:
         # Paginar mercados activos para encontrar todos los de temperatura
         raw_markets = []
         offset = 0
         while offset < 4000:
             try:
-                resp = await client.get(
+                async with client.stream(
+                    "GET",
                     f"{GAMMA_BASE}/markets",
                     params={
                         "active": "true",
@@ -117,9 +119,12 @@ async def fetch_weather_markets() -> list[dict]:
                         "order": "volume",
                     },
                     headers=HEADERS,
-                )
-                resp.raise_for_status()
-                batch = resp.json()
+                ) as resp:
+                    resp.raise_for_status()
+                    chunks = []
+                    async for chunk in resp.aiter_bytes(chunk_size=8192):
+                        chunks.append(chunk)
+                    batch = _json.loads(b"".join(chunks))
                 if not batch:
                     break
                 raw_markets.extend(batch)
@@ -279,17 +284,23 @@ async def get_order_book_depth(token_id: str, side: str, up_to_price: float) -> 
     Retorna cuantos shares y USDC estan disponibles hasta up_to_price.
     """
     try:
+        # Usar streaming con chunks pequeños para evitar OSError(34, 'Result too large')
+        # en Windows (ProactorEventLoop falla con lecturas de socket >~3MB de una vez).
+        import json as _json
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
+            async with client.stream(
+                "GET",
                 f"{CLOB_BASE}/book",
                 params={"token_id": token_id},
                 headers=HEADERS,
                 timeout=8,
-            )
-            if resp.status_code != 200:
-                return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
-
-            book = resp.json()
+            ) as resp:
+                if resp.status_code != 200:
+                    return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
+                chunks = []
+                async for chunk in resp.aiter_bytes(chunk_size=8192):
+                    chunks.append(chunk)
+                book = _json.loads(b"".join(chunks))
             levels_key = "asks" if side == "ask" else "bids"
             levels = book.get(levels_key, [])
 
