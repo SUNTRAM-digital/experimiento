@@ -584,6 +584,13 @@ async def _scan_cycle():
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
+                        # Backtest: resolver posición simulada correspondiente
+                        if bot_params.backtest_enabled and pos.get("condition_id") and _cat == "weather":
+                            try:
+                                from backtesting_rt import backtest_engine as _bt
+                                _bt.resolve_weather_trade(pos["condition_id"], won=True)
+                            except Exception:
+                                pass
                         # Actualizar trade_history con resultado WIN
                         _tk = pos.get("token_id", "")
                         for _th in state.trade_history:
@@ -601,6 +608,13 @@ async def _scan_cycle():
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
+                        # Backtest: resolver posición simulada correspondiente
+                        if bot_params.backtest_enabled and pos.get("condition_id") and _cat == "weather":
+                            try:
+                                from backtesting_rt import backtest_engine as _bt
+                                _bt.resolve_weather_trade(pos["condition_id"], won=False)
+                            except Exception:
+                                pass
                         # Actualizar trade_history con resultado LOSS
                         _tk = pos.get("token_id", "")
                         for _th in state.trade_history:
@@ -806,6 +820,16 @@ async def _scan_cycle():
     # Mercados que resuelven pronto suben en el ranking aunque tengan EV similar
     opportunities.sort(key=lambda x: x.get("priority_score", x["ev_pct"] / 100), reverse=True)
     state.opportunities = opportunities
+
+    # ── Backtesting clima (Fase 10) ───────────────────────────────────────────
+    # Simular TODAS las oportunidades encontradas (antes de ejecutar la real)
+    if bot_params.backtest_enabled and opportunities:
+        try:
+            from backtesting_rt import backtest_engine as _bt
+            for _opp in opportunities:
+                _bt.record_weather(opp=_opp, real_trade_placed=False)
+        except Exception as _e:
+            _log("WARN", f"[BACKTEST] Error registrando clima: {_e}")
 
     if not opportunities:
         _log("INFO", "Sin oportunidades con edge suficiente en este ciclo.")
@@ -1281,6 +1305,23 @@ async def _scan_updown(interval_minutes: int):
         cmc_data=cmc_data,
         market=market,
     )
+
+    # ── Backtesting en tiempo real (Fase 10) ─────────────────────────────────
+    # Registrar en simulado con thresholds relajados, haya o no trade real.
+    if bot_params.backtest_enabled:
+        try:
+            from backtesting_rt import backtest_engine as _bt
+            _bt.record_updown(
+                market=market,
+                opp=opp,
+                signal=_sig,
+                btc_start_price=btc_price_start or 0,
+                skip_reason=skip_reason,
+                real_trade_placed=False,  # se actualiza tras ejecutar real
+            )
+        except Exception as _e:
+            _log("WARN", f"[BACKTEST] Error registrando UpDown: {_e}")
+
     _log("INFO",
          f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
          f"| BTC inicio=${btc_price_start:.0f} ahora=${btc_price_now:.0f} ({_sig['window_pct']:+.3f}%) "
@@ -1411,6 +1452,21 @@ async def _scan_updown(interval_minutes: int):
     success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
     if success:
         _updown_traded_slugs.add(slug)
+        # Marcar trade simulado correspondiente como real_trade_placed=True
+        if bot_params.backtest_enabled:
+            try:
+                from backtesting_rt import backtest_engine as _bt
+                for _pos in _bt.sim_positions.values():
+                    if (
+                        _pos.get("window_start_ts") == market.get("window_start_ts")
+                        and _pos.get("interval_min") == interval_minutes
+                        and not _pos.get("real_trade_placed")
+                    ):
+                        _pos["real_trade_placed"] = True
+                        break
+            except Exception:
+                pass
+
         # Evitar crecimiento ilimitado: mantener solo los 200 slugs más recientes
         if len(_updown_traded_slugs) > 200:
             # Los slugs son strings con timestamp — eliminar arbitrariamente los más viejos
@@ -2074,6 +2130,16 @@ async def _run_updown_loop():
 
             # Resolver trades pasados cuya ventana ya cerró
             await _resolve_pending_updown_outcomes()
+
+            # Resolver posiciones simuladas de backtesting cuya ventana cerró
+            if bot_params.backtest_enabled and state.btc_price:
+                try:
+                    from backtesting_rt import backtest_engine as _bt
+                    _resolved = _bt.resolve_updown_trades(state.btc_price)
+                    if _resolved:
+                        _log("INFO", f"[BACKTEST] {_resolved} trade(s) simulado(s) resueltos | SimBal=${_bt.sim_balance:.2f}")
+                except Exception as _e:
+                    _log("WARN", f"[BACKTEST] Resolve error: {_e}")
 
             if bot_params.updown_5m_enabled:
                 await _scan_updown(5)

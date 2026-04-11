@@ -16,15 +16,16 @@ Historial de fases:
   Fase 7  (v7.0.0) — ML Models: Warming/Cooling Model, Ensemble Calibrator, pesos adaptativos NOAA/OpenMeteo
   Fase 8  (v8.0.0) — UpDown Markets + Performance Monitor: BTC 5m/15m up/down, learner adaptativo, resource dashboard
   Fase 9  (v9.0.0) — Phantom Bets + Claude Advisor Total: apuestas fantasma para aprendizaje, Claude con acceso completo de lectura + tool update_params, análisis proactivo, win rate fixes
+  Fase 10 (v10.0.0) — Backtesting en Tiempo Real: portfolio simulado $100 USDC, CSV logging completo, stats simulado vs real, resolución automática por ventana
 """
 
-MAJOR = 9
-MINOR = 1
+MAJOR = 10
+MINOR = 0
 PATCH = 0
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom Bets + Claude Advisor Total"
+PHASE_NAME = "Backtesting en Tiempo Real"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
@@ -38,5 +39,6 @@ PHASES = {
     6: "Risk Manager — circuit breaker, cash buffer, auto-sizing",
     7: "ML Models — Warming Model, Ensemble Calibrator adaptativo",
     8: "UpDown Markets — BTC 5m/15m, learner adaptativo, performance monitor",
-    9: "Phantom Bets + Claude Advisor — aprendizaje sin capital, Claude acceso total",
+    9:  "Phantom Bets + Claude Advisor — aprendizaje sin capital, Claude acceso total",
+    10: "Backtesting en Tiempo Real — portfolio simulado $100, CSV logging, stats vs real",
 }

@@ -693,6 +693,7 @@
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
+      <div class="tab" onclick="showTab('tab-backtest'); loadBacktest()">📊 Backtest</div>
       <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
     </div>
 
@@ -1265,6 +1266,85 @@
           Haz clic en "Pedir análisis a Claude" para obtener sugerencias basadas en tu historial de trades y tus observaciones.
         </div>
       </div>
+    </div>
+
+    <!-- BACKTESTING EN TIEMPO REAL — FASE 10 -->
+    <div id="tab-backtest" class="tab-content">
+
+      <!-- Header + acciones -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="font-size:1.1rem;font-weight:700;color:var(--blue)">📊 Backtesting en Tiempo Real</span>
+          <span style="font-size:.75rem;color:var(--muted);margin-left:8px">Portfolio simulado — $100 USDC ficticios</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="loadBacktest()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:.8rem">↻ Actualizar</button>
+          <a id="bt-csv-link" href="/api/backtest/csv" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:.8rem;text-decoration:none">⬇ CSV</a>
+          <button onclick="resetBacktest()" style="background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:.8rem">⚠ Reset</button>
+        </div>
+      </div>
+
+      <!-- KPIs del portfolio simulado -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px" id="bt-kpis">
+        <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:.7rem;color:var(--muted)">Balance simulado</div>
+          <div id="bt-balance" style="font-size:1.4rem;font-weight:700;color:var(--green)">—</div>
+          <div id="bt-return" style="font-size:.75rem;color:var(--muted)">+0.00%</div>
+        </div>
+        <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:.7rem;color:var(--muted)">Win Rate</div>
+          <div id="bt-wr" style="font-size:1.4rem;font-weight:700;color:var(--text)">—</div>
+          <div id="bt-resolved" style="font-size:.75rem;color:var(--muted)">0 resueltos</div>
+        </div>
+        <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:.7rem;color:var(--muted)">P&L total</div>
+          <div id="bt-pnl" style="font-size:1.4rem;font-weight:700">—</div>
+          <div style="font-size:.75rem;color:var(--muted)">simulado</div>
+        </div>
+        <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:.7rem;color:var(--muted)">Posiciones abiertas</div>
+          <div id="bt-open" style="font-size:1.4rem;font-weight:700;color:var(--blue)">—</div>
+          <div id="bt-open-cost" style="font-size:.75rem;color:var(--muted)">$0 comprometido</div>
+        </div>
+        <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:.7rem;color:var(--muted)">Trades totales</div>
+          <div id="bt-total" style="font-size:1.4rem;font-weight:700;color:var(--text)">—</div>
+          <div style="font-size:.75rem;color:var(--muted)">registrados</div>
+        </div>
+      </div>
+
+      <!-- Por asset + por confianza -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px" id="bt-breakdowns">
+        <!-- Por asset -->
+        <div style="background:var(--card);border-radius:8px;padding:12px">
+          <div style="font-size:.8rem;font-weight:600;color:var(--blue);margin-bottom:8px">Por mercado</div>
+          <div id="bt-by-asset" style="font-size:.8rem;color:var(--text)">—</div>
+        </div>
+        <!-- Por confianza -->
+        <div style="background:var(--card);border-radius:8px;padding:12px">
+          <div style="font-size:.8rem;font-weight:600;color:var(--blue);margin-bottom:8px">Por confianza</div>
+          <div id="bt-by-conf" style="font-size:.8rem;color:var(--text)">—</div>
+        </div>
+        <!-- Sim vs Real -->
+        <div style="background:var(--card);border-radius:8px;padding:12px">
+          <div style="font-size:.8rem;font-weight:600;color:var(--blue);margin-bottom:8px">Simulado vs Real</div>
+          <div id="bt-by-real" style="font-size:.8rem;color:var(--text)">—</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:6px">¿Las señales del bot real son mejores?</div>
+        </div>
+      </div>
+
+      <!-- Posiciones abiertas -->
+      <div style="background:var(--card);border-radius:8px;padding:12px;margin-bottom:16px">
+        <div style="font-size:.85rem;font-weight:600;color:var(--blue);margin-bottom:8px">Posiciones simuladas abiertas</div>
+        <div id="bt-positions-list" style="font-size:.78rem;color:var(--text)">Sin posiciones abiertas.</div>
+      </div>
+
+      <!-- Historial reciente -->
+      <div style="background:var(--card);border-radius:8px;padding:12px">
+        <div style="font-size:.85rem;font-weight:600;color:var(--blue);margin-bottom:8px">Últimos trades simulados</div>
+        <div id="bt-trades-list" style="font-size:.75rem;color:var(--text)">Sin trades aún.</div>
+      </div>
+
     </div>
 
     <!-- RECURSOS / PERFORMANCE -->
@@ -2403,6 +2483,7 @@ function showTab(id) {
   if (id === 'tab-dashboard')  fetchDashboard();
   if (id === 'tab-strategies') fetchStrategies();
   if (id === 'tab-perf')       { fetchPerformance(); _loadPerfLogHistory(); }
+  if (id === 'tab-backtest')   loadBacktest();
   // Persistir en localStorage para sobrevivir refresco
   try { localStorage.setItem('wb_active_tab', id); } catch(e) {}
 }
@@ -4691,6 +4772,158 @@ setInterval(async () => {
 setTimeout(() => {
   _initPerfCharts();
 }, 500);
+
+// ── BACKTESTING EN TIEMPO REAL — Fase 10 ─────────────────────────────────────
+
+async function loadBacktest() {
+  try {
+    const [statsRes, posRes, tradesRes] = await Promise.all([
+      fetch('/api/backtest/stats'),
+      fetch('/api/backtest/positions'),
+      fetch('/api/backtest/trades?limit=30'),
+    ]);
+    const s = await statsRes.json();
+    const pos = await posRes.json();
+    const tr  = await tradesRes.json();
+    _renderBacktestStats(s);
+    _renderBacktestPositions(pos.open || []);
+    _renderBacktestTrades(tr.trades || []);
+  } catch(e) {
+    document.getElementById('bt-trades-list').textContent = 'Error cargando datos: ' + e.message;
+  }
+}
+
+function _renderBacktestStats(s) {
+  const bal     = s.sim_balance ?? 100;
+  const ret     = s.sim_return_pct ?? 0;
+  const wr      = s.win_rate != null ? (s.win_rate * 100).toFixed(1) + '%' : '—';
+  const pnl     = typeof s.total_pnl === 'number' ? s.total_pnl : 0;
+  const pnlCol  = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  const retCol  = ret >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('bt-balance').textContent  = '$' + bal.toFixed(2);
+  document.getElementById('bt-return').innerHTML     = `<span style="color:${retCol}">${ret >= 0 ? '+' : ''}${ret.toFixed(2)}%</span>`;
+  document.getElementById('bt-wr').textContent       = wr;
+  document.getElementById('bt-resolved').textContent = `${s.resolved ?? 0} resueltos`;
+  document.getElementById('bt-pnl').innerHTML        = `<span style="color:${pnlCol}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(4)}</span>`;
+  document.getElementById('bt-open').textContent     = s.open_positions ?? 0;
+  document.getElementById('bt-open-cost').textContent= `$${(s.open_cost ?? 0).toFixed(2)} comprometido`;
+  document.getElementById('bt-total').textContent    = s.total ?? 0;
+
+  // Por asset
+  const byAsset = s.by_asset || {};
+  const assetHtml = Object.entries(byAsset).map(([a, d]) => {
+    const wrPct = d.win_rate != null ? (d.win_rate * 100).toFixed(1) + '%' : '—';
+    const pnlC  = d.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<div style="margin-bottom:6px;padding:6px;background:var(--bg);border-radius:5px">
+      <div style="font-weight:600">${a}</div>
+      <div>${d.total} trades · WR <b>${wrPct}</b></div>
+      <div style="color:${pnlC}">P&L: ${d.pnl >= 0 ? '+' : ''}$${(d.pnl||0).toFixed(4)}</div>
+    </div>`;
+  }).join('') || '<span style="color:var(--muted)">Sin datos aún</span>';
+  document.getElementById('bt-by-asset').innerHTML = assetHtml;
+
+  // Por confianza
+  const byConf = s.by_confidence || {};
+  const confHtml = Object.entries(byConf).map(([b, d]) => {
+    const wrPct = d.win_rate != null ? (d.win_rate * 100).toFixed(1) + '%' : '—';
+    return `<div style="margin-bottom:4px">${b}: <b>${wrPct}</b> (${d.total} trades)</div>`;
+  }).join('') || '<span style="color:var(--muted)">Sin datos</span>';
+  document.getElementById('bt-by-conf').innerHTML = confHtml;
+
+  // Sim vs Real
+  const byReal = s.by_real || {};
+  const rr = byReal.when_real_traded   || {total:0, win_rate:null};
+  const rs = byReal.when_real_skipped  || {total:0, win_rate:null};
+  const rrWr = rr.win_rate != null ? (rr.win_rate*100).toFixed(1)+'%' : '—';
+  const rsWr = rs.win_rate != null ? (rs.win_rate*100).toFixed(1)+'%' : '—';
+  document.getElementById('bt-by-real').innerHTML = `
+    <div style="margin-bottom:4px">✅ Bot real operó: <b>${rrWr}</b> (${rr.total} trades)</div>
+    <div>⏭ Bot real saltó: <b>${rsWr}</b> (${rs.total} trades)</div>
+  `;
+}
+
+function _renderBacktestPositions(positions) {
+  const el = document.getElementById('bt-positions-list');
+  if (!positions.length) {
+    el.textContent = 'Sin posiciones simuladas abiertas.';
+    return;
+  }
+  el.innerHTML = positions.map(p => {
+    const asset = p.asset || '?';
+    const side  = p.side  || '?';
+    const col   = side === 'UP' ? 'var(--green)' : side === 'DOWN' ? 'var(--red)' : 'var(--blue)';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="color:${col};font-weight:600">${side}</span>
+      <span style="flex:1;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${asset} — ${(p.market_title||'').substring(0,45)}</span>
+      <span>@${parseFloat(p.entry_price||0).toFixed(3)}</span>
+      <span style="margin-left:8px;color:var(--muted)">$${parseFloat(p.cost_sim||0).toFixed(2)}</span>
+      <span style="margin-left:8px;font-size:.7rem;color:var(--muted)">${(p.min_to_close||'?')}min</span>
+    </div>`;
+  }).join('');
+}
+
+function _renderBacktestTrades(trades) {
+  const el = document.getElementById('bt-trades-list');
+  if (!trades.length) {
+    el.textContent = 'Sin trades simulados aún. El backtesting se alimenta automáticamente.';
+    return;
+  }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead>
+      <tr style="color:var(--muted);font-size:.7rem;border-bottom:1px solid var(--border)">
+        <th style="padding:4px 6px;text-align:left">Hora</th>
+        <th style="padding:4px 6px;text-align:left">Asset</th>
+        <th style="padding:4px 6px;text-align:left">Side</th>
+        <th style="padding:4px 6px;text-align:right">Entrada</th>
+        <th style="padding:4px 6px;text-align:right">$Cost</th>
+        <th style="padding:4px 6px;text-align:right">Conf</th>
+        <th style="padding:4px 6px;text-align:center">Real?</th>
+        <th style="padding:4px 6px;text-align:center">Resultado</th>
+        <th style="padding:4px 6px;text-align:right">P&L</th>
+      </tr>
+    </thead>
+    <tbody>
+    ${trades.map(t => {
+      const res   = t.result || 'PENDING';
+      const rCol  = res==='WIN' ? 'var(--green)' : res==='LOSS' ? 'var(--red)' : 'var(--muted)';
+      const pnl   = typeof t.pnl_usdc === 'number' ? t.pnl_usdc : null;
+      const pnlTx = pnl != null ? (pnl >= 0 ? '+$'+pnl.toFixed(4) : '-$'+Math.abs(pnl).toFixed(4)) : '—';
+      const pnlC  = pnl != null ? (pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
+      const sideC = t.side==='UP' ? 'var(--green)' : t.side==='DOWN' ? 'var(--red)' : 'var(--blue)';
+      const ts    = (t.timestamp||'').replace(' UTC','').split(' ')[1] || t.timestamp;
+      const realBadge = t.real_trade_placed
+        ? '<span style="background:#16a34a;color:#fff;border-radius:4px;padding:1px 5px;font-size:.65rem">SÍ</span>'
+        : '<span style="color:var(--muted)">—</span>';
+      return `<tr style="border-bottom:1px solid var(--border);font-size:.75rem">
+        <td style="padding:4px 6px;color:var(--muted)">${ts}</td>
+        <td style="padding:4px 6px">${(t.asset||'').replace('BTC_UPDOWN_','').replace('M',' ')}</td>
+        <td style="padding:4px 6px;color:${sideC};font-weight:600">${t.side||'?'}</td>
+        <td style="padding:4px 6px;text-align:right">${parseFloat(t.entry_price||0).toFixed(3)}</td>
+        <td style="padding:4px 6px;text-align:right">$${parseFloat(t.cost_sim||0).toFixed(2)}</td>
+        <td style="padding:4px 6px;text-align:right">${Math.round((t.confidence||0)*100)}%</td>
+        <td style="padding:4px 6px;text-align:center">${realBadge}</td>
+        <td style="padding:4px 6px;text-align:center;color:${rCol};font-weight:600">${res}</td>
+        <td style="padding:4px 6px;text-align:right;color:${pnlC}">${pnlTx}</td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>`;
+}
+
+async function resetBacktest() {
+  if (!confirm('¿Reiniciar el portfolio simulado? Se perderá todo el historial de backtesting.')) return;
+  try {
+    const r = await fetch('/api/backtest/reset', {method:'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Portfolio simulado reseteado a $100 USDC');
+      loadBacktest();
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message);
+  }
+}
 </script>
 </body>
 </html>

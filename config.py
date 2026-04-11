@@ -45,6 +45,10 @@ class BotParams:
         self.updown_15m_enabled: bool = os.getenv("UPDOWN_15M_ENABLED", "true").lower() == "true"
         self.updown_max_usdc: float = float(os.getenv("UPDOWN_MAX_USDC", 1.0))
         self.updown_max_consecutive_losses: int = int(os.getenv("UPDOWN_MAX_CONSECUTIVE_LOSSES", 5))
+        # --- Backtesting en tiempo real (Fase 10) ---
+        self.backtest_enabled: bool = os.getenv("BACKTEST_ENABLED", "true").lower() == "true"
+        self.backtest_capital: float = float(os.getenv("BACKTEST_CAPITAL", 100.0))
+        self.backtest_min_confidence: float = float(os.getenv("BACKTEST_MIN_CONFIDENCE", 0.10))
         # --- Asignación de capital ---
         self.alloc_weather_pct: float = 0.60
         self.alloc_btc_pct: float = 0.20
@@ -81,6 +85,9 @@ class BotParams:
             "updown_15m_enabled": self.updown_15m_enabled,
             "updown_max_usdc": self.updown_max_usdc,
             "updown_max_consecutive_losses": self.updown_max_consecutive_losses,
+            "backtest_enabled":              self.backtest_enabled,
+            "backtest_capital":              self.backtest_capital,
+            "backtest_min_confidence":       self.backtest_min_confidence,
             "alloc_weather_pct": self.alloc_weather_pct,
             "alloc_btc_pct": self.alloc_btc_pct,
             "alloc_updown_pct": self.alloc_updown_pct,

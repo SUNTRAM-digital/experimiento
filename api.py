@@ -848,6 +848,55 @@ async def save_strategy_notes(data: dict):
     return {"ok": True}
 
 
+# ── Backtesting en Tiempo Real — Fase 10 ─────────────────────────────────────
+
+@app.get("/api/backtest/stats")
+async def backtest_stats():
+    """Estadísticas del portfolio simulado de backtesting."""
+    from backtesting_rt import backtest_engine
+    return backtest_engine.get_stats()
+
+
+@app.get("/api/backtest/trades")
+async def backtest_trades(limit: int = 50):
+    """Últimos N trades simulados (resueltos)."""
+    from backtesting_rt import backtest_engine
+    return {"trades": backtest_engine.get_recent_trades(min(limit, 200))}
+
+
+@app.get("/api/backtest/positions")
+async def backtest_positions():
+    """Posiciones simuladas abiertas (pendientes de resolución)."""
+    from backtesting_rt import backtest_engine
+    return {
+        "open": backtest_engine.get_open_positions(),
+        "sim_balance": round(backtest_engine.sim_balance, 2),
+    }
+
+
+@app.post("/api/backtest/reset")
+async def backtest_reset():
+    """Reinicia el portfolio simulado a $100 USDC y borra el historial."""
+    from backtesting_rt import backtest_engine
+    backtest_engine.reset()
+    return {"ok": True, "msg": "Portfolio simulado reseteado a $100 USDC"}
+
+
+@app.get("/api/backtest/csv")
+async def backtest_csv():
+    """Descarga el CSV completo de trades simulados."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    csv_path = Path(__file__).parent / "data" / "backtest_trades.csv"
+    if not csv_path.exists():
+        return JSONResponse(status_code=404, content={"error": "CSV no disponible aún"})
+    return FileResponse(
+        path=str(csv_path),
+        media_type="text/csv",
+        filename="backtest_trades.csv",
+    )
+
+
 @app.get("/api/updown/pending")
 async def get_updown_pending():
     """Muestra los trades UpDown pendientes de resolución (para diagnóstico)."""
