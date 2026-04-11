@@ -693,6 +693,7 @@
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
+      <div class="tab" onclick="showTab('tab-telonex')">🔗 Telonex</div>
       <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
     </div>
 
@@ -1263,6 +1264,62 @@
         <div style="font-size:.8rem;color:var(--text);font-weight:700;margin-bottom:8px">🤖 ÚLTIMAS SUGERENCIAS DE MEJORA (Claude)</div>
         <div id="strat-claude-suggestions" style="font-size:.75rem;color:var(--muted);line-height:1.7">
           Haz clic en "Pedir análisis a Claude" para obtener sugerencias basadas en tu historial de trades y tus observaciones.
+        </div>
+      </div>
+    </div>
+
+    <!-- TELONEX -->
+    <div id="tab-telonex" class="tab-content">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+        <div class="card">
+          <div class="label">Estado</div>
+          <div id="tx-status" style="font-size:1.1rem;font-weight:700;color:var(--green)">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Smart Wallets Rastreados</div>
+          <div id="tx-wallet-count" style="font-size:1.6rem;font-weight:700">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Última actualización wallets</div>
+          <div id="tx-last-update" style="font-size:.9rem;color:var(--muted)">—</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+        <div class="card">
+          <div class="label">Fills on-chain (24h)</div>
+          <div id="tx-fills-24h" style="font-size:1.4rem;font-weight:700">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Volumen on-chain (24h)</div>
+          <div id="tx-vol-24h" style="font-size:1.4rem;font-weight:700">—</div>
+        </div>
+        <div class="card">
+          <div class="label">OFI promedio (última ventana)</div>
+          <div id="tx-ofi-last" style="font-size:1.4rem;font-weight:700">—</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <button onclick="loadTelonex()" class="btn">↻ Actualizar</button>
+        <button onclick="refreshTelonexWallets()" class="btn" style="background:var(--accent2)">⟳ Forzar update wallets</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="label" style="margin-bottom:8px">Top Smart Wallets (por PnL 7d)</div>
+        <div id="tx-wallets-table" style="font-size:.78rem;overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="color:var(--muted);text-align:left">
+                <th style="padding:4px 8px">#</th>
+                <th style="padding:4px 8px">Wallet</th>
+                <th style="padding:4px 8px">PnL 7d</th>
+                <th style="padding:4px 8px">Trades</th>
+                <th style="padding:4px 8px">Score</th>
+                <th style="padding:4px 8px">Sesgo UP%</th>
+              </tr>
+            </thead>
+            <tbody id="tx-wallets-body">
+              <tr><td colspan="6" style="color:var(--muted);padding:8px">Cargando...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -4691,6 +4748,72 @@ setInterval(async () => {
 setTimeout(() => {
   _initPerfCharts();
 }, 500);
+
+// ── Telonex ───────────────────────────────────────────────────────────────
+async function loadTelonex() {
+  try {
+    const s = await fetch('/api/telonex/status').then(r => r.json());
+    const available = s.available !== false;
+    document.getElementById('tx-status').textContent = available ? 'Activo ✓' : 'Sin API key';
+    document.getElementById('tx-status').style.color = available ? 'var(--green)' : 'var(--red)';
+    document.getElementById('tx-wallet-count').textContent = s.top_wallet_count ?? '—';
+    document.getElementById('tx-last-update').textContent = s.last_wallet_update
+      ? new Date(s.last_wallet_update * 1000).toLocaleString()
+      : 'Nunca';
+    document.getElementById('tx-fills-24h').textContent =
+      s.fills_24h != null ? s.fills_24h.toLocaleString() : '—';
+    document.getElementById('tx-vol-24h').textContent =
+      s.volume_24h_usdc != null ? '$' + s.volume_24h_usdc.toFixed(0) : '—';
+    document.getElementById('tx-ofi-last').textContent =
+      s.last_ofi != null ? (s.last_ofi >= 0 ? '+' : '') + (s.last_ofi * 100).toFixed(1) + '%' : '—';
+
+    // Tabla de wallets
+    const wallets = s.top_wallets || [];
+    const tbody = document.getElementById('tx-wallets-body');
+    if (wallets.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:8px">Sin datos (ejecutar update wallets)</td></tr>';
+    } else {
+      tbody.innerHTML = wallets.slice(0, 20).map((w, i) => {
+        const pnl = w.pnl_7d ?? 0;
+        const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const addr = w.wallet ? w.wallet.slice(0,6) + '…' + w.wallet.slice(-4) : '—';
+        const upPct = w.up_trades != null && w.total_trades
+          ? ((w.up_trades / w.total_trades) * 100).toFixed(0) + '%'
+          : '—';
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:4px 8px;color:var(--muted)">${i+1}</td>
+          <td style="padding:4px 8px;font-family:monospace">${addr}</td>
+          <td style="padding:4px 8px;color:${pnlColor}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
+          <td style="padding:4px 8px">${w.total_trades ?? '—'}</td>
+          <td style="padding:4px 8px">${(w.pnl_rank_score ?? 0).toFixed(3)}</td>
+          <td style="padding:4px 8px">${upPct}</td>
+        </tr>`;
+      }).join('');
+    }
+  } catch(e) {
+    document.getElementById('tx-status').textContent = 'Error: ' + e.message;
+    document.getElementById('tx-status').style.color = 'var(--red)';
+  }
+}
+
+async function refreshTelonexWallets() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⟳ Actualizando...';
+  try {
+    await fetch('/api/telonex/update-wallets', { method: 'POST' });
+    await loadTelonex();
+  } catch(e) {}
+  btn.disabled = false;
+  btn.textContent = '⟳ Forzar update wallets';
+}
+
+// Cargar Telonex cuando se activa el tab
+const _origShowTabTx = showTab;
+showTab = function(id) {
+  _origShowTabTx(id);
+  if (id === 'tab-telonex') loadTelonex();
+};
 </script>
 </body>
 </html>

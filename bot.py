@@ -27,6 +27,7 @@ from strategy_nearzero import evaluate_nearzero, scan_nearzero_opportunities
 from wallet_tracker import wallet_tracker
 from risk_manager import risk_manager
 from performance_monitor import perf
+from telonex_data import telonex_data
 
 logger = logging.getLogger("weatherbot")
 
@@ -1244,12 +1245,21 @@ async def _scan_updown(interval_minutes: int):
     # CMC data para señal de tendencia macro 1h
     cmc_data = state.btc_cmc if state.btc_cmc else None
 
+    # Telonex on-chain signals (OFI real + smart wallet bias)
+    telonex_signals = None
+    if bot_params.telonex_enabled:
+        try:
+            telonex_signals = await telonex_data.get_updown_signals(market, btc_price_start)
+        except Exception as _tx_err:
+            _log("WARN", f"UpDown {interval_minutes}m | Telonex error: {_tx_err}")
+
     opp, skip_reason = evaluate_updown_market(
         market=market,
         ta_data=ta_data,
         btc_price=btc_price_now or 0,
         btc_price_window_start=btc_price_start,
         cmc_data=cmc_data,
+        telonex_signals=telonex_signals,
     )
 
     # Guardar oportunidad evaluada (aunque no se opere)
@@ -1280,18 +1290,23 @@ async def _scan_updown(interval_minutes: int):
         btc_price_window_start=btc_price_start,
         cmc_data=cmc_data,
         market=market,
+        telonex_signals=telonex_signals,
     )
     _log("INFO",
          f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
          f"| BTC inicio=${btc_price_start:.0f} ahora=${btc_price_now:.0f} ({_sig['window_pct']:+.3f}%) "
          f"| cierra en {market['minutes_to_close']:.1f}min")
+    _tx_str = (
+        f" RealOFI:{_sig['real_ofi']:+.3f} SmartBias:{_sig['smart_bias']:+.3f}"
+        if _sig.get("telonex_available") else " [Telonex:off]"
+    )
     _log("INFO",
          f"UpDown {interval_minutes}m | Señales — "
          f"TA:{ta_data.get('recommendation','?')}({_sig['ta_raw']:+.3f}) "
          f"RSI:{ta_data.get('rsi','?')} MACD:{_sig['macd_sig']:+.3f} "
          f"EMA:{_sig['ema_sig']:+.3f} Momentum:{_sig['momentum']:+.3f} "
-         f"OFI:{_sig.get('ofi',0):+.3f} Mercado:{_sig['market_sig']:+.3f} Macro:{_sig['macro']:+.3f} "
-         f"→ COMBINADA:{_sig['combined']:+.4f} ({_sig['direction']})")
+         f"OFI:{_sig.get('ofi',0):+.3f} Mercado:{_sig['market_sig']:+.3f} Macro:{_sig['macro']:+.3f}"
+         f"{_tx_str} → COMBINADA:{_sig['combined']:+.4f} ({_sig['direction']})")
 
     # ── Apuesta fantasma (siempre, haya o no señal real) ────────────────────
     # Se registra para CADA mercado escaneado — si hubo trade real la
@@ -2044,6 +2059,7 @@ async def _run_updown_loop():
     await asyncio.sleep(15)  # esperar a que run_bot inicialice balance
     _updown_balance_tick = 0
     _updown_last_balance_refresh = 0.0  # timestamp de último refresh de balance
+    _telonex_last_wallet_update = 0.0   # timestamp de último update_top_wallets
     while state.running:
         try:
             # Refrescar balance real desde Polymarket cada 3 min (no cada 60s).
@@ -2068,6 +2084,14 @@ async def _run_updown_loop():
                 _ud_headroom           = max(0.0, state.budget_updown - state.deployed_updown)
                 state.available_updown = round(min(_ud_headroom, state.balance_usdc), 2)
                 _log("INFO", f"UpDown | Budget calculado: ${state.budget_updown:.2f} / headroom ${_ud_headroom:.2f} / disponible ${state.available_updown:.2f}")
+
+            # Actualizar smart wallet ranking (Telonex) cada 2h
+            if bot_params.telonex_enabled and _now_mono - _telonex_last_wallet_update >= 7200:
+                try:
+                    await telonex_data.update_top_wallets()
+                    _telonex_last_wallet_update = _now_mono
+                except Exception as _tw_err:
+                    _log("WARN", f"Telonex wallet update error: {_tw_err}")
 
             # Cancelar órdenes GTC de UpDown que no se llenaron (>90s abiertas)
             await _cancel_stale_updown_orders()

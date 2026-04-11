@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 import bot
 from config import bot_params, settings
 from performance_monitor import perf
+from telonex_data import telonex_data
 
 # ── Chat history storage ───────────────────────────────────────────────────
 CHATS_FILE = Path(__file__).parent / "data" / "chats.json"
@@ -1863,6 +1864,32 @@ async def delete_chat(chat_id: str):
         del chats[chat_id]
         _save_chats(chats)
     return {"ok": True}
+
+
+# ── Telonex endpoints ─────────────────────────────────────────────────────
+
+@app.get("/api/telonex/status")
+async def get_telonex_status():
+    """Estado del módulo Telonex: última actualización, wallets top, OFI disponible."""
+    return telonex_data.get_status()
+
+
+@app.get("/api/telonex/top-wallets")
+async def get_telonex_top_wallets():
+    """Lista de top smart wallets con PnL y posición de sesgo."""
+    status = telonex_data.get_status()
+    wallets = status.get("top_wallets", [])
+    return {"wallets": wallets, "count": len(wallets)}
+
+
+@app.post("/api/telonex/update-wallets")
+async def refresh_telonex_wallets():
+    """Fuerza actualización del ranking de smart wallets (puede tardar ~10s)."""
+    try:
+        await telonex_data.update_top_wallets(force=True)
+        return {"ok": True, "message": "Wallets actualizados"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────
