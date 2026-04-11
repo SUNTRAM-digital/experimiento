@@ -19,12 +19,12 @@ Historial de fases:
 """
 
 MAJOR = 9
-MINOR = 1
+MINOR = 2
 PATCH = 0
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom Bets + Claude Advisor Total"
+PHASE_NAME = "Phantom Bets + Claude Advisor + Telonex"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
@@ -38,5 +38,5 @@ PHASES = {
     6: "Risk Manager — circuit breaker, cash buffer, auto-sizing",
     7: "ML Models — Warming Model, Ensemble Calibrator adaptativo",
     8: "UpDown Markets — BTC 5m/15m, learner adaptativo, performance monitor",
-    9: "Phantom Bets + Claude Advisor — aprendizaje sin capital, Claude acceso total",
+    9: "Phantom Bets + Claude Advisor + Telonex — on-chain OFI, smart wallet flow, UI panel",
 }

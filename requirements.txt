@@ -13,3 +13,5 @@ python-dateutil==2.9.0
 aiofiles==24.1.0
 tradingview-ta>=3.3.0
 psutil>=5.9.0
+pandas>=2.0.0
+telonex[dataframe]>=0.2.2
