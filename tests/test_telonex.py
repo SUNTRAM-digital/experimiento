@@ -211,7 +211,7 @@ def test_get_status_with_wallets(tx):
 def test_get_real_ofi_no_api_key(tx, monkeypatch):
     monkeypatch.setattr("telonex_data._get_api_key", lambda: "")
     monkeypatch.setattr("telonex_data._is_enabled",  lambda: False)
-    r = asyncio.get_event_loop().run_until_complete(
+    r = asyncio.new_event_loop().run_until_complete(
         tx.get_real_ofi(UP_TOKEN, WINDOW_TS, 15)
     )
     assert r["ofi"] == 0.0
@@ -222,7 +222,7 @@ def test_get_smart_wallet_bias_no_wallets(tx, monkeypatch):
     monkeypatch.setattr("telonex_data._get_api_key", lambda: "fake_key")
     monkeypatch.setattr("telonex_data._is_enabled",  lambda: True)
     tx._top_wallets = {}
-    bias = asyncio.get_event_loop().run_until_complete(
+    bias = asyncio.new_event_loop().run_until_complete(
         tx.get_smart_wallet_bias(UP_TOKEN, WINDOW_TS)
     )
     assert bias == 0.0
@@ -231,7 +231,7 @@ def test_get_smart_wallet_bias_no_wallets(tx, monkeypatch):
 def test_get_updown_signals_missing_market(tx, monkeypatch):
     monkeypatch.setattr("telonex_data._get_api_key", lambda: "")
     monkeypatch.setattr("telonex_data._is_enabled",  lambda: False)
-    r = asyncio.get_event_loop().run_until_complete(
+    r = asyncio.new_event_loop().run_until_complete(
         tx.get_updown_signals({}, btc_price_start=50000.0)
     )
     assert r["available"] is False
@@ -242,7 +242,7 @@ def test_get_updown_signals_returns_dict(tx, monkeypatch):
     monkeypatch.setattr("telonex_data._get_api_key", lambda: "")
     monkeypatch.setattr("telonex_data._is_enabled",  lambda: False)
     market = {"up_token": UP_TOKEN, "window_start_ts": WINDOW_TS, "interval_minutes": 15}
-    r = asyncio.get_event_loop().run_until_complete(
+    r = asyncio.new_event_loop().run_until_complete(
         tx.get_updown_signals(market, btc_price_start=50000.0)
     )
     assert "real_ofi" in r
