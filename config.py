@@ -45,6 +45,10 @@ class BotParams:
         self.updown_15m_enabled: bool = os.getenv("UPDOWN_15M_ENABLED", "true").lower() == "true"
         self.updown_max_usdc: float = float(os.getenv("UPDOWN_MAX_USDC", 1.0))
         self.updown_max_consecutive_losses: int = int(os.getenv("UPDOWN_MAX_CONSECUTIVE_LOSSES", 5))
+        # --- Telonex (Fase 11) ---
+        self.telonex_enabled: bool = os.getenv("TELONEX_ENABLED", "true").lower() == "true"
+        self.telonex_smart_wallet_weight: float = float(os.getenv("TELONEX_SMART_WALLET_WEIGHT", 0.10))
+        self.telonex_real_ofi_weight: float = float(os.getenv("TELONEX_REAL_OFI_WEIGHT", 0.12))
         # --- Asignación de capital ---
         self.alloc_weather_pct: float = 0.60
         self.alloc_btc_pct: float = 0.20
@@ -81,6 +85,9 @@ class BotParams:
             "updown_15m_enabled": self.updown_15m_enabled,
             "updown_max_usdc": self.updown_max_usdc,
             "updown_max_consecutive_losses": self.updown_max_consecutive_losses,
+            "telonex_enabled":               self.telonex_enabled,
+            "telonex_smart_wallet_weight":   self.telonex_smart_wallet_weight,
+            "telonex_real_ofi_weight":       self.telonex_real_ofi_weight,
             "alloc_weather_pct": self.alloc_weather_pct,
             "alloc_btc_pct": self.alloc_btc_pct,
             "alloc_updown_pct": self.alloc_updown_pct,
@@ -130,6 +137,9 @@ class Settings(BaseSettings):
     poly_signature_type: int = Field(default=0, env="POLY_SIGNATURE_TYPE")
     poly_wallet_address: str = Field(default="", env="POLY_WALLET_ADDRESS")
     cmc_api_key: str = Field(default="", env="CMC_API_KEY")
+    # Telonex API (Fase 11): on-chain fills, smart wallet tracking
+    # Registro gratuito en https://telonex.io
+    telonex_api_key: str = Field(default="", env="TELONEX_API_KEY")
 
     class Config:
         env_file = ".env"

@@ -54,14 +54,27 @@ _MIN_ELAPSED_15M = 3.5   # minutos
 # Basado en knowledge base (v83 bot externo + IR = IC × √N):
 #   TA + RSI/EMA/MACD = señal técnica compuesta (más informativa)
 #   Momentum intra-ventana = señal más directa para 5m/15m
-#   OFI (order book imbalance) = presión compradora/vendedora instantánea
+#   OFI real (Telonex on-chain): buy/sell pressure desde fills reales → reemplaza proxy
+#   OFI proxy (up_price - 0.5): fallback cuando Telonex no disponible
+#   Smart wallet bias (Telonex): dirección de wallets históricamente rentables
 #   Macro (CMC 1h) = contexto amplio
 #   Consenso de mercado = confirmación secundaria
-_W_TA          = 0.50  # TradingView: indicadores técnicos compuestos
-_W_MOMENTUM    = 0.25  # Movimiento BTC desde inicio de ventana
-_W_OFI         = 0.10  # Order book imbalance (proxy OFI del knowledge base)
-_W_MACRO       = 0.10  # Tendencia macro 1h de CoinMarketCap
-_W_MARKET      = 0.05  # Consenso Polymarket (reducido — el OFI ya captura esto mejor)
+#
+# Con Telonex disponible: TA=0.43 + MOMENTUM=0.22 + OFI_REAL=0.12 + SMART=0.10 + MACRO=0.08 + MKT=0.05
+# Sin Telonex (proxy):    TA=0.50 + MOMENTUM=0.25 + OFI_PROXY=0.10 + MACRO=0.10 + MKT=0.05
+_W_TA           = 0.50   # sin Telonex
+_W_MOMENTUM     = 0.25
+_W_OFI          = 0.10   # proxy sin Telonex
+_W_MACRO        = 0.10
+_W_MARKET       = 0.05
+
+# Con Telonex: pesos ajustados (suman 1.0)
+_W_TA_TX        = 0.43   # TA con Telonex
+_W_MOMENTUM_TX  = 0.22
+_W_OFI_REAL_TX  = 0.12   # OFI real on-chain
+_W_SMART_TX     = 0.10   # Smart wallet bias
+_W_MACRO_TX     = 0.08
+_W_MARKET_TX    = 0.05
 
 
 # ── Señales individuales ──────────────────────────────────────────────────────
@@ -167,9 +180,15 @@ def build_btc_direction_signal(
     btc_price_window_start: Optional[float] = None,
     cmc_data: Optional[dict] = None,
     market: Optional[dict] = None,
+    telonex_signals: Optional[dict] = None,
 ) -> dict:
     """
     Construye la señal de dirección BTC combinando todas las fuentes.
+
+    telonex_signals (opcional): dict de telonex_data.get_updown_signals()
+        real_ofi    – OFI on-chain de la ventana actual  [-1, +1]
+        smart_bias  – sesgo de smart wallets             [-1, +1]
+        available   – bool; si False se ignora
 
     Returns dict con:
         combined   – señal combinada [−1, +1]; positivo=UP, negativo=DOWN
@@ -198,7 +217,7 @@ def build_btc_direction_signal(
     )
     ta_composite = max(-1.0, min(1.0, ta_composite))
 
-    # Señal de consenso de mercado (Polymarket) + OFI
+    # Señal de consenso de mercado (Polymarket) + OFI proxy
     mkt_sig = 0.0
     ofi_sig = 0.0
     if market:
@@ -208,13 +227,30 @@ def build_btc_direction_signal(
         )
         ofi_sig = _order_book_imbalance(market)
 
-    combined = (
-        ta_composite * _W_TA
-        + mom_sig    * _W_MOMENTUM
-        + ofi_sig    * _W_OFI
-        + macro_sig  * _W_MACRO
-        + mkt_sig    * _W_MARKET
-    )
+    # ── Telonex on-chain signals ──────────────────────────────────────────────
+    use_telonex = bool(telonex_signals and telonex_signals.get("available"))
+    real_ofi   = float(telonex_signals.get("real_ofi", 0.0))   if use_telonex else 0.0
+    smart_bias = float(telonex_signals.get("smart_bias", 0.0)) if use_telonex else 0.0
+
+    if use_telonex:
+        # Pesos con Telonex: TA=0.43, MOM=0.22, OFI_REAL=0.12, SMART=0.10, MACRO=0.08, MKT=0.05
+        combined = (
+            ta_composite * _W_TA_TX
+            + mom_sig    * _W_MOMENTUM_TX
+            + real_ofi   * _W_OFI_REAL_TX
+            + smart_bias * _W_SMART_TX
+            + macro_sig  * _W_MACRO_TX
+            + mkt_sig    * _W_MARKET_TX
+        )
+    else:
+        # Pesos sin Telonex (originales): TA=0.50, MOM=0.25, OFI_PROXY=0.10, MACRO=0.10, MKT=0.05
+        combined = (
+            ta_composite * _W_TA
+            + mom_sig    * _W_MOMENTUM
+            + ofi_sig    * _W_OFI
+            + macro_sig  * _W_MACRO
+            + mkt_sig    * _W_MARKET
+        )
     combined = max(-1.0, min(1.0, combined))
 
     # Movimiento BTC en la ventana (para log)
@@ -223,21 +259,24 @@ def build_btc_direction_signal(
         window_pct = round((btc_price - btc_price_window_start) / btc_price_window_start * 100, 4)
 
     return {
-        "combined":    round(combined, 4),
-        "ta":          round(ta_composite, 4),
-        "ta_raw":      round(ta_signal, 4),
-        "rsi_sig":     round(rsi_sig, 4),
-        "ema_sig":     round(ema_sig, 4),
-        "macd_sig":    round(macd_sig, 4),
-        "momentum":    round(mom_sig, 4),
-        "market_sig":  round(mkt_sig, 4),
-        "macro":       round(macro_sig, 4),
-        "ofi":         round(ofi_sig, 4),
-        "rsi":         rsi_val,
-        "macd":        macd,
-        "window_pct":  window_pct,
-        "confidence":  round(abs(combined) * 100, 1),
-        "direction":   "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL"),
+        "combined":          round(combined, 4),
+        "ta":                round(ta_composite, 4),
+        "ta_raw":            round(ta_signal, 4),
+        "rsi_sig":           round(rsi_sig, 4),
+        "ema_sig":           round(ema_sig, 4),
+        "macd_sig":          round(macd_sig, 4),
+        "momentum":          round(mom_sig, 4),
+        "market_sig":        round(mkt_sig, 4),
+        "macro":             round(macro_sig, 4),
+        "ofi":               round(ofi_sig, 4),
+        "real_ofi":          round(real_ofi, 4),
+        "smart_bias":        round(smart_bias, 4),
+        "telonex_available": use_telonex,
+        "rsi":               rsi_val,
+        "macd":              macd,
+        "window_pct":        window_pct,
+        "confidence":        round(abs(combined) * 100, 1),
+        "direction":         "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL"),
     }
 
 
@@ -250,6 +289,7 @@ def evaluate_updown_market(
     btc_price_window_start: Optional[float] = None,
     cmc_data: Optional[dict] = None,
     adaptive_params: Optional[dict] = None,
+    telonex_signals: Optional[dict] = None,
 ) -> tuple[Optional[dict], Optional[str]]:
     """
     Evalúa si hay condiciones para operar el mercado UP/DOWN.
@@ -304,6 +344,7 @@ def evaluate_updown_market(
         btc_price_window_start=btc_price_window_start,
         cmc_data=cmc_data,
         market=market,
+        telonex_signals=telonex_signals,
     )
 
     combined = sig["combined"]
