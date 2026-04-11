@@ -165,6 +165,9 @@ def _build_status() -> dict:
         "updown_recent_trades":   bot.state.updown_recent_trades,
         # Todos los parámetros del bot (para la sección Estrategias)
         "bot_params":             bot_params.to_dict(),
+        # Versión del proyecto
+        "version":                __import__("version").SHORT_LABEL,
+        "version_full":           __import__("version").FULL_LABEL,
     }
 
 
@@ -244,6 +247,152 @@ async def on_startup():
 
     # Arrancar broadcaster en background
     asyncio.create_task(_realtime_broadcaster())
+    # Arrancar análisis proactivo de Claude
+    asyncio.create_task(_proactive_advisor_loop())
+
+
+# ── Análisis proactivo de Claude ──────────────────────────────────────────
+
+_PROACTIVE_INTERVAL_H = 2      # horas entre análisis proactivos
+_proactive_last_run: datetime | None = None
+
+_PROACTIVE_SYSTEM = """Eres el asesor proactivo de WeatherBot. Analiza el estado completo del sistema y detecta:
+
+1. RIESGO: pérdidas consecutivas excesivas, concentración en pocas posiciones, capital ocioso
+2. CONFIGURACIÓN: parámetros que parecen subóptimos dado el historial (EV mínimo, Kelly, allocations)
+3. APRENDIZAJE: si el updown learner muestra patrones claros (phantom bets que hubieran ganado, señales que fallan, etc.)
+4. OPORTUNIDADES: si hay algo que el bot debería hacer diferente
+
+RESPONDE en una de estas dos formas:
+- Si no hay nada importante: responde EXACTAMENTE "SIN_ALERTAS"
+- Si hay algo que el usuario debería saber: da un análisis conciso (máx 5 líneas) con tu hallazgo principal.
+
+Si sugieres cambiar parámetros, incluye AL FINAL tu sugerencia en este formato exacto (en la misma respuesta):
+CAMBIO_SUGERIDO: [descripción breve de qué cambiar y por qué]
+PARAMS_JSON: {"key": value}
+
+No incluyas PARAMS_JSON si no tienes una sugerencia concreta de parámetros.
+Responde en español."""
+
+
+async def _run_proactive_analysis() -> str | None:
+    """
+    Pide a Claude que analice el sistema proactivamente.
+    Retorna el texto de la notificación, o None si no hay alertas.
+    """
+    from claude_analyst import get_client as _get_client
+    import os as _os, json as _json
+
+    client = _get_client()
+    if client is None:
+        return None
+
+    model = _os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+    context = _build_chat_context(include_logs=True, include_learner=True)
+
+    try:
+        resp = await client.messages.create(
+            model=model,
+            max_tokens=600,
+            system=_PROACTIVE_SYSTEM,
+            messages=[{
+                "role": "user",
+                "content": f"Analiza el estado actual del sistema:\n\n{context}",
+            }],
+        )
+        text = resp.content[0].text.strip()
+        if text == "SIN_ALERTAS" or "SIN_ALERTAS" in text.upper():
+            return None
+        return text
+    except Exception:
+        return None
+
+
+async def _proactive_advisor_loop():
+    """Loop de fondo: análisis proactivo cada _PROACTIVE_INTERVAL_H horas."""
+    global _proactive_last_run
+    # Esperar 3 minutos antes del primer análisis para que el bot se estabilice
+    await asyncio.sleep(180)
+    while True:
+        try:
+            msg = await _run_proactive_analysis()
+            if msg:
+                _proactive_last_run = datetime.now(timezone.utc)
+                # Guardar como mensaje en el chat de notificaciones
+                _store_advisor_notification(msg)
+                # Broadcast a todos los clientes WebSocket
+                await _broadcast({
+                    "type": "advisor_notification",
+                    "data": {
+                        "text": msg,
+                        "time": _proactive_last_run.strftime("%H:%M UTC"),
+                    },
+                })
+        except Exception:
+            pass
+        await asyncio.sleep(_PROACTIVE_INTERVAL_H * 3600)
+
+
+_ADVISOR_NOTIF_FILE = Path(__file__).parent / "data" / "advisor_notifications.json"
+
+
+def _store_advisor_notification(text: str):
+    """Guarda la notificación proactiva en disco para que persista entre recargas."""
+    try:
+        notifs = []
+        if _ADVISOR_NOTIF_FILE.exists():
+            notifs = json.loads(_ADVISOR_NOTIF_FILE.read_text(encoding="utf-8"))
+        notifs.insert(0, {
+            "time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "text": text,
+            "read": False,
+        })
+        notifs = notifs[:20]  # mantener últimas 20
+        _ADVISOR_NOTIF_FILE.parent.mkdir(exist_ok=True)
+        _ADVISOR_NOTIF_FILE.write_text(json.dumps(notifs, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+@app.get("/api/advisor/notifications")
+async def get_advisor_notifications():
+    """Devuelve las notificaciones proactivas de Claude."""
+    try:
+        if _ADVISOR_NOTIF_FILE.exists():
+            data = json.loads(_ADVISOR_NOTIF_FILE.read_text(encoding="utf-8"))
+            return {"notifications": data, "unread": sum(1 for n in data if not n.get("read"))}
+    except Exception:
+        pass
+    return {"notifications": [], "unread": 0}
+
+
+@app.post("/api/advisor/notifications/read")
+async def mark_notifications_read():
+    """Marca todas las notificaciones como leídas."""
+    try:
+        if _ADVISOR_NOTIF_FILE.exists():
+            data = json.loads(_ADVISOR_NOTIF_FILE.read_text(encoding="utf-8"))
+            for n in data:
+                n["read"] = True
+            _ADVISOR_NOTIF_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.post("/api/advisor/analyze-now")
+async def advisor_analyze_now():
+    """Fuerza un análisis proactivo inmediato."""
+    msg = await _run_proactive_analysis()
+    if msg:
+        _store_advisor_notification(msg)
+        _proactive_last_run_val = datetime.now(timezone.utc)
+        await _broadcast({
+            "type": "advisor_notification",
+            "data": {"text": msg, "time": _proactive_last_run_val.strftime("%H:%M UTC")},
+        })
+        return {"ok": True, "notification": msg}
+    return {"ok": True, "notification": None, "msg": "Sin alertas en este momento"}
 
 
 # ── endpoints REST ─────────────────────────────────────────────────────────
@@ -251,6 +400,19 @@ async def on_startup():
 @app.get("/")
 async def index():
     return FileResponse(static_dir / "index.html")
+
+
+@app.get("/api/version")
+async def get_version():
+    from version import VERSION, PHASE, PHASE_NAME, FULL_LABEL, SHORT_LABEL, PHASES
+    return {
+        "version":     VERSION,
+        "phase":       PHASE,
+        "phase_name":  PHASE_NAME,
+        "full_label":  FULL_LABEL,
+        "short_label": SHORT_LABEL,
+        "phases":      {str(k): v for k, v in PHASES.items()},
+    }
 
 
 @app.get("/api/status")
@@ -594,11 +756,21 @@ def _save_notes(notes: dict):
 async def get_strategy_performance():
     """Estadísticas de rendimiento por tipo de estrategia desde el historial de trades."""
     history = bot.state.trade_history or []
+
+    def _empty():
+        return {
+            "trades": 0, "wins": 0, "losses": 0, "pending": 0, "total_cost": 0.0,
+            "by_side": {"YES": {"t": 0, "w": 0, "l": 0}, "NO": {"t": 0, "w": 0, "l": 0}},
+            "by_ev":   {"low": {"t": 0, "w": 0, "l": 0}, "med": {"t": 0, "w": 0, "l": 0}, "high": {"t": 0, "w": 0, "l": 0}},
+            "recent":  [],  # last 10 resolved results ("WIN"/"LOSS")
+        }
+
     stats = {
-        "WEATHER":    {"trades": 0, "wins": 0, "losses": 0, "pending": 0, "total_cost": 0.0},
-        "BTC":        {"trades": 0, "wins": 0, "losses": 0, "pending": 0, "total_cost": 0.0},
-        "BTC_UPDOWN": {"trades": 0, "wins": 0, "losses": 0, "pending": 0, "total_cost": 0.0},
+        "WEATHER":    _empty(),
+        "BTC":        _empty(),
+        "BTC_UPDOWN": _empty(),
     }
+
     for t in history:
         asset = t.get("asset", "WEATHER")
         if asset not in stats:
@@ -613,10 +785,44 @@ async def get_strategy_performance():
             s["losses"] += 1
         else:
             s["pending"] += 1
-    # Win rates
+
+        # By side
+        side = (t.get("side") or "").upper()
+        if side in ("YES", "NO"):
+            bs = s["by_side"][side]
+            bs["t"] += 1
+            if result == "WIN":   bs["w"] += 1
+            elif result == "LOSS": bs["l"] += 1
+
+        # By EV bucket
+        ev = float(t.get("ev_pct") or 0)
+        bucket = "high" if ev >= 30 else ("med" if ev >= 15 else "low")
+        be = s["by_ev"][bucket]
+        be["t"] += 1
+        if result == "WIN":   be["w"] += 1
+        elif result == "LOSS": be["l"] += 1
+
+        # Recent resolved
+        if result in ("WIN", "LOSS") and len(s["recent"]) < 10:
+            s["recent"].append(result)
+
+    def _wr(w, l):
+        return round(w / (w + l), 3) if (w + l) > 0 else None
+
+    # Win rates + recent WR
     for s in stats.values():
         resolved = s["wins"] + s["losses"]
-        s["win_rate"] = round(s["wins"] / resolved, 3) if resolved > 0 else None
+        s["win_rate"] = _wr(s["wins"], s["losses"])
+        rec = s["recent"]
+        s["recent_wr"] = _wr(sum(1 for r in rec if r == "WIN"), sum(1 for r in rec if r == "LOSS"))
+        # Flatten by_side / by_ev with win rates
+        for bkey in ("YES", "NO"):
+            b = s["by_side"][bkey]
+            b["wr"] = _wr(b["w"], b["l"])
+        for bkey in ("low", "med", "high"):
+            b = s["by_ev"][bkey]
+            b["wr"] = _wr(b["w"], b["l"])
+
     # Learner data for UpDown
     try:
         from updown_learner import get_summary
@@ -962,11 +1168,12 @@ async def set_goal(data: dict):
 
 # ── Chat con Claude ────────────────────────────────────────────────────────
 
-def _build_chat_context() -> str:
+def _build_chat_context(include_logs: bool = True, include_learner: bool = True) -> str:
     """Construye el contexto actual del bot para el chat."""
     s = bot.state
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     lines = [
-        f"Fecha/hora actual: {bot.state.last_scan or 'N/A'} UTC",
+        f"Fecha/hora actual: {now_str}",
         f"Bot corriendo: {'Sí' if s.running else 'No'}",
         f"",
         f"=== BALANCE ===",
@@ -1081,7 +1288,6 @@ def _build_chat_context() -> str:
 
     # === META DE GANANCIA ===
     if bp.get("profit_goal_usdc", 0) > 0:
-        from datetime import datetime, timezone as _tz
         goal_usdc = bp["profit_goal_usdc"]
         goal_hours = bp["profit_goal_hours"]
         start_iso = bp.get("profit_goal_start_iso", "")
@@ -1093,7 +1299,7 @@ def _build_chat_context() -> str:
         if start_iso:
             try:
                 start_dt = datetime.fromisoformat(start_iso)
-                elapsed_h = (datetime.now(_tz.utc) - start_dt).total_seconds() / 3600
+                elapsed_h = (datetime.now(timezone.utc) - start_dt).total_seconds() / 3600
                 remaining_h = max(0, goal_hours - elapsed_h)
                 time_left_str = f"{remaining_h:.1f}h restantes"
             except Exception:
@@ -1142,17 +1348,69 @@ def _build_chat_context() -> str:
         if notes.get("updown", "").strip():
             lines.append(f"UpDown: {notes['updown']}")
 
+    # === HISTORIAL RECIENTE DE TRADES ===
+    if s.trade_history:
+        recent_trades = s.trade_history[-15:]
+        lines += ["", f"=== ÚLTIMOS {len(recent_trades)} TRADES ==="]
+        for t in recent_trades:
+            result = t.get("result", "PENDIENTE")
+            asset  = t.get("asset", "?")
+            lines.append(
+                f"• {t.get('time','?')} | {asset} | {t.get('market','')[:40]} | "
+                f"${t.get('cost_usdc',0):.2f} @ {t.get('price',0):.3f} | {result}"
+            )
+
+    # === APRENDIZAJE UPDOWN ===
+    if include_learner:
+        try:
+            from updown_learner import get_summary as _ud_summary
+            for iv in [5, 15]:
+                ud = _ud_summary(iv)
+                if ud and ud.get("total", 0) > 0:
+                    wr_str = f"{ud['win_rate']*100:.1f}%" if ud.get("win_rate") is not None else "N/A"
+                    rwr_str = f"{ud['recent_wr']*100:.1f}%" if ud.get("recent_wr") is not None else "N/A"
+                    ap = ud.get("adaptive", {})
+                    ph = ud.get("phantom")
+                    ph_str = ""
+                    if ph:
+                        ph_wr = f"{ph['win_rate']*100:.1f}%" if ph.get("win_rate") is not None else "N/A"
+                        ph_str = f" | Phantom: {ph['total']} obs WR={ph_wr}"
+                    lines.append(
+                        f"UpDown {iv}m learner: {ud['wins']}/{ud['total']} WR={wr_str} | "
+                        f"Reciente={rwr_str}{ph_str} | Ajuste: {ap.get('reason','?')}"
+                    )
+        except Exception:
+            pass
+
+    # === LOGS RECIENTES (últimos 30) ===
+    if include_logs:
+        recent_logs = bot.get_log_history()[-30:]
+        if recent_logs:
+            lines += ["", "=== LOGS RECIENTES (últimos 30) ==="]
+            for entry in recent_logs:
+                lines.append(f"[{entry.get('time','?')}] [{entry.get('level','INFO')}] {entry.get('msg','')}")
+
     return "\n".join(lines)
 
 
-CHAT_SYSTEM = """Eres el operador de trading de Weatherbot. Tienes control TOTAL sobre el bot: puedes vender posiciones, comprar oportunidades de clima, comprar oportunidades de Bitcoin, disparar escaneos UpDown y controlar el auto-trading.
+CHAT_SYSTEM = """Eres el asesor experto y operador de Weatherbot en Polymarket. Tienes acceso TOTAL de lectura a todo el sistema: logs, parámetros, posiciones, estadísticas, historial de trades y datos de mercado.
 
 IMPORTANTE: NUNCA respondas que "no puedes realizar operaciones" — las herramientas SÍ ejecutan trades reales en Polymarket.
 
 CONTEXTO ACTUAL DEL BOT:
 {context}
 
-INSTRUCCIONES OPERATIVAS:
+═══ REGLAS DE ACCESO ═══
+
+LECTURA (siempre disponible): puedes analizar y comentar sobre cualquier dato del sistema.
+
+EJECUCIÓN DE TRADES (cuando el usuario lo pide): vender posiciones, comprar oportunidades, disparar escaneos.
+
+MODIFICACIÓN DE PARÁMETROS (SOLO cuando el usuario lo pide explícitamente): llama update_params únicamente si el usuario dice "cambia", "ajusta", "modifica", "aplica eso", "sube X", "baja Y" u otra orden explícita de cambio. NUNCA modifiques parámetros como sugerencia proactiva — solo sugiérelos y espera confirmación.
+
+ANÁLISIS PROACTIVO: Cuando el usuario pregunta sobre el estado general, analiza en profundidad: patrones de pérdidas, configuraciones subóptimas, oportunidades perdidas (phantom bets), concentración de riesgo, etc. Ofrece sugerencias concretas con los valores exactos recomendados, pero NO las apliques sin orden explícita.
+
+═══ INSTRUCCIONES OPERATIVAS ═══
 
 Clima:
 - Si el usuario pide vender una posición → llama sell_position con token_id y size exactos
@@ -1162,21 +1420,19 @@ Bitcoin (mercados de precio):
 - Si el usuario pide comprar una oportunidad de BTC → llama buy_btc_opportunity con el condition_id de la lista BTC
 - Si el usuario pide activar auto-trading / cada N minutos → llama set_btc_auto_mode(enabled=true, interval_minutes=N)
 - Si el usuario pide detener auto-trading → llama set_btc_auto_mode(enabled=false)
-- Para comprar BTC: evalúa el EV, el RSI, la dirección del mercado y el momentum de TradingView antes de decidir
 
 UpDown (5m/15m BTC up-or-down):
-- Si el usuario pide un escaneo UpDown o quieres ejecutar un trade UpDown → llama trigger_updown_scan con interval_minutes=5 o 15
-- Evalúa si el UpDown está detenido (pérdidas consecutivas) antes de dispararlo
-- Para recomendar UpDown: mira la señal TA de BTC (RSI, EMA, recomendación TradingView), momentum y tendencia CMC
+- Si el usuario pide un escaneo UpDown → llama trigger_updown_scan con interval_minutes=5 o 15
+
+Parámetros:
+- Si el usuario dice "aplica esa sugerencia", "cambia X a Y", "sube/baja el parámetro Z" → llama update_params
+- Incluye siempre un "reason" claro de por qué se hace el cambio
+- Después de aplicar, confirma qué cambió y el valor anterior vs nuevo
 
 MODO AUTÓNOMO (cuando auto_trade_mode = ACTIVO y hay meta de ganancia activa):
 - Actúa sin pedir confirmación — ejecuta las operaciones directamente
 - Prioriza las acciones que acerquen la cuenta a la meta de ganancia
-- Si hay oportunidades de clima con EV > umbral → compra directamente
-- Si hay señal BTC clara (RSI, TA, CMC alineados) → compra la oportunidad BTC
-- Si UpDown no está detenido y hay señal → dispara escaneo UpDown
 - Reporta en 2-3 líneas qué hiciste y por qué; no pidas aprobación
-- Si la meta ya se alcanzó → informa al usuario y para de tradear activamente
 
 General:
 - Antes de cada operación di en 1 línea qué harás y por qué
@@ -1271,6 +1527,24 @@ CHAT_TOOLS = [
                 "reason": {"type": "string", "description": "Por qué se dispara este escaneo"},
             },
             "required": ["interval_minutes"],
+        },
+    },
+    {
+        "name": "update_params",
+        "description": "Actualiza uno o más parámetros del bot. SOLO llamar si el usuario explícitamente pide cambiar parámetros (dice 'cambia', 'ajusta', 'aplica', 'sube', 'baja', etc.). NUNCA usar proactivamente sin orden explícita del usuario.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "params": {
+                    "type": "object",
+                    "description": "Diccionario con los parámetros a cambiar. Claves válidas: max_position_usdc, min_position_usdc, kelly_fraction, min_ev_threshold, max_daily_loss_pct, max_hours_to_resolution, min_liquidity_usdc, max_spread_pct, min_volume_24h_usdc, scan_interval_minutes, weather_enabled, btc_enabled, btc_max_position_usdc, updown_5m_enabled, updown_15m_enabled, updown_max_usdc, updown_max_consecutive_losses, alloc_weather_pct, alloc_btc_pct, alloc_updown_pct",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Razón del cambio — por qué se hace esta modificación"
+                },
+            },
+            "required": ["params", "reason"],
         },
     },
 ]
@@ -1418,6 +1692,36 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
                 return f"UpDown {interval_minutes}m — Scan ejecutado, no se encontró mercado activo."
         except Exception as e:
             return f"Error al ejecutar scan UpDown {interval_minutes}m: {e}"
+
+    elif name == "update_params":
+        params = inputs.get("params", {})
+        reason = inputs.get("reason", "Cambio via chat")
+        if not params:
+            return "Error: no se proporcionaron parámetros a cambiar."
+        # Guardar valores anteriores para confirmación
+        old_values = {}
+        valid_keys = {
+            "max_position_usdc", "min_position_usdc", "kelly_fraction",
+            "min_ev_threshold", "max_daily_loss_pct", "max_hours_to_resolution",
+            "min_liquidity_usdc", "max_spread_pct", "min_volume_24h_usdc",
+            "scan_interval_minutes", "weather_enabled", "btc_enabled",
+            "btc_max_position_usdc", "updown_5m_enabled", "updown_15m_enabled",
+            "updown_max_usdc", "updown_max_consecutive_losses",
+            "alloc_weather_pct", "alloc_btc_pct", "alloc_updown_pct",
+        }
+        invalid = [k for k in params if k not in valid_keys]
+        if invalid:
+            return f"Error: clave(s) de parámetro desconocida(s): {', '.join(invalid)}. Claves válidas: {', '.join(sorted(valid_keys))}"
+        current = bot_params.to_dict()
+        for k in params:
+            old_values[k] = current.get(k, "N/A")
+        try:
+            bot_params.update(params)
+            changes = "\n".join(f"  • {k}: {old_values[k]} → {params[k]}" for k in params)
+            bot._log("INFO", f"[Chat] Parámetros actualizados por Claude: {', '.join(f'{k}={v}' for k,v in params.items())} | Motivo: {reason}")
+            return f"Parámetros actualizados:\n{changes}\nMotivo: {reason}"
+        except Exception as e:
+            return f"Error al actualizar parámetros: {e}"
 
     return f"Herramienta desconocida: {name}"
 

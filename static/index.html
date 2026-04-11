@@ -121,6 +121,19 @@
     border-top: 1px solid #1e3a5f; font-size: 11px;
   }
   .chat-action-result.ok  { color: var(--green); }
+  /* Advisor suggestion card */
+  .advisor-suggestion {
+    background: #0e2a1a; border: 1px solid #2a6a3a;
+    border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 11.5px;
+  }
+  .advisor-sug-label { color: #3fb950; font-weight: 700; margin-bottom: 3px; font-size: 11px; }
+  .advisor-sug-detail { color: var(--muted); margin-bottom: 8px; font-size: 11px; }
+  .advisor-sug-apply {
+    background: #1a4a2e; border: 1px solid #3fb950; color: #3fb950;
+    border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 11px;
+    transition: all .15s;
+  }
+  .advisor-sug-apply:hover { background: #3fb950; color: #000; }
   .chat-action-result.err { color: var(--red); }
   /* Historial de conversaciones */
   .chat-hist-panel {
@@ -292,6 +305,7 @@
 <header>
   <h1>⛅ Weatherbot Polymarket</h1>
   <span id="status-badge" class="badge off">DETENIDO</span>
+  <span id="version-badge" title="" style="font-size:10px; font-weight:600; color:var(--muted); background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:4px; padding:2px 7px; letter-spacing:.4px; cursor:default;">v—</span>
   <span style="color:var(--muted); margin-left:auto; font-size:11px; display:flex; align-items:center; gap:16px;">
     <span title="Hora UTC que el bot usa para todos los mercados (los mercados UpDown también son UTC)">
       Bot UTC: <span id="bot-clock" style="color:var(--blue); font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.5px;">—</span>
@@ -1156,11 +1170,16 @@
         <div class="panel" style="padding:14px">
           <div style="font-size:.8rem;color:#60a5fa;font-weight:700;margin-bottom:8px">⛅ ESTRATEGIA CLIMA</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
-            <b style="color:var(--text)">Fuente:</b> Forecast NOAA (weather.gov) — sin API key<br>
-            <b style="color:var(--text)">Señal:</b> Probabilidad gaussiana de que la temp máxima supere/no supere el umbral del mercado<br>
+            <b style="color:var(--text)">Fuente:</b> NOAA weather.gov (sin API key) + OpenMeteo ensemble<br>
+            <b style="color:var(--text)">Señal:</b> Probabilidad gaussiana sobre umbral de temperatura (incertidumbre 2.5°F/3.5°F/5°F según horizonte)<br>
             <b style="color:var(--text)">Sizing:</b> Kelly fraccionado × presupuesto clima<br>
-            <b style="color:var(--text)">Filtros:</b> EV mínimo, liquidez mínima, spread máximo, horas al cierre<br>
-            <b style="color:var(--text)">Aprobación:</b> Claude API revisa cada trade antes de ejecutar (salvo auto-trade)
+            <b style="color:var(--text)">Filtros:</b> EV mínimo, liquidez, spread, horas al cierre<br>
+            <b style="color:var(--text)">Lawyer's Edge (F4):</b> Parser ICAO, boundary zones, reglas de resolución por tipo de dato<br>
+            <b style="color:var(--text)">Near-zero (F5):</b> Entradas &lt;8¢ de alta asimetría detectadas<br>
+            <b style="color:var(--text)">Risk (F6):</b> Circuit breaker, cash buffer, auto-sizing por rachas<br>
+            <b style="color:var(--text)">ML (F7):</b> Warming/Cooling Model + Ensemble Calibrator NOAA/OpenMeteo<br>
+            <b style="color:var(--text)">Backtesting (F3):</b> 4 estrategias probadas históricamente (value, momentum, contrarian, combined)<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API (acceso total: logs, params, historial)
           </div>
           <div id="strat-weather-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
         </div>
@@ -1169,32 +1188,41 @@
         <div class="panel" style="padding:14px">
           <div style="font-size:.8rem;color:#f59e0b;font-weight:700;margin-bottom:8px">₿ ESTRATEGIA BTC PREDICCIÓN</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
-            <b style="color:var(--text)">Fuente:</b> Precio Binance + TradingView TA + CoinMarketCap<br>
-            <b style="color:var(--text)">Señal:</b> Modelo log-normal: probabilidad de que BTC esté sobre/bajo un threshold al cierre<br>
-            <b style="color:var(--text)">Inputs:</b> Precio actual, volatilidad histórica (klines), horas al cierre<br>
+            <b style="color:var(--text)">Fuente:</b> Precio Binance + TradingView TA + CoinMarketCap 1h<br>
+            <b style="color:var(--text)">Señal:</b> Modelo log-normal: P(BTC sobre/bajo umbral) con volatilidad histórica (klines)<br>
             <b style="color:var(--text)">Filtros:</b> EV mínimo, confirmación TA (RSI + recomendación), horas al cierre<br>
-            <b style="color:var(--text)">Aprobación:</b> Claude API revisa (salvo auto-trade)
+            <b style="color:var(--text)">Patrones (F2):</b> Category tracker, contrarian logger, exit monitor, P2 win rate decay<br>
+            <b style="color:var(--text)">Screener (F3):</b> Value + momentum screener, Bayesian updating, capital velocity<br>
+            <b style="color:var(--text)">Wallet Tracker (F5):</b> Señales de smart wallets detectadas en Polymarket<br>
+            <b style="color:var(--text)">Risk (F6):</b> Heatmap de riesgo, circuit breaker por tipo de mercado<br>
+            <b style="color:var(--text)">ML (F7):</b> Pesos adaptativos por fuente, ensemble calibrator<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API con contexto completo de plataforma
           </div>
           <div id="strat-btc-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
         </div>
 
         <!-- UpDown -->
         <div class="panel" style="padding:14px">
-          <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:8px">⚡ ESTRATEGIA UPDOWN</div>
+          <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:8px">⚡ ESTRATEGIA UPDOWN BTC</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
-            <b style="color:var(--text)">Fuente:</b> TradingView TA (RSI, EMA20/50, señal) + momentum de ventana + CMC tendencia 1h<br>
-            <b style="color:var(--text)">Señal:</b> Compuesta: TA 70% + momentum ventana 20% + macro CMC 10%<br>
-            <b style="color:var(--text)">Dirección:</b> Predicción pura de movimiento BTC — precio del share solo filtra ratio riesgo/recompensa<br>
-            <b style="color:var(--text)">Aprendizaje:</b> Ajusta umbrales automáticamente por win rate, precisión TA, timing y lado<br>
-            <b style="color:var(--text)">Aprobación:</b> Claude API revisa cada trade (salvo auto-trade)
+            <b style="color:var(--text)">Fuente:</b> TradingView TA (RSI, EMA20/50, MACD, señal) + momentum ventana + CMC macro 1h<br>
+            <b style="color:var(--text)">Señal 5m:</b> TA×0.55 + momentum invertido×0.25 + mercado×0.10 + macro×0.10 (mean-reversion)<br>
+            <b style="color:var(--text)">Señal 15m:</b> TA×0.70 + momentum×0.20 + macro×0.10 (trend-following)<br>
+            <b style="color:var(--text)">Learner (F8):</b> Ajusta umbrales automáticamente por WR, precisión TA, timing, lado, rachas<br>
+            <b style="color:var(--text)">Phantom (F9):</b> Registra apuestas fantasma en CADA mercado — aprende de señales no ejecutadas<br>
+            <b style="color:var(--text)">Performance (F8):</b> Resource dashboard, learner adaptativo por intervalo<br>
+            <b style="color:var(--text)">Risk (F6):</b> Max consecutive losses, stop automático, presupuesto aislado<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API puede cambiar dirección si detecta señales más fuertes
           </div>
           <div id="strat-updown-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
         </div>
       </div>
 
-      <!-- Learner UpDown detalle -->
+      <!-- Estadísticas detalladas por estrategia -->
       <div class="panel" style="padding:14px;margin-bottom:16px">
-        <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:10px">🧠 APRENDIZAJE ADAPTATIVO — UpDown</div>
+        <div style="font-size:.8rem;color:var(--text);font-weight:700;margin-bottom:10px">📊 ESTADÍSTICAS DETALLADAS</div>
+        <div id="strat-detail-weather" style="margin-bottom:12px"></div>
+        <div id="strat-detail-btc"     style="margin-bottom:12px"></div>
         <div id="strat-learner-detail" style="font-size:.75rem;color:var(--muted)">Cargando...</div>
       </div>
 
@@ -1359,8 +1387,10 @@
   <div class="chat-panel">
     <div class="chat-header">
       <span>◆</span> Chat con Claude
+      <span id="advisor-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;cursor:pointer" onclick="showAdvisorNotifications()" title="Notificaciones del asesor">● notif</span>
       <button class="chat-hdr-btn" id="btn-hist" onclick="toggleHistPanel()" title="Ver conversaciones guardadas">☰ Historial</button>
       <button class="chat-hdr-btn" onclick="newChat()" title="Nueva conversación">＋ Nueva</button>
+      <button class="chat-hdr-btn" onclick="requestAdvisorAnalysis()" title="Pedir análisis proactivo ahora">🔍 Analizar</button>
       <button class="chat-clear" onclick="clearChat()" title="Limpiar conversación actual">✕</button>
     </div>
 
@@ -1378,7 +1408,8 @@
     <div class="chat-messages" id="chat-messages">
       <div class="chat-msg assistant">
         <div class="chat-bubble">
-          Hola! Soy tu asistente de trading. Puedo analizar tu portafolio, explicar oportunidades, sugerir si mantener o vender posiciones, o responder cualquier pregunta sobre el bot.
+          Hola! Soy tu asesor de trading con <strong>acceso total de lectura</strong> al sistema. Puedo analizar logs, posiciones, parámetros, estadísticas y patrones de aprendizaje.<br><br>
+          Solo modifico parámetros si me lo pides explícitamente. Si detecto algo importante, te notifico aquí.
         </div>
       </div>
     </div>
@@ -1386,18 +1417,18 @@
     <div class="chat-input-area" id="chat-input-area">
       <div class="chat-suggestions">
         <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Cómo va el portafolio?</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Debería vender algo?</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Cuál es la mejor oportunidad?</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza todos los parámetros</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Qué mejorarías del bot?</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Revisa los logs recientes</span>
       </div>
       <div class="chat-suggestions" style="margin-top:2px">
-        <span style="color:var(--muted);font-size:10px;align-self:center">₿</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza el mercado BTC ahora</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza el aprendizaje UpDown</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Debería vender algo?</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Activa auto BTC cada 5 min</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">Compra la mejor oportunidad BTC</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Detén el auto-trading BTC</span>
       </div>
       <div class="chat-input-row">
-        <textarea id="chat-input" placeholder="Pregunta sobre tu portafolio, posiciones, oportunidades..." onkeydown="chatKeydown(event)"></textarea>
+        <textarea id="chat-input" placeholder="Pregunta sobre tu portafolio, logs, parámetros, estrategias..." onkeydown="chatKeydown(event)"></textarea>
         <button id="chat-send" onclick="sendChat()">↑</button>
       </div>
     </div>
@@ -1512,6 +1543,15 @@ function connectWS() {
     if (msg.type === 'open_orders')  renderOpenOrders(msg.data);
     if (msg.type === 'opportunities')     renderOpportunities(msg.data);
     if (msg.type === 'btc_opportunities') renderBtcOpportunities(msg.data);
+    if (msg.type === 'advisor_notification') {
+      // Mostrar badge y guardar notificación
+      _unreadAdvisor++;
+      const badge = document.getElementById('advisor-badge');
+      if (badge) {
+        badge.style.display = 'inline';
+        badge.textContent = `● ${_unreadAdvisor} nueva${_unreadAdvisor > 1 ? 's' : ''}`;
+      }
+    }
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 20000);
@@ -1570,6 +1610,11 @@ function escHtml(s) {
 
 function renderStatus(d) {
   window._lastStatus = d;  // guardar para uso en otras secciones (Estrategias)
+  // Versión — viene en cada status
+  if (d.version) {
+    const vb = document.getElementById('version-badge');
+    if (vb) { vb.textContent = d.version; vb.title = d.version_full || ''; }
+  }
   const running = d.running;
   document.getElementById('status-badge').textContent = running ? 'ACTIVO' : 'DETENIDO';
   document.getElementById('status-badge').className = `badge ${running ? 'on' : 'off'}`;
@@ -2510,19 +2555,16 @@ function _renderUpdownHistory(trades) {
       : '<span style="color:#4b5563;font-size:.72rem">—</span>';
 
     // Construir link al mercado en Polymarket desde el slug
+    // El slug guardado en trades UpDown ES ya el event slug del evento padre (viene de event.get("slug"))
+    // URL correcta: https://polymarket.com/event/{event-slug}
     const slug = t.slug || '';
-    // El slug tiene forma "btc-updown-15m-1234567890" → el event slug es sin el último segmento
-    // URL: https://polymarket.com/event/{event-slug}/{market-slug}
     let marketCell;
     if (slug) {
-      // Evento padre: quitar el último componente del slug (el timestamp)
-      const parts = slug.split('-');
-      const eventSlug = parts.slice(0, -1).join('-'); // btc-updown-15m
-      const polyUrl = `https://polymarket.com/event/${eventSlug}/${slug}`;
+      const polyUrl = `https://polymarket.com/event/${slug}`;
       marketCell = `
         <span style="background:#1e3a5f;color:#60a5fa;border-radius:4px;padding:1px 5px;font-size:.72rem">${t.interval}m</span>
         <a href="${polyUrl}" target="_blank" rel="noopener"
-           title="Ver mercado en Polymarket: ${slug}"
+           title="Ver en Polymarket: ${slug}"
            style="color:#60a5fa;font-size:.72rem;text-decoration:none;margin-left:3px"
            onclick="event.stopPropagation()">↗</a>`;
     } else {
@@ -3227,9 +3269,24 @@ function _tickBotClock() {
 _tickBotClock();
 setInterval(_tickBotClock, 1000);
 
+// ── VERSION ──────────────────────────────────────────────────────────────────
+async function loadVersion() {
+  try {
+    const r = await fetch('/api/version');
+    if (!r.ok) return;
+    const d = await r.json();
+    const badge = document.getElementById('version-badge');
+    if (badge) {
+      badge.textContent = d.short_label || `v${d.version}`;
+      badge.title = d.full_label || '';
+    }
+  } catch(e) { /* silencioso */ }
+}
+
 // Init — el WebSocket se encarga de status, posiciones y oportunidades en tiempo real
 _restoreTab();
 connectWS();
+loadVersion();
 loadParams();
 fetchHistory();
 
@@ -3263,7 +3320,9 @@ async function fetchStrategies() {
     const learn = await learnR.json();
     _renderStratPerf(perf);
     _renderStratParams(perf);
-    _renderStratLearner(learn);
+    _renderStratDetailWeather(perf.WEATHER || {});
+    _renderStratDetailBtc(perf.BTC || {});
+    _renderStratLearner(learn, perf);
     _loadNoteFields(notes);
   } catch(e) {}
 }
@@ -3278,19 +3337,27 @@ function _renderStratPerf(perf) {
   ];
   el.innerHTML = cards.map(c => {
     const s = perf[c.key] || {};
-    const wr = s.win_rate != null ? (s.win_rate * 100).toFixed(0) + '%' : '—';
+    const resolved = (s.wins||0) + (s.losses||0);
+    const wr = s.win_rate != null ? (s.win_rate * 100).toFixed(0) + '%' : (resolved === 0 ? 'sin datos' : '—');
     const wrColor = s.win_rate == null ? 'var(--muted)' : s.win_rate >= 0.5 ? 'var(--green)' : s.win_rate >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+    const wrSize  = s.win_rate == null ? '.85rem' : '1.4rem';
+    const rwr = s.recent_wr;
+    const rwrStr = rwr != null ? `${(rwr*100).toFixed(0)}%` : '—';
+    const rwrColor = rwr == null ? 'var(--muted)' : rwr >= 0.5 ? 'var(--green)' : rwr >= 0.4 ? 'var(--yellow)' : 'var(--red)';
     return `<div class="panel" style="padding:14px;text-align:center">
       <div style="font-size:1.4rem">${c.icon}</div>
       <div style="font-size:.8rem;color:${c.color};font-weight:700;margin:4px 0">${c.label}</div>
-      <div style="font-size:1.4rem;font-weight:700;color:${wrColor}">${wr}</div>
-      <div style="font-size:.7rem;color:var(--muted)">win rate</div>
-      <div style="display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:.72rem">
-        <span style="color:var(--green)">✓ ${s.wins||0} wins</span>
-        <span style="color:var(--red)">✗ ${s.losses||0} loss</span>
+      <div style="font-size:${wrSize};font-weight:700;color:${wrColor};margin:6px 0">${wr}</div>
+      <div style="font-size:.65rem;color:var(--muted)">win rate (${resolved} resueltos)</div>
+      ${resolved > 0 ? `<div style="font-size:.7rem;color:${rwrColor};margin-top:2px">reciente: ${rwrStr}</div>` : ''}
+      <div style="display:flex;justify-content:center;gap:10px;margin-top:8px;font-size:.72rem">
+        <span style="color:var(--green)">✓ ${s.wins||0}</span>
+        <span style="color:var(--red)">✗ ${s.losses||0}</span>
         <span style="color:var(--muted)">⏳ ${s.pending||0} pend</span>
       </div>
-      <div style="font-size:.7rem;color:var(--muted);margin-top:4px">$${(s.total_cost||0).toFixed(2)} invertido</div>
+      <div style="font-size:.68rem;color:var(--muted);margin-top:5px;border-top:1px solid var(--border);padding-top:5px">
+        $${(s.total_cost||0).toFixed(2)} invertido · ${(s.trades||0)} trades
+      </div>
     </div>`;
   }).join('');
 }
@@ -3341,42 +3408,192 @@ function _renderStratParams(perf) {
   }
 }
 
+function _renderStratDetailWeather(s) {
+  const el = document.getElementById('strat-detail-weather');
+  if (!el) return;
+  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>'
+    : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+
+  const hasData = (s.trades || 0) > 0;
+  const bside = s.by_side || {};
+  const bev   = s.by_ev   || {};
+
+  let html = `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <b style="color:#60a5fa;font-size:.8rem">⛅ Clima</b>
+      <span style="color:var(--muted);font-size:.72rem">${s.trades||0} trades</span>`;
+  if (hasData) {
+    const wrColor = s.win_rate==null?'var(--muted)':s.win_rate>=0.5?'var(--green)':s.win_rate>=0.4?'var(--yellow)':'var(--red)';
+    html += `<span style="font-size:.9rem;font-weight:700;color:${wrColor}">${s.win_rate!=null?(s.win_rate*100).toFixed(0)+'%':'—'} WR</span>
+      <span style="font-size:.8rem;color:var(--muted)">reciente: ${pct(s.recent_wr)}</span>
+      <span style="font-size:.72rem;color:var(--green)">✓ ${s.wins||0}</span>
+      <span style="font-size:.72rem;color:var(--red)">✗ ${s.losses||0}</span>
+      <span style="font-size:.72rem;color:var(--muted)">⏳ ${s.pending||0}</span>`;
+  } else {
+    html += `<span style="color:var(--muted);font-size:.72rem;font-style:italic">Sin trades resueltos aún</span>`;
+  }
+  html += `</div>`;
+
+  if (hasData) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.71rem">
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por lado</div>
+        <div>YES: ${pct((bside.YES||{}).wr)} (${(bside.YES||{}).t||0} trades)
+          &nbsp; NO: ${pct((bside.NO||{}).wr)} (${(bside.NO||{}).t||0} trades)</div>
+      </div>
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por EV estimado</div>
+        <div>&lt;15%: ${pct((bev.low||{}).wr)} &nbsp; 15-30%: ${pct((bev.med||{}).wr)} &nbsp; &gt;30%: ${pct((bev.high||{}).wr)}</div>
+      </div>
+    </div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+function _renderStratDetailBtc(s) {
+  const el = document.getElementById('strat-detail-btc');
+  if (!el) return;
+  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>'
+    : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+
+  const hasData = (s.trades || 0) > 0;
+  const bside = s.by_side || {};
+  const bev   = s.by_ev   || {};
+
+  let html = `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <b style="color:#f59e0b;font-size:.8rem">₿ BTC Predicción</b>
+      <span style="color:var(--muted);font-size:.72rem">${s.trades||0} trades</span>`;
+  if (hasData) {
+    const wrColor = s.win_rate==null?'var(--muted)':s.win_rate>=0.5?'var(--green)':s.win_rate>=0.4?'var(--yellow)':'var(--red)';
+    html += `<span style="font-size:.9rem;font-weight:700;color:${wrColor}">${s.win_rate!=null?(s.win_rate*100).toFixed(0)+'%':'—'} WR</span>
+      <span style="font-size:.8rem;color:var(--muted)">reciente: ${pct(s.recent_wr)}</span>
+      <span style="font-size:.72rem;color:var(--green)">✓ ${s.wins||0}</span>
+      <span style="font-size:.72rem;color:var(--red)">✗ ${s.losses||0}</span>
+      <span style="font-size:.72rem;color:var(--muted)">⏳ ${s.pending||0}</span>`;
+  } else {
+    html += `<span style="color:var(--muted);font-size:.72rem;font-style:italic">Sin trades resueltos aún</span>`;
+  }
+  html += `</div>`;
+
+  if (hasData) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.71rem">
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por lado (YES = sobre umbral)</div>
+        <div>YES: ${pct((bside.YES||{}).wr)} (${(bside.YES||{}).t||0} trades)
+          &nbsp; NO: ${pct((bside.NO||{}).wr)} (${(bside.NO||{}).t||0} trades)</div>
+      </div>
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por EV estimado</div>
+        <div>&lt;15%: ${pct((bev.low||{}).wr)} &nbsp; 15-30%: ${pct((bev.med||{}).wr)} &nbsp; &gt;30%: ${pct((bev.high||{}).wr)}</div>
+      </div>
+    </div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
 function _renderStratLearner(data) {
   const el = document.getElementById('strat-learner-detail');
   if (!el) return;
-  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>' : `<span style="color:${v>=0.5?'var(--green)':v>=0.4?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
-  const rows = [
-    ['Intervalo','Total','Win Rate','Reciente','Acc TA','Señal mín','Inv señal','Razón ajuste'],
-    ...['5m','15m'].map(k => {
-      const s = data[k] || {};
-      const ap = s.adaptive || {};
-      return [k, s.total||0, pct(s.win_rate), pct(s.recent_wr), pct(s.ta_accuracy),
-              ap.min_signal?.toFixed(2)||'—', ap.invert_signal?'⚠️ SÍ':'No',
-              `<span style="font-size:.68rem">${ap.reason||'—'}</span>`];
-    }),
-  ];
-  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.72rem">
-    ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border)">
-      ${r.map(c=>`<${i===0?'th':'td'} style="padding:5px 8px;${i===0?'color:var(--muted);font-weight:600;text-transform:uppercase;font-size:.65rem':'color:var(--text)'}">${c}</${i===0?'th':'td'}>`).join('')}
-    </tr>`).join('')}
-  </table>
-  <div style="margin-top:10px">
-    ${['5m','15m'].map(k => {
-      const s = data[k] || {};
-      const bs = s.by_signal || {};
-      const bt = s.by_side   || {};
-      const be = s.by_elapsed|| {};
-      const p = v => v==null?'—':(v*100).toFixed(0)+'%';
-      return `<div style="display:inline-block;vertical-align:top;margin-right:20px;margin-top:8px">
-        <b style="color:var(--muted);font-size:.7rem">${k} — Por señal:</b>
-        débil ${p(bs.weak)} · media ${p(bs.med)} · fuerte ${p(bs.strong)}<br>
-        <b style="color:var(--muted);font-size:.7rem">Por lado:</b>
-        UP ${p(bt.UP)} · DOWN ${p(bt.DOWN)}<br>
-        <b style="color:var(--muted);font-size:.7rem">Por timing:</b>
-        temprano ${p(be.early)} · medio ${p(be.mid)} · tardío ${p(be.late)}
+
+  const pct  = v => v == null ? '<span style="color:var(--muted)">—</span>'
+    : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+  const pctN = v => v == null ? '—' : (v*100).toFixed(0)+'%';
+  const clr  = v => v==null?'var(--muted)':v>=0.5?'var(--green)':v>=0.4?'var(--yellow)':'var(--red)';
+
+  let html = '';
+
+  ['5m','15m'].forEach(k => {
+    const s  = data[k] || {};
+    const ap = s.adaptive || {};
+    const bs = s.by_signal  || {};
+    const bt = s.by_side    || {};
+    const be = s.by_elapsed || {};
+    const ph = s.phantom;
+
+    const hasData = (s.total || 0) > 0;
+
+    html += `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <b style="color:#a78bfa;font-size:.8rem">⚡ UpDown ${k}</b>
+        <span style="color:var(--muted);font-size:.72rem">${s.total||0} trades reales</span>
+        ${hasData ? `<span style="font-size:.9rem;font-weight:700;color:${clr(s.win_rate)}">${pctN(s.win_rate)} WR total</span>
+          <span style="font-size:.8rem;color:${clr(s.recent_wr)}">reciente: ${pctN(s.recent_wr)}</span>
+          <span style="font-size:.72rem;color:var(--muted)">Acc TA: ${pctN(s.ta_accuracy)}</span>`
+          : '<span style="color:var(--muted);font-size:.72rem;font-style:italic">Sin datos aún — acumulando historial...</span>'}
       </div>`;
-    }).join('')}
-  </div>`;
+
+    if (hasData) {
+      // Desglose por categorías
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:.71rem;margin-bottom:10px">
+        <div>
+          <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por señal</div>
+          <div>débil: ${pct(bs.weak)} · media: ${pct(bs.med)} · fuerte: ${pct(bs.strong)}</div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por lado</div>
+          <div>UP: ${pct(bt.UP)} · DOWN: ${pct(bt.DOWN)}</div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por timing</div>
+          <div>temprano: ${pct(be.early)} · medio: ${pct(be.mid)} · tardío: ${pct(be.late)}</div>
+        </div>
+      </div>`;
+    }
+
+    // Parámetros adaptativos actuales
+    html += `<div style="background:var(--bg3);border-radius:6px;padding:8px 10px;font-size:.71rem;margin-bottom:${ph?'8px':'0'}">
+      <div style="color:var(--blue);font-size:.65rem;font-weight:700;margin-bottom:4px;text-transform:uppercase">Parámetros adaptativos activos</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span>señal mín: <b>${ap.min_signal != null ? ap.min_signal.toFixed(2) : '0.10'}</b></span>
+        <span>EV mín: <b>${ap.min_ev != null ? ap.min_ev.toFixed(3) : '0.030'}</b></span>
+        <span>invertir señal: <b style="color:${ap.invert_signal?'var(--yellow)':'var(--green)'}">${ap.invert_signal?'⚠️ SÍ':'No'}</b></span>
+        ${ap.block_up   ? '<span style="color:var(--red)">🚫 UP bloqueado</span>' : ''}
+        ${ap.block_down ? '<span style="color:var(--red)">🚫 DOWN bloqueado</span>' : ''}
+        ${ap.max_elapsed_min != null ? `<span>max elapsed: <b>${ap.max_elapsed_min}min</b></span>` : ''}
+        ${ap.momentum_gate_strict ? '<span style="color:var(--yellow)">⚡ gate momentum estricto</span>' : ''}
+      </div>
+      ${ap.reason ? `<div style="color:var(--muted);font-size:.68rem;margin-top:4px;border-top:1px solid var(--border);padding-top:4px">📊 ${ap.reason}</div>` : ''}
+    </div>`;
+
+    // Phantom bets (apuestas fantasma)
+    if (ph && ph.total > 0) {
+      const phBs = ph.by_signal || {};
+      const phBt = ph.by_side   || {};
+      const phSr = ph.by_skip_reason || {};
+      html += `<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;padding:8px 10px;font-size:.71rem;margin-top:8px">
+        <div style="color:var(--blue);font-size:.65rem;font-weight:700;margin-bottom:6px;text-transform:uppercase">
+          👻 Apuestas fantasma (señales no ejecutadas): ${ph.total} | WR ${pctN(ph.win_rate)} | reciente ${pctN(ph.recent_wr)}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+          <div>Por señal: débil ${pct(phBs.weak)} · media ${pct(phBs.med)} · fuerte ${pct(phBs.strong)}</div>
+          <div>Por lado: UP ${pct(phBt.UP)} · DOWN ${pct(phBt.DOWN)}</div>
+        </div>
+        <div style="color:var(--muted);font-size:.68rem">
+          <b>Por motivo de skip:</b>
+          ${Object.entries(phSr).map(([k2,v2])=>{
+            const t = (v2.total||0); const wr = v2.wr != null ? (v2.wr*100).toFixed(0)+'%' : '—';
+            const c = v2.wr != null ? (v2.wr>=0.55?'var(--green)':v2.wr>=0.42?'var(--yellow)':'var(--red)') : 'var(--muted)';
+            return `<span style="margin-right:8px">${k2} (${t}) <span style="color:${c}">${wr}</span></span>`;
+          }).join('')}
+        </div>
+        ${ph.win_rate != null && ph.win_rate > 0.55 ? `<div style="color:var(--yellow);font-size:.7rem;margin-top:4px">⚠️ Win rate fantasma alto — considera relajar los filtros</div>` : ''}
+        ${ph.win_rate != null && ph.win_rate < 0.35 ? `<div style="color:var(--green);font-size:.7rem;margin-top:4px">✅ Filtros correctos — fantasmas perderían</div>` : ''}
+      </div>`;
+    }
+
+    html += `</div>`;
+  });
+
+  const wrapper = html
+    ? `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="color:#a78bfa;font-size:.8rem;font-weight:700;margin-bottom:10px">⚡ UpDown — Aprendizaje Adaptativo</div>
+        ${html}
+       </div>`
+    : '<div style="color:var(--muted);font-style:italic;font-size:.75rem">Sin datos del learner aún. Se acumularán automáticamente con cada trade UpDown.</div>';
+  el.innerHTML = wrapper;
 }
 
 function _loadNoteFields(notes) {
@@ -3864,6 +4081,101 @@ async function sendChat() {
   box.scrollTop = box.scrollHeight;
 }
 
+// ── Notificaciones del asesor proactivo ────────────────────────────────────
+
+let _unreadAdvisor = 0;
+
+async function loadAdvisorNotifications() {
+  try {
+    const r = await fetch('/api/advisor/notifications');
+    const d = await r.json();
+    _unreadAdvisor = d.unread || 0;
+    const badge = document.getElementById('advisor-badge');
+    if (badge) {
+      badge.style.display = _unreadAdvisor > 0 ? 'inline' : 'none';
+      badge.textContent = `● ${_unreadAdvisor} nueva${_unreadAdvisor > 1 ? 's' : ''}`;
+    }
+  } catch(e) {}
+}
+
+async function showAdvisorNotifications() {
+  try {
+    const r = await fetch('/api/advisor/notifications');
+    const d = await r.json();
+    const notifs = d.notifications || [];
+    const box = document.getElementById('chat-messages');
+
+    // Insertar notificaciones como mensajes del asistente
+    if (!notifs.length) {
+      _appendMsg('assistant', '📭 No hay notificaciones del asesor aún. Haz clic en 🔍 Analizar para pedir un análisis inmediato.');
+    } else {
+      notifs.slice(0, 3).forEach(n => {
+        const txt = `**🔔 Notificación del asesor** (${n.time})\n\n${_parseAdvisorMsg(n.text)}`;
+        _appendMsg('assistant', txt);
+      });
+    }
+
+    // Marcar como leídas
+    await fetch('/api/advisor/notifications/read', { method: 'POST' });
+    _unreadAdvisor = 0;
+    const badge = document.getElementById('advisor-badge');
+    if (badge) badge.style.display = 'none';
+  } catch(e) {
+    _appendMsg('assistant', 'Error cargando notificaciones.');
+  }
+}
+
+function _parseAdvisorMsg(text) {
+  // Si tiene PARAMS_JSON, renderizar como acción aplicable
+  const paramsMatch = text.match(/PARAMS_JSON:\s*(\{[^}]+\})/);
+  const cambioMatch = text.match(/CAMBIO_SUGERIDO:\s*(.+?)(?:\n|$)/);
+  if (paramsMatch && cambioMatch) {
+    const mainText = text.replace(/CAMBIO_SUGERIDO:.*$/s, '').trim();
+    const paramsJson = paramsMatch[1];
+    const cambioDesc = cambioMatch[1];
+    return `${mainText}\n\n<div class="advisor-suggestion">
+      <div class="advisor-sug-label">💡 Cambio sugerido</div>
+      <div class="advisor-sug-detail">${escHtml(cambioDesc)}</div>
+      <button class="advisor-sug-apply" onclick="applyAdvisorParams(${escHtml(paramsJson).replace(/&quot;/g,'"')}, '${escHtml(cambioDesc)}')">Aplicar cambio</button>
+    </div>`;
+  }
+  return text;
+}
+
+async function applyAdvisorParams(paramsJson, reason) {
+  try {
+    const params = typeof paramsJson === 'string' ? JSON.parse(paramsJson) : paramsJson;
+    // Enviar como mensaje de chat para que Claude lo aplique via tool
+    document.getElementById('chat-input').value = `Aplica este cambio: ${reason}. Parámetros: ${JSON.stringify(params)}`;
+    sendChat();
+  } catch(e) {
+    alert('Error al aplicar parámetros: ' + e.message);
+  }
+}
+
+async function requestAdvisorAnalysis() {
+  _appendMsg('assistant', '🔍 Analizando el sistema... (esto puede tomar unos segundos)');
+  try {
+    const r = await fetch('/api/advisor/analyze-now', { method: 'POST' });
+    const d = await r.json();
+    const box = document.getElementById('chat-messages');
+    // Remover el mensaje "analizando"
+    const lastMsg = box.lastElementChild;
+    if (lastMsg) lastMsg.remove();
+    if (d.notification) {
+      _appendMsg('assistant', `**🔔 Análisis del asesor**\n\n${_parseAdvisorMsg(d.notification)}`);
+    } else {
+      _appendMsg('assistant', '✅ El sistema está funcionando bien. Sin alertas en este momento.');
+    }
+  } catch(e) {
+    _appendMsg('assistant', 'Error al solicitar análisis: ' + e.message);
+  }
+}
+
+// Cargar notificaciones al inicio y cada 5 min
+loadAdvisorNotifications();
+setInterval(loadAdvisorNotifications, 5 * 60 * 1000);
+
 </script>
 
 <!-- MODAL GRAFICA POSICION -->
@@ -4232,123 +4544,124 @@ async function _loadPerfLogHistory() {
 
 // ── Modal de detalle WARN ─────────────────────────────────────────────────
 
-const _CAUSE_MAP = {
-  fetch_weather_markets:  "El fetch de mercados a la API Gamma de Polymarket tardó más de lo normal. "
-                        + "Puede deberse a alta latencia de red, servidor de Gamma lento, "
-                        + "o que se paginaron muchas páginas de resultados.",
-  ensemble_forecast:      "El ensemble de forecast (NOAA + OpenMeteo + observación) tardó demasiado. "
-                        + "Probablemente NOAA o OpenMeteo respondieron lento. "
-                        + "Revisa la tabla de tiempos para ver qué API fue la más lenta.",
-  live_price:             "La consulta del precio en vivo al CLOB de Polymarket tardó más de lo esperado. "
-                        + "Puede ser latencia de red o el mercado específico tiene poca liquidez.",
-  claude_analysis:        "La llamada a la API de Claude (Anthropic) tardó demasiado. "
-                        + "Puede ser alta demanda en los servidores de Anthropic o respuesta muy larga.",
-  noaa_forecast:          "La API de NOAA/NWS respondió lentamente. "
-                        + "NOAA tiene timeouts frecuentes en horas pico (06:00-09:00 UTC).",
-  openmeteo_forecast:     "La API de Open-Meteo tardó en responder. "
-                        + "Puede ser el modelo GFS o ECMWF aún calculando la corrida del día.",
-  scan_cycle_total:       "El ciclo completo de escaneo fue muy lento en total. "
-                        + "Revisa los tiempos individuales de cada componente para identificar el cuello de botella.",
-};
+function _sec(title, content, borderColor) {
+  const bc = borderColor || 'var(--border)';
+  return `<div style="background:#0d1117;border:1px solid ${bc};border-radius:6px;padding:11px 14px;margin-bottom:10px">
+    <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:1px;color:#555;margin-bottom:7px">${title}</div>
+    ${content}
+  </div>`;
+}
+
+function _kv(label, value, color) {
+  return `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #1a1a1a;font-size:.78rem">
+    <span style="color:#666">${label}</span>
+    <span style="color:${color || 'var(--text)'}; font-weight:600">${value}</span>
+  </div>`;
+}
 
 function _showWarnDetail(entry) {
-  const d    = entry.detail || {};
-  const cat  = entry.category || 'OTHER';
-  const comp = d.component || '';
-
-  // Construir explicación
-  let explanation = d.cause || _CAUSE_MAP[comp] || 'Sin diagnóstico automático disponible.';
-
-  // Sección de métricas
-  let metricsHtml = '';
-
-  if (d.ms != null) {
-    const slowFactor = d.times_slower ? `<span style="color:#f85149;font-weight:700">${d.times_slower}× más lento</span> que el promedio` : '';
-    metricsHtml += `
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
-        <div style="background:#1a1a0e;border:1px solid #5a4a00;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#d29922;font-size:1.4rem;font-weight:700">${d.ms.toLocaleString()} ms</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">Esta ejecución</div>
-        </div>
-        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#3fb950;font-size:1.4rem;font-weight:700">${d.avg_ms != null ? d.avg_ms.toLocaleString() + ' ms' : '—'}</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">Promedio histórico</div>
-        </div>
-        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#58a6ff;font-size:1rem;font-weight:700">${d.min_ms != null ? d.min_ms.toLocaleString() + ' ms' : '—'}</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">Mínimo histórico</div>
-        </div>
-        <div style="background:#1a0e0e;border:1px solid #7a1c1c;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#f85149;font-size:1rem;font-weight:700">${d.max_ms != null ? d.max_ms.toLocaleString() + ' ms' : '—'}</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">Máximo histórico</div>
-        </div>
-      </div>
-      ${d.times_slower ? `<div style="background:#2a1a0e;border:1px solid #7a4a00;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:.8rem;color:#fb923c">
-        Esta ejecución fue ${slowFactor} (${d.avg_ms} ms de media)
-      </div>` : ''}`;
-  }
-
-  if (cat === 'CPU') {
-    metricsHtml += `
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
-        <div style="background:#1a0e0e;border:1px solid #7a1c1c;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#f85149;font-size:1.4rem;font-weight:700">${d.cpu_pct}%</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">CPU proceso (pico)</div>
-        </div>
-        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#3fb950;font-size:1.4rem;font-weight:700">${d.cpu_avg_1m != null ? d.cpu_avg_1m + '%' : '—'}</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">CPU promedio 1 min</div>
-        </div>
-        <div style="grid-column:1/-1;background:#0e1522;border:1px solid #1e3a5f;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#58a6ff;font-size:1.1rem;font-weight:700">${d.ram_mb} MB</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">RAM del proceso en ese momento</div>
-        </div>
-      </div>`;
-  }
-
-  if (cat === 'MEMORY') {
-    metricsHtml += `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-        <div style="background:#2a0e0e;border:1px solid #7a2a00;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#f97316;font-size:1.4rem;font-weight:700">+${d.delta_mb} MB</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">Subida en 1 seg</div>
-        </div>
-        <div style="background:#0e1522;border:1px solid #1e3a5f;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#58a6ff;font-size:1.4rem;font-weight:700">${d.ram_mb} MB</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">RAM total proceso</div>
-        </div>
-        <div style="background:#0e1a0e;border:1px solid #1a4a2e;border-radius:6px;padding:10px 12px;text-align:center">
-          <div style="color:#3fb950;font-size:1.1rem;font-weight:700">${d.ram_avg_1m != null ? d.ram_avg_1m + ' MB' : '—'}</div>
-          <div style="color:#888;font-size:.7rem;margin-top:2px">RAM promedio 1 min</div>
-        </div>
-      </div>`;
-  }
-
-  // Llamadas y errores totales del componente
-  if (d.total_calls != null) {
-    const errRate = d.total_calls > 0 ? ((d.total_errors / d.total_calls) * 100).toFixed(1) : 0;
-    metricsHtml += `<div style="font-size:.75rem;color:#666;margin-bottom:12px">
-      Historial del componente: <span style="color:var(--text)">${d.total_calls} llamadas</span>
-      · <span style="${d.total_errors > 0 ? 'color:#f85149' : 'color:#3fb950'}">${d.total_errors} errores (${errRate}%)</span>
-    </div>`;
-  }
-
+  const d   = entry.detail   || {};
+  const cat = entry.category || 'OTHER';
+  const snap = d.snapshot    || {};
   const catStyle = _CAT_STYLE[cat] || _CAT_STYLE.OTHER;
   const lvlColor = _LEVEL_COLOR[entry.level] || '#d29922';
 
-  document.getElementById('warn-modal-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+  let html = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       <span style="font-size:.65rem;padding:2px 8px;border-radius:3px;${catStyle}">${cat}</span>
       <span style="color:${lvlColor};font-weight:700">${entry.level}</span>
       <span style="color:#555;font-size:.75rem">[${entry.time}]</span>
     </div>
-    <div style="color:var(--text);font-size:.9rem;font-weight:600;margin-bottom:14px">${escHtml(entry.msg)}</div>
-    ${metricsHtml}
-    <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:12px 14px">
-      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:#555;margin-bottom:6px">Diagnóstico</div>
-      <div style="font-size:.8rem;color:#c9d1d9;line-height:1.7">${escHtml(explanation)}</div>
-    </div>
-  `;
+    <div style="color:var(--text);font-size:.9rem;font-weight:600;margin-bottom:12px">${escHtml(entry.msg)}</div>`;
+
+  // ── 1. Timing (para llamadas lentas) ──
+  if (d.ms != null) {
+    const sf = d.times_slower;
+    html += _sec('Tiempo de ejecucion', `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:${sf ? '8px' : '0'}">
+        <div style="text-align:center;padding:8px 4px;background:#1a1a0e;border-radius:5px;border:1px solid #5a4a00">
+          <div style="color:#d29922;font-size:1.2rem;font-weight:700">${d.ms.toLocaleString()}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">esta vez (ms)</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#0e1a0e;border-radius:5px;border:1px solid #1a4a2e">
+          <div style="color:#3fb950;font-size:1.2rem;font-weight:700">${d.avg_ms != null ? d.avg_ms.toLocaleString() : '—'}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">promedio (ms)</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#0e1522;border-radius:5px;border:1px solid #1e3a5f">
+          <div style="color:#58a6ff;font-size:1.2rem;font-weight:700">${d.min_ms != null ? d.min_ms.toLocaleString() : '—'}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">mínimo (ms)</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#1a0e0e;border-radius:5px;border:1px solid #7a1c1c">
+          <div style="color:#f85149;font-size:1.2rem;font-weight:700">${d.max_ms != null ? d.max_ms.toLocaleString() : '—'}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">máximo (ms)</div>
+        </div>
+      </div>
+      ${sf ? `<div style="font-size:.78rem;color:#fb923c;padding:5px 8px;background:#2a1a0e;border-radius:4px">
+        Esta ejecucion fue <strong>${sf}× mas lenta</strong> que el promedio historico
+      </div>` : ''}
+    `, '#5a4a00');
+  }
+
+  // ── 2. Estado del proceso en ese momento ──
+  if (snap.cpu_pct != null || snap.ram_mb != null) {
+    html += _sec('Estado del proceso al ocurrir el evento', `
+      ${_kv('CPU proceso', (snap.cpu_pct || 0).toFixed(1) + '%', snap.cpu_pct > 70 ? '#f85149' : '#3fb950')}
+      ${_kv('RAM proceso', (snap.ram_mb || 0).toFixed(1) + ' MB', '#bc8cff')}
+      ${_kv('Threads activos', snap.threads || '—', '#58a6ff')}
+      ${_kv('CPU sistema', (snap.sys_cpu_pct || 0).toFixed(1) + '%', '#666')}
+      ${_kv('RAM sistema', (snap.sys_ram_pct || 0).toFixed(1) + '% usada', snap.sys_ram_pct > 85 ? '#f97316' : '#666')}
+      ${_kv('Conexiones red', snap.net_connections || 0, '#58a6ff')}
+      ${_kv('Conexiones establecidas', snap.net_established || 0, '#3fb950')}
+      ${_kv('I/O lectura acum.', (snap.io_read_mb || 0).toFixed(1) + ' MB', '#666')}
+      ${_kv('I/O escritura acum.', (snap.io_write_mb || 0).toFixed(1) + ' MB', '#666')}
+    `, '#1e3a5f');
+  }
+
+  // ── 3. Operaciones activas cuando ocurrio el evento ──
+  if (snap.active_ops && Object.keys(snap.active_ops).length > 0) {
+    const rows = Object.entries(snap.active_ops)
+      .map(([op, ms]) => _kv(op, ms.toLocaleString() + ' ms transcurridos', '#d29922'))
+      .join('');
+    html += _sec('Operaciones que estaban corriendo en ese momento', rows, '#5a4a00');
+  }
+
+  // ── 4. Top de memoria por modulo ──
+  if (snap.top_memory && snap.top_memory.length > 0) {
+    const maxKb = Math.max(...snap.top_memory.map(m => m.kb), 1);
+    const rows = snap.top_memory.map(m => {
+      const barW = Math.max(2, (m.kb / maxKb * 100)).toFixed(0);
+      const color = m.kb > maxKb * 0.5 ? '#f97316' : m.kb > maxKb * 0.25 ? '#d29922' : '#3fb950';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #1a1a1a;font-size:.75rem">
+        <div style="width:120px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(m.file)}">${escHtml(m.file)}</div>
+        <div style="flex:1;background:#1a1a1a;border-radius:2px;height:8px">
+          <div style="width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
+        </div>
+        <div style="width:70px;text-align:right;color:${color}">${m.kb.toFixed(1)} KB</div>
+        <div style="width:50px;text-align:right;color:#555">${m.count} obj</div>
+      </div>`;
+    }).join('');
+    html += _sec('Top consumidores de memoria (tracemalloc)', rows, '#3a1c7a');
+  }
+
+  // ── 5. Ultimas operaciones antes de este evento ──
+  if (snap.recent_ops && snap.recent_ops.length > 0) {
+    const rows = [...snap.recent_ops].reverse().slice(0, 6).map(op => {
+      const c = op.error ? '#f85149' : op.ms > 3000 ? '#d29922' : '#555';
+      return _kv(`[${op.time}] ${op.name}`, op.ms.toLocaleString() + ' ms' + (op.error ? ' ✗' : ''), c);
+    }).join('');
+    html += _sec('Ultimas operaciones completadas antes de este evento', rows);
+  }
+
+  // ── 6. Historial del componente ──
+  if (d.total_calls != null) {
+    const errRate = d.total_calls > 0 ? ((d.total_errors / d.total_calls) * 100).toFixed(1) : '0.0';
+    html += _sec('Historial del componente', `
+      ${_kv('Total de llamadas', d.total_calls)}
+      ${_kv('Errores totales', d.total_errors + ' (' + errRate + '%)', d.total_errors > 0 ? '#f85149' : '#3fb950')}
+    `);
+  }
+
+  document.getElementById('warn-modal-body').innerHTML = html;
   document.getElementById('warn-modal-overlay').style.display = 'flex';
 }
 

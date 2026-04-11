@@ -111,6 +111,7 @@ _TITLE_ALIASES: dict[str, str] = {
 # ── Tipos de dato de settlement ────────────────────────────────────────────────
 
 DATA_TYPE_PATTERNS: list[tuple[str, str]] = [
+    (r"\bhighest\b",        "intraday_high"),   # "highest temperature"
     (r"\bhigh\b",           "intraday_high"),   # "high temperature"
     (r"\bmax\b",            "intraday_high"),
     (r"\bmaximum\b",        "intraday_high"),
@@ -118,6 +119,7 @@ DATA_TYPE_PATTERNS: list[tuple[str, str]] = [
     (r"\bclosing\b",        "settlement"),
     (r"\baverage\b",        "daily_average"),
     (r"\bmean\b",           "daily_average"),
+    (r"\blowest\b",         "intraday_low"),    # "lowest temperature"
     (r"\blow\b",            "intraday_low"),
     (r"\bminimum\b",        "intraday_low"),
 ]
