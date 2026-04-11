@@ -34,12 +34,21 @@ from typing import Optional
 from config import bot_params
 
 # ── Umbrales ──────────────────────────────────────────────────────────────────
-# Confianza mínima (|señal_combinada|): 0.10 = 55% de indicadores alineados
-_MIN_CONFIDENCE  = 0.10
+# Confianza mínima: subido 0.10→0.20 para evitar trades con señal débil.
+# 0.20 ≈ 60% de indicadores alineados (más conservador que el 55% previo).
+_MIN_CONFIDENCE  = 0.20
 
 # No entrar si el share de la dirección elegida cuesta >= este valor
 # $0.90 → ganas $0.10 arriesgando $0.90 → ratio 1:9 → inaceptable
 _MAX_ENTRY_PRICE = 0.89
+
+# ── Tiempo mínimo de entrada (floor fijo, independiente del learner) ──────────
+# Para que el precio BTC muestre dirección antes de apostar.
+# 5m: esperar 1.5min (30% de la ventana)
+# 15m: esperar 3.5min (23% de la ventana)
+# El learner puede subir este umbral pero nunca lo reduce debajo del floor.
+_MIN_ELAPSED_5M  = 1.5   # minutos
+_MIN_ELAPSED_15M = 3.5   # minutos
 
 # ── Pesos de cada componente ──────────────────────────────────────────────────
 # Basado en knowledge base (v83 bot externo + IR = IC × √N):
@@ -264,14 +273,24 @@ def evaluate_updown_market(
         except Exception:
             adaptive_params = {}
 
-    min_confidence = adaptive_params.get("min_signal", _MIN_CONFIDENCE)
+    min_confidence = max(adaptive_params.get("min_signal", _MIN_CONFIDENCE), _MIN_CONFIDENCE)
     invert_signal  = adaptive_params.get("invert_signal", False)
     max_elapsed    = adaptive_params.get("max_elapsed_min")
 
-    elapsed     = market.get("elapsed_minutes", 0.0)
-    min_elapsed = adaptive_params.get("min_elapsed_min")
-    if min_elapsed is not None and elapsed < min_elapsed:
-        return None, f"Timing: ventana muy temprana ({elapsed:.1f}min < mín {min_elapsed:.1f}min — entradas tempranas pierden)"
+    elapsed          = market.get("elapsed_minutes", 0.0)
+    interval_minutes = market.get("interval_minutes", 15)
+
+    # Floor fijo por intervalo (learner solo puede SUBIR, nunca bajar del floor)
+    _floor = _MIN_ELAPSED_15M if interval_minutes >= 15 else _MIN_ELAPSED_5M
+    learner_min = adaptive_params.get("min_elapsed_min")
+    min_elapsed = max(_floor, learner_min) if learner_min is not None else _floor
+
+    if elapsed < min_elapsed:
+        return None, (
+            f"Timing: ventana muy temprana "
+            f"({elapsed:.1f}min < mín {min_elapsed:.1f}min — "
+            f"floor {_floor}min, learner {learner_min}min)"
+        )
     if max_elapsed is not None and elapsed > max_elapsed:
         return None, f"Timing: ventana muy avanzada ({elapsed:.1f}min > máx {max_elapsed:.1f}min)"
 

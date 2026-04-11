@@ -313,9 +313,9 @@ def get_adaptive_params(interval_minutes: int) -> dict:
         reason          – texto para logging/UI
     """
     defaults = {
-        "min_signal":      0.10,
+        "min_signal":      0.20,   # subido 0.10→0.20: sin historia suficiente, ser conservador
         "momentum_weight": 0.15,
-        "min_ev":          0.03,
+        "min_ev":          0.05,   # subido 0.03→0.05: EV mínimo sin datos históricos
         "invert_signal":   False,
         "max_elapsed_min": None,
         "reason":          "defaults (historia insuficiente)",
@@ -357,10 +357,13 @@ def get_adaptive_params(interval_minutes: int) -> dict:
             reasons.append(f"TA poco fiable {dir_acc:.0%} → reducir peso TA")
 
     # ── Timing: entradas tempranas pierden más ──────────────────────────────
+    # min_elapsed proporcional al intervalo para no entrar en el primer 20% de la ventana
     wr_early = _wr(s["by_elapsed"]["early"])
     if wr_early is not None and wr_early < 0.40:
-        p["min_elapsed_min"] = 1.5
-        reasons.append(f"entradas tempranas WR {wr_early:.0%} → esperar >1.5min")
+        # 5m → esperar 2.0min (40%), 15m → esperar 5.0min (33%)
+        _min_el = 5.0 if interval_minutes >= 15 else 2.0
+        p["min_elapsed_min"] = _min_el
+        reasons.append(f"entradas tempranas WR {wr_early:.0%} → esperar >{_min_el}min")
 
     # ── Timing: entradas tardías pierden más ─────────────────────────────────
     wr_late  = _wr(s["by_elapsed"]["late"])
