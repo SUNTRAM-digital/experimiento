@@ -42,12 +42,17 @@ _MIN_CONFIDENCE  = 0.10
 _MAX_ENTRY_PRICE = 0.89
 
 # ── Pesos de cada componente ──────────────────────────────────────────────────
-# Para ventanas muy cortas (5m) el momentum intra-ventana y el TA de corto plazo
-# son las señales más predictivas. Macro y consenso de mercado son secundarios.
-_W_TA          = 0.55  # TradingView: indicadores técnicos (incluye RSI, EMA, MACD)
-_W_MOMENTUM    = 0.25  # Movimiento BTC desde inicio de ventana — la señal más directa
-_W_MARKET      = 0.10  # Consenso Polymarket: qué tan inclinado está el mercado
+# Basado en knowledge base (v83 bot externo + IR = IC × √N):
+#   TA + RSI/EMA/MACD = señal técnica compuesta (más informativa)
+#   Momentum intra-ventana = señal más directa para 5m/15m
+#   OFI (order book imbalance) = presión compradora/vendedora instantánea
+#   Macro (CMC 1h) = contexto amplio
+#   Consenso de mercado = confirmación secundaria
+_W_TA          = 0.50  # TradingView: indicadores técnicos compuestos
+_W_MOMENTUM    = 0.25  # Movimiento BTC desde inicio de ventana
+_W_OFI         = 0.10  # Order book imbalance (proxy OFI del knowledge base)
 _W_MACRO       = 0.10  # Tendencia macro 1h de CoinMarketCap
+_W_MARKET      = 0.05  # Consenso Polymarket (reducido — el OFI ya captura esto mejor)
 
 
 # ── Señales individuales ──────────────────────────────────────────────────────
@@ -124,6 +129,27 @@ def _macro_signal(cmc_data: Optional[dict]) -> float:
     return max(-1.0, min(1.0, change_1h / 2.0))
 
 
+def _order_book_imbalance(market: Optional[dict]) -> float:
+    """
+    Order Book Imbalance (OFI proxy) desde los precios bid/ask del mercado UpDown.
+    Si best_bid está muy cerca de best_ask en el lado UP, hay presión compradora.
+
+    Fórmula simplificada:
+      imbalance = (up_price - 0.5) × 2    → [-1, +1]
+      Si UP cuesta 0.65 → mercado presionado al alza → +0.30 señal UP
+      Si UP cuesta 0.35 → mercado presionado a la baja → -0.30 señal DOWN
+
+    El knowledge base (v83) usa CVD completo, pero con los datos disponibles
+    (solo precio de mercado, no full order book) este proxy es el mejor aproximado.
+    """
+    if not market:
+        return 0.0
+    up_price = float(market.get("up_price", 0.5) or 0.5)
+    # Neutralizar en 0.50, amplificar desviaciones
+    lean = (up_price - 0.5) * 2.0
+    return max(-1.0, min(1.0, lean))
+
+
 # ── Señal combinada ───────────────────────────────────────────────────────────
 
 def build_btc_direction_signal(
@@ -163,19 +189,22 @@ def build_btc_direction_signal(
     )
     ta_composite = max(-1.0, min(1.0, ta_composite))
 
-    # Señal de consenso de mercado (Polymarket)
+    # Señal de consenso de mercado (Polymarket) + OFI
     mkt_sig = 0.0
+    ofi_sig = 0.0
     if market:
         mkt_sig = _market_consensus_signal(
             market.get("up_price", 0.5),
             market.get("down_price", 0.5),
         )
+        ofi_sig = _order_book_imbalance(market)
 
     combined = (
         ta_composite * _W_TA
         + mom_sig    * _W_MOMENTUM
-        + mkt_sig    * _W_MARKET
+        + ofi_sig    * _W_OFI
         + macro_sig  * _W_MACRO
+        + mkt_sig    * _W_MARKET
     )
     combined = max(-1.0, min(1.0, combined))
 
@@ -194,6 +223,7 @@ def build_btc_direction_signal(
         "momentum":    round(mom_sig, 4),
         "market_sig":  round(mkt_sig, 4),
         "macro":       round(macro_sig, 4),
+        "ofi":         round(ofi_sig, 4),
         "rsi":         rsi_val,
         "macd":        macd,
         "window_pct":  window_pct,
@@ -370,6 +400,7 @@ def evaluate_updown_market(
     return {
         # Identificación
         "slug":             market["slug"],
+        "poly_url":         market.get("poly_url", ""),
         "title":            market["title"],
         "condition_id":     market["condition_id"],
         "asset":            "BTC_UPDOWN",

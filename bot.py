@@ -462,6 +462,8 @@ def _execute_trade(opportunity: dict) -> bool:
                 "asset": opportunity.get("asset", "WEATHER"),
                 "token_id": opportunity.get("token_id", ""),
                 "interval_minutes": opportunity.get("interval_minutes"),
+                # URL de Polymarket para el botón "Ver en Polymarket"
+                "poly_url": opportunity.get("poly_url", ""),
             }
             state.active_positions.append(trade)
             state.trade_history.insert(0, trade)
@@ -582,6 +584,12 @@ async def _scan_cycle():
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
+                        # Actualizar trade_history con resultado WIN
+                        _tk = pos.get("token_id", "")
+                        for _th in state.trade_history:
+                            if _th.get("token_id") == _tk and _th.get("result") is None:
+                                _th["result"] = "WIN"
+                                break
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -593,6 +601,12 @@ async def _scan_cycle():
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
+                        # Actualizar trade_history con resultado LOSS
+                        _tk = pos.get("token_id", "")
+                        for _th in state.trade_history:
+                            if _th.get("token_id") == _tk and _th.get("result") is None:
+                                _th["result"] = "LOSS"
+                                break
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -749,7 +763,7 @@ async def _scan_cycle():
             market["yes_price"] = live_price
 
         # Fase 4: Analizar reglas de resolucion del mercado (Lawyer's Edge)
-        rules    = parse_market_rules(market.get("market_title", ""), market.get("condition_id", ""))
+        rules    = parse_market_rules(market.get("title") or market.get("market_title", ""), market.get("condition_id", ""))
         boundary = detect_boundary_zone(
             forecast_high_f=forecast["high_f"],
             std_dev=forecast["std_dev"],
@@ -1160,6 +1174,12 @@ _updown_traded_slugs: set[str] = set()
 # {"interval": int, "side": str, "btc_start": float, "end_ts": int, "trade_idx": int}
 _updown_pending_outcomes: dict[str, dict] = {}
 
+# Rastrea qué slugs ya tienen apuesta fantasma registrada
+_updown_phantom_slugs: set[str] = set()
+
+# Mapeo slug → detalles de apuesta fantasma pendiente de resolución
+_updown_phantom_pending: dict[str, dict] = {}
+
 
 async def _scan_updown(interval_minutes: int):
     """
@@ -1270,8 +1290,51 @@ async def _scan_updown(interval_minutes: int):
          f"TA:{ta_data.get('recommendation','?')}({_sig['ta_raw']:+.3f}) "
          f"RSI:{ta_data.get('rsi','?')} MACD:{_sig['macd_sig']:+.3f} "
          f"EMA:{_sig['ema_sig']:+.3f} Momentum:{_sig['momentum']:+.3f} "
-         f"Mercado:{_sig['market_sig']:+.3f} Macro:{_sig['macro']:+.3f} "
+         f"OFI:{_sig.get('ofi',0):+.3f} Mercado:{_sig['market_sig']:+.3f} Macro:{_sig['macro']:+.3f} "
          f"→ COMBINADA:{_sig['combined']:+.4f} ({_sig['direction']})")
+
+    # ── Apuesta fantasma (siempre, haya o no señal real) ────────────────────
+    # Se registra para CADA mercado escaneado — si hubo trade real la
+    # skip_reason será "traded_real", si no "no_signal" u otro filtro.
+    # Así acumulamos datos continuos para el learner.
+    if slug not in _updown_phantom_slugs:
+        if interval_minutes <= 5:
+            _ph_combined = (
+                _sig["ta"]            * 0.55
+                + (-_sig["momentum"]) * 0.25   # mean-reversion en 5m
+                + _sig["market_sig"]  * 0.10
+                + _sig["macro"]       * 0.10
+            )
+            _ph_combined = max(-1.0, min(1.0, _ph_combined))
+            phantom_dir  = "UP" if _ph_combined > 0 else ("DOWN" if _ph_combined < 0 else "NEUTRAL")
+            phantom_conf = round(abs(_ph_combined) * 100, 1)
+        else:
+            phantom_dir  = _sig["direction"]
+            phantom_conf = _sig["confidence"]
+
+        if phantom_dir != "NEUTRAL":
+            _ph_reason = skip_reason or ("traded_real" if opp else "no_signal")
+            end_ts = int(market["window_start_ts"]) + interval_minutes * 60
+            _updown_phantom_pending[slug] = {
+                "interval":        interval_minutes,
+                "side":            phantom_dir,
+                "btc_start":       btc_price_start or 0,
+                "end_ts":          end_ts,
+                "slug":            slug,
+                "skip_reason":     _ph_reason,
+                "confidence":      phantom_conf,
+                "combined_signal": _sig["combined"],
+                "ta_signal":       _sig["ta_raw"],
+                "ta_rsi":          _sig.get("rsi"),
+                "window_momentum": _sig["momentum"],
+                "elapsed_minutes": market.get("elapsed_minutes", 0),
+            }
+            _updown_phantom_slugs.add(slug)
+            _log(
+                "INFO",
+                f"UpDown {interval_minutes}m | PHANTOM {phantom_dir} registrado "
+                f"(confianza {phantom_conf:.0f}%, motivo={_ph_reason})",
+            )
 
     if not opp:
         _log("INFO", f"UpDown {interval_minutes}m | Sin entrada — {skip_reason}")
@@ -1348,6 +1411,12 @@ async def _scan_updown(interval_minutes: int):
     success = await asyncio.get_event_loop().run_in_executor(None, _execute_trade, opp)
     if success:
         _updown_traded_slugs.add(slug)
+        # Evitar crecimiento ilimitado: mantener solo los 200 slugs más recientes
+        if len(_updown_traded_slugs) > 200:
+            # Los slugs son strings con timestamp — eliminar arbitrariamente los más viejos
+            excess = len(_updown_traded_slugs) - 200
+            for old_slug in list(_updown_traded_slugs)[:excess]:
+                _updown_traded_slugs.discard(old_slug)
 
         # Calcular cuándo cierra la ventana para poder resolver el resultado vía BTC price
         end_ts = int(market["window_start_ts"]) + interval_minutes * 60
@@ -1539,6 +1608,16 @@ def _update_updown_loss_streak(interval_minutes: int, won: bool, trade_record: O
             tr["result"] = result_str
             break
 
+    # Actualizar trade_history con el resultado (para que el win rate global sea correcto)
+    for th in state.trade_history:
+        if (
+            th.get("asset") == "BTC_UPDOWN"
+            and th.get("interval_minutes") == interval_minutes
+            and th.get("result") is None
+        ):
+            th["result"] = result_str
+            break
+
     # ── Learner: registrar resultado ─────────────────────────────────────────
     try:
         from updown_learner import record_result as _lr
@@ -1655,7 +1734,7 @@ async def _resolve_pending_updown_outcomes():
     Mucho más confiable que esperar el flag 'redeemable' de Polymarket,
     que tarda minutos para mercados de 5m.
     """
-    if not _updown_pending_outcomes:
+    if not _updown_pending_outcomes and not _updown_phantom_pending:
         return
 
     now_ts = int(datetime.now(timezone.utc).timestamp())
@@ -1713,6 +1792,57 @@ async def _resolve_pending_updown_outcomes():
 
     for token_id in resolved_tokens:
         _updown_pending_outcomes.pop(token_id, None)
+
+    # ── Resolver apuestas fantasma ───────────────────────────────────────────
+    if not _updown_phantom_pending:
+        return
+
+    resolved_phantoms = []
+    for ph_slug, pending in list(_updown_phantom_pending.items()):
+        end_ts = pending.get("end_ts", 0)
+        if now_ts < end_ts + 15:
+            continue
+
+        side      = pending.get("side", "UP")
+        btc_start = pending.get("btc_start", 0.0)
+        interval  = pending.get("interval", 5)
+
+        btc_end = await _get_btc_price_at_ts(end_ts)
+        if not btc_end:
+            if now_ts > end_ts + 30:
+                btc_end = state.btc_price or await get_btc_price()
+                if not btc_end:
+                    if now_ts > end_ts + interval * 60 * 2:
+                        resolved_phantoms.append(ph_slug)
+                    continue
+            else:
+                continue
+
+        if not (btc_start and btc_start > 0):
+            resolved_phantoms.append(ph_slug)
+            continue
+
+        btc_went_up = btc_end >= btc_start
+        ph_won      = (side == "UP") == btc_went_up
+        direction   = "SUBIO" if btc_went_up else "BAJO"
+
+        _log(
+            "INFO" if ph_won else "INFO",
+            f"UpDown {interval}m | PHANTOM {'HUBIERA GANADO ✓' if ph_won else 'HUBIERA PERDIDO ✗'} — "
+            f"BTC {direction} ${btc_start:.0f}→${btc_end:.0f} | "
+            f"fantasma apostaba {side} | motivo de skip: {pending.get('skip_reason','?')[:60]}",
+        )
+
+        try:
+            from updown_learner import record_phantom_result as _rph
+            _rph(interval, pending, ph_won)
+        except Exception as e:
+            _log("WARN", f"UpDown phantom learner error: {e}")
+
+        resolved_phantoms.append(ph_slug)
+
+    for ph_slug in resolved_phantoms:
+        _updown_phantom_pending.pop(ph_slug, None)
 
 
 # ── BTC Auto-trading loop ──────────────────────────────────────────────────
@@ -1913,14 +2043,18 @@ async def _run_updown_loop():
     """
     await asyncio.sleep(15)  # esperar a que run_bot inicialice balance
     _updown_balance_tick = 0
+    _updown_last_balance_refresh = 0.0  # timestamp de último refresh de balance
     while state.running:
         try:
-            # Refrescar balance real desde Polymarket en cada iteración del loop.
-            # El balance interno puede quedar desactualizado si hubo trades o reembolsos
-            # entre ciclos principales. Sin esto, available_updown queda incorrecto.
-            fresh = await asyncio.get_event_loop().run_in_executor(None, _get_balance)
-            if fresh > 0:
-                state.balance_usdc = fresh
+            # Refrescar balance real desde Polymarket cada 3 min (no cada 60s).
+            # Reduce API calls al CLOB de 60/hr → 20/hr sin impacto en capital tracking.
+            import time as _time
+            _now_mono = _time.monotonic()
+            if _now_mono - _updown_last_balance_refresh >= 180:
+                fresh = await asyncio.get_event_loop().run_in_executor(None, _get_balance)
+                if fresh > 0:
+                    state.balance_usdc = fresh
+                _updown_last_balance_refresh = _now_mono
 
             # Calcular budget si el ciclo principal aún no lo ha hecho
             if state.balance_usdc > 0 and state.budget_updown == 0:
