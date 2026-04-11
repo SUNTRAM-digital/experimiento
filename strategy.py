@@ -366,4 +366,7 @@ def evaluate_market(market: dict, forecast: dict, balance_usdc: float) -> Option
         "competitive_score":   market.get("competitive_score", 0),
         "accepting_orders":    market.get("accepting_orders", True),
         "min_order_size":      market.get("min_order_size", 5),
+        # URL de Polymarket
+        "poly_url":            market.get("poly_url", ""),
+        "slug":                market.get("slug", ""),
     }

@@ -98,26 +98,33 @@ async def fetch_weather_markets() -> list[dict]:
     Retorna lista de mercados parseados y listos para analizar.
     """
     markets = []
-    async with httpx.AsyncClient() as client:
+    # Limite por pagina reducido a 100 para evitar OSError(34, 'Result too large')
+    # en Windows cuando la respuesta supera ~3MB en un solo read del socket.
+    _PAGE_SIZE = 100
+    import json as _json
+    async with httpx.AsyncClient(timeout=httpx.Timeout(25.0)) as client:
         # Paginar mercados activos para encontrar todos los de temperatura
         raw_markets = []
         offset = 0
         while offset < 4000:
             try:
-                resp = await client.get(
+                async with client.stream(
+                    "GET",
                     f"{GAMMA_BASE}/markets",
                     params={
                         "active": "true",
                         "closed": "false",
-                        "limit": 500,
+                        "limit": _PAGE_SIZE,
                         "offset": offset,
                         "order": "volume",
                     },
                     headers=HEADERS,
-                    timeout=20,
-                )
-                resp.raise_for_status()
-                batch = resp.json()
+                ) as resp:
+                    resp.raise_for_status()
+                    chunks = []
+                    async for chunk in resp.aiter_bytes(chunk_size=8192):
+                        chunks.append(chunk)
+                    batch = _json.loads(b"".join(chunks))
                 if not batch:
                     break
                 raw_markets.extend(batch)
@@ -128,7 +135,7 @@ async def fetch_weather_markets() -> list[dict]:
                 )
                 if fahr_count >= 60:
                     break
-                offset += 500
+                offset += _PAGE_SIZE
             except Exception:
                 break
 
@@ -189,6 +196,14 @@ async def fetch_weather_markets() -> list[dict]:
             if volume_24h < bot_params.min_volume_24h_usdc:
                 continue
 
+            # Filtro: profundidad mínima del libro ($200 según knowledge base — sin
+            # suficiente profundidad no se puede salir del trade en modo swing)
+            if bot_params.min_book_depth_usdc > 0:
+                # Proxy: usamos liquidez total como estimación de profundidad agregada
+                # Si la liquidez total < 2× min_book_depth, es muy poco profundo
+                if liquidity < bot_params.min_book_depth_usdc * 2:
+                    continue
+
             # Obtener token IDs y precios
             clob_token_ids = m.get("clobTokenIds") or []
             if isinstance(clob_token_ids, str):
@@ -218,9 +233,19 @@ async def fetch_weather_markets() -> list[dict]:
             if yes_price is None or yes_token_id is None:
                 continue
 
+            # Slug del evento para URL de Polymarket
+            m_event_slug = (
+                m.get("eventSlug") or m.get("event_slug")
+                or (m.get("event") or {}).get("slug")
+                or _clean_market_slug(m.get("slug", ""))
+            )
+            m_poly_url = f"https://polymarket.com/event/{m_event_slug}" if m_event_slug else ""
+
             markets.append({
                 # Identificacion
                 "condition_id": m.get("conditionId", ""),
+                "slug":         m_event_slug,
+                "poly_url":     m_poly_url,
                 "title": title,
                 "city": parsed["city"],
                 "station": parsed["station"],
@@ -259,17 +284,23 @@ async def get_order_book_depth(token_id: str, side: str, up_to_price: float) -> 
     Retorna cuantos shares y USDC estan disponibles hasta up_to_price.
     """
     try:
+        # Usar streaming con chunks pequeños para evitar OSError(34, 'Result too large')
+        # en Windows (ProactorEventLoop falla con lecturas de socket >~3MB de una vez).
+        import json as _json
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
+            async with client.stream(
+                "GET",
                 f"{CLOB_BASE}/book",
                 params={"token_id": token_id},
                 headers=HEADERS,
                 timeout=8,
-            )
-            if resp.status_code != 200:
-                return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
-
-            book = resp.json()
+            ) as resp:
+                if resp.status_code != 200:
+                    return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
+                chunks = []
+                async for chunk in resp.aiter_bytes(chunk_size=8192):
+                    chunks.append(chunk)
+                book = _json.loads(b"".join(chunks))
             levels_key = "asks" if side == "ask" else "bids"
             levels = book.get(levels_key, [])
 
@@ -323,10 +354,29 @@ DATA_API_BASE = "https://data-api.polymarket.com"
 _slug_cache: dict[str, str] = {}
 
 
+def _clean_market_slug(slug: str) -> str:
+    """
+    Convierte un market slug en event slug eliminando sufijos de outcome.
+    Ej: "btc-up-or-down-5m-1234-up" → "btc-up-or-down-5m-1234"
+        "will-chicago-be-above-90f-yes" → "will-chicago-be-above-90f"
+    """
+    if not slug:
+        return slug
+    low = slug.lower()
+    for suffix in ("-yes", "-no", "-up", "-down"):
+        if low.endswith(suffix):
+            return slug[: -len(suffix)]
+    return slug
+
+
 async def _fetch_slug_for_condition(client: httpx.AsyncClient, condition_id: str) -> str:
     """
     Devuelve el EVENT slug para construir URLs de Polymarket.
-    Prioridad: campo eventSlug/event del mercado → events[0].slug → slug del mercado.
+    Prioridad:
+      1) eventSlug / event_slug del mercado
+      2) event.slug o events[0].slug
+      3) Llamada al endpoint /events con el eventId del mercado
+      4) market.slug limpiado de sufijos de outcome (-yes/-no/-up/-down)
     """
     if not condition_id:
         return ""
@@ -348,20 +398,40 @@ async def _fetch_slug_for_condition(client: httpx.AsyncClient, condition_id: str
                 market = data
 
             if market:
-                # 1) campo directo eventSlug o event.slug
+                # 1) campo directo eventSlug / event_slug
                 event_slug = (
                     market.get("eventSlug")
                     or market.get("event_slug")
                     or (market.get("event") or {}).get("slug")
                 )
-                # 2) events array  [{"slug": "..."}]
+                # 2) events array [{"slug": "..."}]
                 if not event_slug:
                     events_list = market.get("events") or []
                     if events_list and isinstance(events_list, list):
                         event_slug = events_list[0].get("slug", "")
-                # 3) fallback: slug del mercado (suele coincidir con el evento para binarios)
+
+                # 3) Llamar /events con el eventId del mercado
                 if not event_slug:
-                    event_slug = market.get("slug", "")
+                    event_id = market.get("eventId") or market.get("event_id")
+                    if event_id:
+                        try:
+                            ev_resp = await client.get(
+                                f"{GAMMA_BASE}/events/{event_id}",
+                                headers=HEADERS,
+                                timeout=8,
+                            )
+                            if ev_resp.status_code == 200:
+                                ev_data = ev_resp.json()
+                                ev_obj = ev_data if isinstance(ev_data, dict) else (ev_data[0] if ev_data else {})
+                                event_slug = ev_obj.get("slug", "")
+                        except Exception:
+                            pass
+
+                # 4) Fallback: slug del mercado limpiando sufijo de outcome
+                if not event_slug:
+                    raw_slug = market.get("slug", "")
+                    event_slug = _clean_market_slug(raw_slug)
+
                 if event_slug:
                     _slug_cache[condition_id] = event_slug
                 return event_slug or ""
@@ -445,11 +515,12 @@ async def get_polymarket_positions(wallet_address: str) -> list[dict]:
                         except Exception:
                             pass
 
-                # Construir URL de Polymarket usando slug real (Gamma API si es necesario)
+                # Construir URL de Polymarket usando event slug
+                # Prioridad: eventSlug directo → slug limpiado de sufijos → Gamma API lookup
                 condition_id = p.get("conditionId", "")
                 event_slug = (
-                    p.get("slug") or p.get("eventSlug") or p.get("event_slug")
-                    or p.get("marketSlug") or ""
+                    p.get("eventSlug") or p.get("event_slug")
+                    or _clean_market_slug(p.get("slug") or p.get("marketSlug") or "")
                 )
                 if not event_slug and condition_id:
                     event_slug = await _fetch_slug_for_condition(client, condition_id)

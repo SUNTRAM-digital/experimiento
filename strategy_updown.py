@@ -34,20 +34,34 @@ from typing import Optional
 from config import bot_params
 
 # ── Umbrales ──────────────────────────────────────────────────────────────────
-# Confianza mínima (|señal_combinada|): 0.10 = 55% de indicadores alineados
-_MIN_CONFIDENCE  = 0.10
+# Confianza mínima: subido 0.10→0.20 para evitar trades con señal débil.
+# 0.20 ≈ 60% de indicadores alineados (más conservador que el 55% previo).
+_MIN_CONFIDENCE  = 0.20
 
 # No entrar si el share de la dirección elegida cuesta >= este valor
 # $0.90 → ganas $0.10 arriesgando $0.90 → ratio 1:9 → inaceptable
 _MAX_ENTRY_PRICE = 0.89
 
+# ── Tiempo mínimo de entrada (floor fijo, independiente del learner) ──────────
+# Para que el precio BTC muestre dirección antes de apostar.
+# 5m: esperar 1.5min (30% de la ventana)
+# 15m: esperar 3.5min (23% de la ventana)
+# El learner puede subir este umbral pero nunca lo reduce debajo del floor.
+_MIN_ELAPSED_5M  = 1.5   # minutos
+_MIN_ELAPSED_15M = 3.5   # minutos
+
 # ── Pesos de cada componente ──────────────────────────────────────────────────
-# Para ventanas muy cortas (5m) el momentum intra-ventana y el TA de corto plazo
-# son las señales más predictivas. Macro y consenso de mercado son secundarios.
-_W_TA          = 0.55  # TradingView: indicadores técnicos (incluye RSI, EMA, MACD)
-_W_MOMENTUM    = 0.25  # Movimiento BTC desde inicio de ventana — la señal más directa
-_W_MARKET      = 0.10  # Consenso Polymarket: qué tan inclinado está el mercado
+# Basado en knowledge base (v83 bot externo + IR = IC × √N):
+#   TA + RSI/EMA/MACD = señal técnica compuesta (más informativa)
+#   Momentum intra-ventana = señal más directa para 5m/15m
+#   OFI (order book imbalance) = presión compradora/vendedora instantánea
+#   Macro (CMC 1h) = contexto amplio
+#   Consenso de mercado = confirmación secundaria
+_W_TA          = 0.50  # TradingView: indicadores técnicos compuestos
+_W_MOMENTUM    = 0.25  # Movimiento BTC desde inicio de ventana
+_W_OFI         = 0.10  # Order book imbalance (proxy OFI del knowledge base)
 _W_MACRO       = 0.10  # Tendencia macro 1h de CoinMarketCap
+_W_MARKET      = 0.05  # Consenso Polymarket (reducido — el OFI ya captura esto mejor)
 
 
 # ── Señales individuales ──────────────────────────────────────────────────────
@@ -124,6 +138,27 @@ def _macro_signal(cmc_data: Optional[dict]) -> float:
     return max(-1.0, min(1.0, change_1h / 2.0))
 
 
+def _order_book_imbalance(market: Optional[dict]) -> float:
+    """
+    Order Book Imbalance (OFI proxy) desde los precios bid/ask del mercado UpDown.
+    Si best_bid está muy cerca de best_ask en el lado UP, hay presión compradora.
+
+    Fórmula simplificada:
+      imbalance = (up_price - 0.5) × 2    → [-1, +1]
+      Si UP cuesta 0.65 → mercado presionado al alza → +0.30 señal UP
+      Si UP cuesta 0.35 → mercado presionado a la baja → -0.30 señal DOWN
+
+    El knowledge base (v83) usa CVD completo, pero con los datos disponibles
+    (solo precio de mercado, no full order book) este proxy es el mejor aproximado.
+    """
+    if not market:
+        return 0.0
+    up_price = float(market.get("up_price", 0.5) or 0.5)
+    # Neutralizar en 0.50, amplificar desviaciones
+    lean = (up_price - 0.5) * 2.0
+    return max(-1.0, min(1.0, lean))
+
+
 # ── Señal combinada ───────────────────────────────────────────────────────────
 
 def build_btc_direction_signal(
@@ -163,19 +198,22 @@ def build_btc_direction_signal(
     )
     ta_composite = max(-1.0, min(1.0, ta_composite))
 
-    # Señal de consenso de mercado (Polymarket)
+    # Señal de consenso de mercado (Polymarket) + OFI
     mkt_sig = 0.0
+    ofi_sig = 0.0
     if market:
         mkt_sig = _market_consensus_signal(
             market.get("up_price", 0.5),
             market.get("down_price", 0.5),
         )
+        ofi_sig = _order_book_imbalance(market)
 
     combined = (
         ta_composite * _W_TA
         + mom_sig    * _W_MOMENTUM
-        + mkt_sig    * _W_MARKET
+        + ofi_sig    * _W_OFI
         + macro_sig  * _W_MACRO
+        + mkt_sig    * _W_MARKET
     )
     combined = max(-1.0, min(1.0, combined))
 
@@ -194,6 +232,7 @@ def build_btc_direction_signal(
         "momentum":    round(mom_sig, 4),
         "market_sig":  round(mkt_sig, 4),
         "macro":       round(macro_sig, 4),
+        "ofi":         round(ofi_sig, 4),
         "rsi":         rsi_val,
         "macd":        macd,
         "window_pct":  window_pct,
@@ -234,14 +273,24 @@ def evaluate_updown_market(
         except Exception:
             adaptive_params = {}
 
-    min_confidence = adaptive_params.get("min_signal", _MIN_CONFIDENCE)
+    min_confidence = max(adaptive_params.get("min_signal", _MIN_CONFIDENCE), _MIN_CONFIDENCE)
     invert_signal  = adaptive_params.get("invert_signal", False)
     max_elapsed    = adaptive_params.get("max_elapsed_min")
 
-    elapsed     = market.get("elapsed_minutes", 0.0)
-    min_elapsed = adaptive_params.get("min_elapsed_min")
-    if min_elapsed is not None and elapsed < min_elapsed:
-        return None, f"Timing: ventana muy temprana ({elapsed:.1f}min < mín {min_elapsed:.1f}min — entradas tempranas pierden)"
+    elapsed          = market.get("elapsed_minutes", 0.0)
+    interval_minutes = market.get("interval_minutes", 15)
+
+    # Floor fijo por intervalo (learner solo puede SUBIR, nunca bajar del floor)
+    _floor = _MIN_ELAPSED_15M if interval_minutes >= 15 else _MIN_ELAPSED_5M
+    learner_min = adaptive_params.get("min_elapsed_min")
+    min_elapsed = max(_floor, learner_min) if learner_min is not None else _floor
+
+    if elapsed < min_elapsed:
+        return None, (
+            f"Timing: ventana muy temprana "
+            f"({elapsed:.1f}min < mín {min_elapsed:.1f}min — "
+            f"floor {_floor}min, learner {learner_min}min)"
+        )
     if max_elapsed is not None and elapsed > max_elapsed:
         return None, f"Timing: ventana muy avanzada ({elapsed:.1f}min > máx {max_elapsed:.1f}min)"
 
@@ -370,6 +419,7 @@ def evaluate_updown_market(
     return {
         # Identificación
         "slug":             market["slug"],
+        "poly_url":         market.get("poly_url", ""),
         "title":            market["title"],
         "condition_id":     market["condition_id"],
         "asset":            "BTC_UPDOWN",

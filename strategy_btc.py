@@ -218,4 +218,7 @@ def evaluate_btc_market(
         # TA
         "ta_recommendation": ta_rec,
         "ta_signal":         round(ta_signal, 2),
+        # URL de Polymarket
+        "poly_url":          market.get("poly_url", ""),
+        "slug":              market.get("slug", ""),
     }

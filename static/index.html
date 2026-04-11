@@ -121,6 +121,19 @@
     border-top: 1px solid #1e3a5f; font-size: 11px;
   }
   .chat-action-result.ok  { color: var(--green); }
+  /* Advisor suggestion card */
+  .advisor-suggestion {
+    background: #0e2a1a; border: 1px solid #2a6a3a;
+    border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 11.5px;
+  }
+  .advisor-sug-label { color: #3fb950; font-weight: 700; margin-bottom: 3px; font-size: 11px; }
+  .advisor-sug-detail { color: var(--muted); margin-bottom: 8px; font-size: 11px; }
+  .advisor-sug-apply {
+    background: #1a4a2e; border: 1px solid #3fb950; color: #3fb950;
+    border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 11px;
+    transition: all .15s;
+  }
+  .advisor-sug-apply:hover { background: #3fb950; color: #000; }
   .chat-action-result.err { color: var(--red); }
   /* Historial de conversaciones */
   .chat-hist-panel {
@@ -292,6 +305,7 @@
 <header>
   <h1>⛅ Weatherbot Polymarket</h1>
   <span id="status-badge" class="badge off">DETENIDO</span>
+  <span id="version-badge" title="" style="font-size:10px; font-weight:600; color:var(--muted); background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:4px; padding:2px 7px; letter-spacing:.4px; cursor:default;">v—</span>
   <span style="color:var(--muted); margin-left:auto; font-size:11px; display:flex; align-items:center; gap:16px;">
     <span title="Hora UTC que el bot usa para todos los mercados (los mercados UpDown también son UTC)">
       Bot UTC: <span id="bot-clock" style="color:var(--blue); font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.5px;">—</span>
@@ -679,6 +693,7 @@
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
+      <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -788,7 +803,10 @@
     <div id="tab-positions" class="tab-content">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="color:#888;font-size:.8rem">Shares que posees actualmente en tu cuenta de Polymarket (actualizadas en cada escaneo)</div>
-        <button id="btn-refresh-analysis" onclick="refreshPortfolioAnalysis()" style="background:#1e3a5f;color:#60a5fa;border:1px solid #2d5a8e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Analizar portafolio</button>
+        <div style="display:flex;gap:6px">
+          <button onclick="refreshPositionsNow(this)" style="background:#1a2e1a;color:#3fb950;border:1px solid #1a4a2e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Actualizar</button>
+          <button id="btn-refresh-analysis" onclick="refreshPortfolioAnalysis()" style="background:#1e3a5f;color:#60a5fa;border:1px solid #2d5a8e;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer">&#8635; Analizar portafolio</button>
+        </div>
       </div>
       <div id="pos-conflict-warn" style="display:none;background:#3a1a00;border:1px solid #f97316;border-radius:6px;padding:8px 12px;margin-bottom:10px;color:#fb923c;font-size:.8rem"></div>
       <div id="portfolio-analysis-box" style="display:none;margin-bottom:14px">
@@ -1152,11 +1170,16 @@
         <div class="panel" style="padding:14px">
           <div style="font-size:.8rem;color:#60a5fa;font-weight:700;margin-bottom:8px">⛅ ESTRATEGIA CLIMA</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
-            <b style="color:var(--text)">Fuente:</b> Forecast NOAA (weather.gov) — sin API key<br>
-            <b style="color:var(--text)">Señal:</b> Probabilidad gaussiana de que la temp máxima supere/no supere el umbral del mercado<br>
+            <b style="color:var(--text)">Fuente:</b> NOAA weather.gov (sin API key) + OpenMeteo ensemble<br>
+            <b style="color:var(--text)">Señal:</b> Probabilidad gaussiana sobre umbral de temperatura (incertidumbre 2.5°F/3.5°F/5°F según horizonte)<br>
             <b style="color:var(--text)">Sizing:</b> Kelly fraccionado × presupuesto clima<br>
-            <b style="color:var(--text)">Filtros:</b> EV mínimo, liquidez mínima, spread máximo, horas al cierre<br>
-            <b style="color:var(--text)">Aprobación:</b> Claude API revisa cada trade antes de ejecutar (salvo auto-trade)
+            <b style="color:var(--text)">Filtros:</b> EV mínimo, liquidez, spread, horas al cierre<br>
+            <b style="color:var(--text)">Lawyer's Edge (F4):</b> Parser ICAO, boundary zones, reglas de resolución por tipo de dato<br>
+            <b style="color:var(--text)">Near-zero (F5):</b> Entradas &lt;8¢ de alta asimetría detectadas<br>
+            <b style="color:var(--text)">Risk (F6):</b> Circuit breaker, cash buffer, auto-sizing por rachas<br>
+            <b style="color:var(--text)">ML (F7):</b> Warming/Cooling Model + Ensemble Calibrator NOAA/OpenMeteo<br>
+            <b style="color:var(--text)">Backtesting (F3):</b> 4 estrategias probadas históricamente (value, momentum, contrarian, combined)<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API (acceso total: logs, params, historial)
           </div>
           <div id="strat-weather-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
         </div>
@@ -1165,32 +1188,41 @@
         <div class="panel" style="padding:14px">
           <div style="font-size:.8rem;color:#f59e0b;font-weight:700;margin-bottom:8px">₿ ESTRATEGIA BTC PREDICCIÓN</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
-            <b style="color:var(--text)">Fuente:</b> Precio Binance + TradingView TA + CoinMarketCap<br>
-            <b style="color:var(--text)">Señal:</b> Modelo log-normal: probabilidad de que BTC esté sobre/bajo un threshold al cierre<br>
-            <b style="color:var(--text)">Inputs:</b> Precio actual, volatilidad histórica (klines), horas al cierre<br>
+            <b style="color:var(--text)">Fuente:</b> Precio Binance + TradingView TA + CoinMarketCap 1h<br>
+            <b style="color:var(--text)">Señal:</b> Modelo log-normal: P(BTC sobre/bajo umbral) con volatilidad histórica (klines)<br>
             <b style="color:var(--text)">Filtros:</b> EV mínimo, confirmación TA (RSI + recomendación), horas al cierre<br>
-            <b style="color:var(--text)">Aprobación:</b> Claude API revisa (salvo auto-trade)
+            <b style="color:var(--text)">Patrones (F2):</b> Category tracker, contrarian logger, exit monitor, P2 win rate decay<br>
+            <b style="color:var(--text)">Screener (F3):</b> Value + momentum screener, Bayesian updating, capital velocity<br>
+            <b style="color:var(--text)">Wallet Tracker (F5):</b> Señales de smart wallets detectadas en Polymarket<br>
+            <b style="color:var(--text)">Risk (F6):</b> Heatmap de riesgo, circuit breaker por tipo de mercado<br>
+            <b style="color:var(--text)">ML (F7):</b> Pesos adaptativos por fuente, ensemble calibrator<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API con contexto completo de plataforma
           </div>
           <div id="strat-btc-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
         </div>
 
         <!-- UpDown -->
         <div class="panel" style="padding:14px">
-          <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:8px">⚡ ESTRATEGIA UPDOWN</div>
+          <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:8px">⚡ ESTRATEGIA UPDOWN BTC</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
-            <b style="color:var(--text)">Fuente:</b> TradingView TA (RSI, EMA20/50, señal) + momentum de ventana + CMC tendencia 1h<br>
-            <b style="color:var(--text)">Señal:</b> Compuesta: TA 70% + momentum ventana 20% + macro CMC 10%<br>
-            <b style="color:var(--text)">Dirección:</b> Predicción pura de movimiento BTC — precio del share solo filtra ratio riesgo/recompensa<br>
-            <b style="color:var(--text)">Aprendizaje:</b> Ajusta umbrales automáticamente por win rate, precisión TA, timing y lado<br>
-            <b style="color:var(--text)">Aprobación:</b> Claude API revisa cada trade (salvo auto-trade)
+            <b style="color:var(--text)">Fuente:</b> TradingView TA (RSI, EMA20/50, MACD, señal) + momentum ventana + CMC macro 1h<br>
+            <b style="color:var(--text)">Señal 5m:</b> TA×0.55 + momentum invertido×0.25 + mercado×0.10 + macro×0.10 (mean-reversion)<br>
+            <b style="color:var(--text)">Señal 15m:</b> TA×0.70 + momentum×0.20 + macro×0.10 (trend-following)<br>
+            <b style="color:var(--text)">Learner (F8):</b> Ajusta umbrales automáticamente por WR, precisión TA, timing, lado, rachas<br>
+            <b style="color:var(--text)">Phantom (F9):</b> Registra apuestas fantasma en CADA mercado — aprende de señales no ejecutadas<br>
+            <b style="color:var(--text)">Performance (F8):</b> Resource dashboard, learner adaptativo por intervalo<br>
+            <b style="color:var(--text)">Risk (F6):</b> Max consecutive losses, stop automático, presupuesto aislado<br>
+            <b style="color:var(--text)">Aprobación:</b> Claude API puede cambiar dirección si detecta señales más fuertes
           </div>
           <div id="strat-updown-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
         </div>
       </div>
 
-      <!-- Learner UpDown detalle -->
+      <!-- Estadísticas detalladas por estrategia -->
       <div class="panel" style="padding:14px;margin-bottom:16px">
-        <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:10px">🧠 APRENDIZAJE ADAPTATIVO — UpDown</div>
+        <div style="font-size:.8rem;color:var(--text);font-weight:700;margin-bottom:10px">📊 ESTADÍSTICAS DETALLADAS</div>
+        <div id="strat-detail-weather" style="margin-bottom:12px"></div>
+        <div id="strat-detail-btc"     style="margin-bottom:12px"></div>
         <div id="strat-learner-detail" style="font-size:.75rem;color:var(--muted)">Cargando...</div>
       </div>
 
@@ -1234,14 +1266,131 @@
         </div>
       </div>
     </div>
+
+    <!-- RECURSOS / PERFORMANCE -->
+    <div id="tab-perf" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+
+        <!-- CPU -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px">CPU — Proceso Bot</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+            <span id="perf-cpu-now" style="font-size:2rem;font-weight:700;color:var(--blue)">—</span>
+            <span style="color:var(--muted);font-size:.8rem">% ahora</span>
+            <span style="margin-left:auto;font-size:.75rem;color:var(--muted)">prom 1m: <span id="perf-cpu-avg" style="color:var(--text)">—</span>%</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">
+            <div id="perf-cpu-bar" style="height:100%;background:var(--blue);border-radius:4px;transition:width .5s;width:0%"></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--muted)">Sistema total: <span id="perf-cpu-sys" style="color:var(--text)">—</span>%</div>
+          <canvas id="chart-cpu" height="60" style="margin-top:10px;width:100%"></canvas>
+        </div>
+
+        <!-- RAM -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px">Memoria — Proceso Bot</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+            <span id="perf-ram-now" style="font-size:2rem;font-weight:700;color:var(--purple)">—</span>
+            <span style="color:var(--muted);font-size:.8rem">MB ahora</span>
+            <span style="margin-left:auto;font-size:.75rem;color:var(--muted)">prom 1m: <span id="perf-ram-avg" style="color:var(--text)">—</span> MB</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">
+            <div id="perf-ram-bar" style="height:100%;background:var(--purple);border-radius:4px;transition:width .5s;width:0%"></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--muted)">Sistema: <span id="perf-ram-used" style="color:var(--text)">—</span> / <span id="perf-ram-total" style="color:var(--text)">—</span> MB (<span id="perf-ram-sys-pct" style="color:var(--text)">—</span>%)</div>
+          <canvas id="chart-ram" height="60" style="margin-top:10px;width:100%"></canvas>
+        </div>
+      </div>
+
+      <!-- Metricas del ciclo del bot -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Ciclos de Escaneo</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+          <div style="text-align:center">
+            <div id="perf-scan-count" style="font-size:1.5rem;font-weight:700;color:var(--green)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">ciclos totales</div>
+          </div>
+          <div style="text-align:center">
+            <div id="perf-last-scan-ms" style="font-size:1.5rem;font-weight:700;color:var(--yellow)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">ms último ciclo</div>
+          </div>
+          <div style="text-align:center">
+            <div id="perf-markets-scan" style="font-size:1.5rem;font-weight:700;color:var(--blue)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">mercados/ciclo</div>
+          </div>
+          <div style="text-align:center">
+            <div id="perf-opps-found" style="font-size:1.5rem;font-weight:700;color:var(--green)">—</div>
+            <div style="font-size:.7rem;color:var(--muted)">opps encontradas</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resource Log -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">
+            Log de Recursos
+            <span style="font-size:.65rem;color:#555;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">APIs · Memoria · Ciclos · Alertas</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <label style="font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="checkbox" id="perf-log-scroll" checked style="cursor:pointer"> auto-scroll
+            </label>
+            <select id="perf-log-level" onchange="_perfLogFilter()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;cursor:pointer">
+              <option value="ALL">Todo</option>
+              <option value="INFO">INFO</option>
+              <option value="WARN">WARN</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+            <select id="perf-log-cat" onchange="_perfLogFilter()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;cursor:pointer">
+              <option value="ALL">Todas</option>
+              <option value="API">API</option>
+              <option value="FORECAST">FORECAST</option>
+              <option value="AI">AI</option>
+              <option value="CYCLE">CICLO</option>
+              <option value="MEMORY">MEMORIA</option>
+              <option value="CPU">CPU</option>
+              <option value="COMPUTE">COMPUTE</option>
+            </select>
+            <button onclick="_clearPerfLog()" style="font-size:.7rem;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;cursor:pointer">Limpiar</button>
+          </div>
+        </div>
+        <div id="perf-log-container" style="font-family:monospace;font-size:11px;line-height:1.8;height:260px;overflow-y:auto;background:var(--bg);border-radius:4px;padding:8px 10px;border:1px solid var(--border)">
+          <div style="color:var(--muted);font-style:italic" id="perf-log-empty">Esperando eventos de recursos...</div>
+        </div>
+      </div>
+
+      <!-- Tiempos por componente -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Tiempos por Componente</div>
+        <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+          <thead>
+            <tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+              <th style="text-align:left;padding:4px 8px">Componente</th>
+              <th style="text-align:right;padding:4px 8px">Último</th>
+              <th style="text-align:right;padding:4px 8px">Promedio</th>
+              <th style="text-align:right;padding:4px 8px">P95</th>
+              <th style="text-align:right;padding:4px 8px">Máx</th>
+              <th style="text-align:right;padding:4px 8px">Calls</th>
+              <th style="text-align:right;padding:4px 8px">Errores</th>
+              <th style="text-align:right;padding:4px 8px" title="Barra visual proporcional al promedio">Visual</th>
+            </tr>
+          </thead>
+          <tbody id="perf-timings-body"></tbody>
+        </table>
+        <div id="perf-no-data" style="text-align:center;color:var(--muted);padding:20px;font-size:.8rem">Sin datos aún — espera el primer ciclo de escaneo</div>
+      </div>
+    </div>
   </div>
 
   <!-- CHAT PANEL -->
   <div class="chat-panel">
     <div class="chat-header">
       <span>◆</span> Chat con Claude
+      <span id="advisor-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;cursor:pointer" onclick="showAdvisorNotifications()" title="Notificaciones del asesor">● notif</span>
       <button class="chat-hdr-btn" id="btn-hist" onclick="toggleHistPanel()" title="Ver conversaciones guardadas">☰ Historial</button>
       <button class="chat-hdr-btn" onclick="newChat()" title="Nueva conversación">＋ Nueva</button>
+      <button class="chat-hdr-btn" onclick="requestAdvisorAnalysis()" title="Pedir análisis proactivo ahora">🔍 Analizar</button>
       <button class="chat-clear" onclick="clearChat()" title="Limpiar conversación actual">✕</button>
     </div>
 
@@ -1259,7 +1408,8 @@
     <div class="chat-messages" id="chat-messages">
       <div class="chat-msg assistant">
         <div class="chat-bubble">
-          Hola! Soy tu asistente de trading. Puedo analizar tu portafolio, explicar oportunidades, sugerir si mantener o vender posiciones, o responder cualquier pregunta sobre el bot.
+          Hola! Soy tu asesor de trading con <strong>acceso total de lectura</strong> al sistema. Puedo analizar logs, posiciones, parámetros, estadísticas y patrones de aprendizaje.<br><br>
+          Solo modifico parámetros si me lo pides explícitamente. Si detecto algo importante, te notifico aquí.
         </div>
       </div>
     </div>
@@ -1267,18 +1417,18 @@
     <div class="chat-input-area" id="chat-input-area">
       <div class="chat-suggestions">
         <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Cómo va el portafolio?</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Debería vender algo?</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Cuál es la mejor oportunidad?</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza todos los parámetros</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Qué mejorarías del bot?</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Revisa los logs recientes</span>
       </div>
       <div class="chat-suggestions" style="margin-top:2px">
-        <span style="color:var(--muted);font-size:10px;align-self:center">₿</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza el mercado BTC ahora</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Analiza el aprendizaje UpDown</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">¿Debería vender algo?</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Activa auto BTC cada 5 min</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">Compra la mejor oportunidad BTC</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Detén el auto-trading BTC</span>
       </div>
       <div class="chat-input-row">
-        <textarea id="chat-input" placeholder="Pregunta sobre tu portafolio, posiciones, oportunidades..." onkeydown="chatKeydown(event)"></textarea>
+        <textarea id="chat-input" placeholder="Pregunta sobre tu portafolio, logs, parámetros, estrategias..." onkeydown="chatKeydown(event)"></textarea>
         <button id="chat-send" onclick="sendChat()">↑</button>
       </div>
     </div>
@@ -1393,6 +1543,15 @@ function connectWS() {
     if (msg.type === 'open_orders')  renderOpenOrders(msg.data);
     if (msg.type === 'opportunities')     renderOpportunities(msg.data);
     if (msg.type === 'btc_opportunities') renderBtcOpportunities(msg.data);
+    if (msg.type === 'advisor_notification') {
+      // Mostrar badge y guardar notificación
+      _unreadAdvisor++;
+      const badge = document.getElementById('advisor-badge');
+      if (badge) {
+        badge.style.display = 'inline';
+        badge.textContent = `● ${_unreadAdvisor} nueva${_unreadAdvisor > 1 ? 's' : ''}`;
+      }
+    }
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 20000);
@@ -1451,6 +1610,11 @@ function escHtml(s) {
 
 function renderStatus(d) {
   window._lastStatus = d;  // guardar para uso en otras secciones (Estrategias)
+  // Versión — viene en cada status
+  if (d.version) {
+    const vb = document.getElementById('version-badge');
+    if (vb) { vb.textContent = d.version; vb.title = d.version_full || ''; }
+  }
   const running = d.running;
   document.getElementById('status-badge').textContent = running ? 'ACTIVO' : 'DETENIDO';
   document.getElementById('status-badge').className = `badge ${running ? 'on' : 'off'}`;
@@ -2004,6 +2168,21 @@ async function fetchPositions() {
   renderPositions(await r.json());
 }
 
+async function refreshPositionsNow(btn) {
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '...';
+  try {
+    const r = await fetch('/api/poly-positions');
+    renderPositions(await r.json());
+    btn.innerHTML = '&#10003;';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+  } catch(e) {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
+}
+
 let _openOrders = [];
 
 function renderOpenOrders(rows) {
@@ -2223,6 +2402,7 @@ function showTab(id) {
   }
   if (id === 'tab-dashboard')  fetchDashboard();
   if (id === 'tab-strategies') fetchStrategies();
+  if (id === 'tab-perf')       { fetchPerformance(); _loadPerfLogHistory(); }
   // Persistir en localStorage para sobrevivir refresco
   try { localStorage.setItem('wb_active_tab', id); } catch(e) {}
 }
@@ -2375,19 +2555,16 @@ function _renderUpdownHistory(trades) {
       : '<span style="color:#4b5563;font-size:.72rem">—</span>';
 
     // Construir link al mercado en Polymarket desde el slug
+    // El slug guardado en trades UpDown ES ya el event slug del evento padre (viene de event.get("slug"))
+    // URL correcta: https://polymarket.com/event/{event-slug}
     const slug = t.slug || '';
-    // El slug tiene forma "btc-updown-15m-1234567890" → el event slug es sin el último segmento
-    // URL: https://polymarket.com/event/{event-slug}/{market-slug}
     let marketCell;
     if (slug) {
-      // Evento padre: quitar el último componente del slug (el timestamp)
-      const parts = slug.split('-');
-      const eventSlug = parts.slice(0, -1).join('-'); // btc-updown-15m
-      const polyUrl = `https://polymarket.com/event/${eventSlug}/${slug}`;
+      const polyUrl = `https://polymarket.com/event/${slug}`;
       marketCell = `
         <span style="background:#1e3a5f;color:#60a5fa;border-radius:4px;padding:1px 5px;font-size:.72rem">${t.interval}m</span>
         <a href="${polyUrl}" target="_blank" rel="noopener"
-           title="Ver mercado en Polymarket: ${slug}"
+           title="Ver en Polymarket: ${slug}"
            style="color:#60a5fa;font-size:.72rem;text-decoration:none;margin-left:3px"
            onclick="event.stopPropagation()">↗</a>`;
     } else {
@@ -3092,9 +3269,24 @@ function _tickBotClock() {
 _tickBotClock();
 setInterval(_tickBotClock, 1000);
 
+// ── VERSION ──────────────────────────────────────────────────────────────────
+async function loadVersion() {
+  try {
+    const r = await fetch('/api/version');
+    if (!r.ok) return;
+    const d = await r.json();
+    const badge = document.getElementById('version-badge');
+    if (badge) {
+      badge.textContent = d.short_label || `v${d.version}`;
+      badge.title = d.full_label || '';
+    }
+  } catch(e) { /* silencioso */ }
+}
+
 // Init — el WebSocket se encarga de status, posiciones y oportunidades en tiempo real
 _restoreTab();
 connectWS();
+loadVersion();
 loadParams();
 fetchHistory();
 
@@ -3128,7 +3320,9 @@ async function fetchStrategies() {
     const learn = await learnR.json();
     _renderStratPerf(perf);
     _renderStratParams(perf);
-    _renderStratLearner(learn);
+    _renderStratDetailWeather(perf.WEATHER || {});
+    _renderStratDetailBtc(perf.BTC || {});
+    _renderStratLearner(learn, perf);
     _loadNoteFields(notes);
   } catch(e) {}
 }
@@ -3143,19 +3337,27 @@ function _renderStratPerf(perf) {
   ];
   el.innerHTML = cards.map(c => {
     const s = perf[c.key] || {};
-    const wr = s.win_rate != null ? (s.win_rate * 100).toFixed(0) + '%' : '—';
+    const resolved = (s.wins||0) + (s.losses||0);
+    const wr = s.win_rate != null ? (s.win_rate * 100).toFixed(0) + '%' : (resolved === 0 ? 'sin datos' : '—');
     const wrColor = s.win_rate == null ? 'var(--muted)' : s.win_rate >= 0.5 ? 'var(--green)' : s.win_rate >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+    const wrSize  = s.win_rate == null ? '.85rem' : '1.4rem';
+    const rwr = s.recent_wr;
+    const rwrStr = rwr != null ? `${(rwr*100).toFixed(0)}%` : '—';
+    const rwrColor = rwr == null ? 'var(--muted)' : rwr >= 0.5 ? 'var(--green)' : rwr >= 0.4 ? 'var(--yellow)' : 'var(--red)';
     return `<div class="panel" style="padding:14px;text-align:center">
       <div style="font-size:1.4rem">${c.icon}</div>
       <div style="font-size:.8rem;color:${c.color};font-weight:700;margin:4px 0">${c.label}</div>
-      <div style="font-size:1.4rem;font-weight:700;color:${wrColor}">${wr}</div>
-      <div style="font-size:.7rem;color:var(--muted)">win rate</div>
-      <div style="display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:.72rem">
-        <span style="color:var(--green)">✓ ${s.wins||0} wins</span>
-        <span style="color:var(--red)">✗ ${s.losses||0} loss</span>
+      <div style="font-size:${wrSize};font-weight:700;color:${wrColor};margin:6px 0">${wr}</div>
+      <div style="font-size:.65rem;color:var(--muted)">win rate (${resolved} resueltos)</div>
+      ${resolved > 0 ? `<div style="font-size:.7rem;color:${rwrColor};margin-top:2px">reciente: ${rwrStr}</div>` : ''}
+      <div style="display:flex;justify-content:center;gap:10px;margin-top:8px;font-size:.72rem">
+        <span style="color:var(--green)">✓ ${s.wins||0}</span>
+        <span style="color:var(--red)">✗ ${s.losses||0}</span>
         <span style="color:var(--muted)">⏳ ${s.pending||0} pend</span>
       </div>
-      <div style="font-size:.7rem;color:var(--muted);margin-top:4px">$${(s.total_cost||0).toFixed(2)} invertido</div>
+      <div style="font-size:.68rem;color:var(--muted);margin-top:5px;border-top:1px solid var(--border);padding-top:5px">
+        $${(s.total_cost||0).toFixed(2)} invertido · ${(s.trades||0)} trades
+      </div>
     </div>`;
   }).join('');
 }
@@ -3206,42 +3408,192 @@ function _renderStratParams(perf) {
   }
 }
 
+function _renderStratDetailWeather(s) {
+  const el = document.getElementById('strat-detail-weather');
+  if (!el) return;
+  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>'
+    : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+
+  const hasData = (s.trades || 0) > 0;
+  const bside = s.by_side || {};
+  const bev   = s.by_ev   || {};
+
+  let html = `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <b style="color:#60a5fa;font-size:.8rem">⛅ Clima</b>
+      <span style="color:var(--muted);font-size:.72rem">${s.trades||0} trades</span>`;
+  if (hasData) {
+    const wrColor = s.win_rate==null?'var(--muted)':s.win_rate>=0.5?'var(--green)':s.win_rate>=0.4?'var(--yellow)':'var(--red)';
+    html += `<span style="font-size:.9rem;font-weight:700;color:${wrColor}">${s.win_rate!=null?(s.win_rate*100).toFixed(0)+'%':'—'} WR</span>
+      <span style="font-size:.8rem;color:var(--muted)">reciente: ${pct(s.recent_wr)}</span>
+      <span style="font-size:.72rem;color:var(--green)">✓ ${s.wins||0}</span>
+      <span style="font-size:.72rem;color:var(--red)">✗ ${s.losses||0}</span>
+      <span style="font-size:.72rem;color:var(--muted)">⏳ ${s.pending||0}</span>`;
+  } else {
+    html += `<span style="color:var(--muted);font-size:.72rem;font-style:italic">Sin trades resueltos aún</span>`;
+  }
+  html += `</div>`;
+
+  if (hasData) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.71rem">
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por lado</div>
+        <div>YES: ${pct((bside.YES||{}).wr)} (${(bside.YES||{}).t||0} trades)
+          &nbsp; NO: ${pct((bside.NO||{}).wr)} (${(bside.NO||{}).t||0} trades)</div>
+      </div>
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por EV estimado</div>
+        <div>&lt;15%: ${pct((bev.low||{}).wr)} &nbsp; 15-30%: ${pct((bev.med||{}).wr)} &nbsp; &gt;30%: ${pct((bev.high||{}).wr)}</div>
+      </div>
+    </div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+function _renderStratDetailBtc(s) {
+  const el = document.getElementById('strat-detail-btc');
+  if (!el) return;
+  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>'
+    : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+
+  const hasData = (s.trades || 0) > 0;
+  const bside = s.by_side || {};
+  const bev   = s.by_ev   || {};
+
+  let html = `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <b style="color:#f59e0b;font-size:.8rem">₿ BTC Predicción</b>
+      <span style="color:var(--muted);font-size:.72rem">${s.trades||0} trades</span>`;
+  if (hasData) {
+    const wrColor = s.win_rate==null?'var(--muted)':s.win_rate>=0.5?'var(--green)':s.win_rate>=0.4?'var(--yellow)':'var(--red)';
+    html += `<span style="font-size:.9rem;font-weight:700;color:${wrColor}">${s.win_rate!=null?(s.win_rate*100).toFixed(0)+'%':'—'} WR</span>
+      <span style="font-size:.8rem;color:var(--muted)">reciente: ${pct(s.recent_wr)}</span>
+      <span style="font-size:.72rem;color:var(--green)">✓ ${s.wins||0}</span>
+      <span style="font-size:.72rem;color:var(--red)">✗ ${s.losses||0}</span>
+      <span style="font-size:.72rem;color:var(--muted)">⏳ ${s.pending||0}</span>`;
+  } else {
+    html += `<span style="color:var(--muted);font-size:.72rem;font-style:italic">Sin trades resueltos aún</span>`;
+  }
+  html += `</div>`;
+
+  if (hasData) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.71rem">
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por lado (YES = sobre umbral)</div>
+        <div>YES: ${pct((bside.YES||{}).wr)} (${(bside.YES||{}).t||0} trades)
+          &nbsp; NO: ${pct((bside.NO||{}).wr)} (${(bside.NO||{}).t||0} trades)</div>
+      </div>
+      <div>
+        <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por EV estimado</div>
+        <div>&lt;15%: ${pct((bev.low||{}).wr)} &nbsp; 15-30%: ${pct((bev.med||{}).wr)} &nbsp; &gt;30%: ${pct((bev.high||{}).wr)}</div>
+      </div>
+    </div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
 function _renderStratLearner(data) {
   const el = document.getElementById('strat-learner-detail');
   if (!el) return;
-  const pct = v => v == null ? '<span style="color:var(--muted)">—</span>' : `<span style="color:${v>=0.5?'var(--green)':v>=0.4?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
-  const rows = [
-    ['Intervalo','Total','Win Rate','Reciente','Acc TA','Señal mín','Inv señal','Razón ajuste'],
-    ...['5m','15m'].map(k => {
-      const s = data[k] || {};
-      const ap = s.adaptive || {};
-      return [k, s.total||0, pct(s.win_rate), pct(s.recent_wr), pct(s.ta_accuracy),
-              ap.min_signal?.toFixed(2)||'—', ap.invert_signal?'⚠️ SÍ':'No',
-              `<span style="font-size:.68rem">${ap.reason||'—'}</span>`];
-    }),
-  ];
-  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.72rem">
-    ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border)">
-      ${r.map(c=>`<${i===0?'th':'td'} style="padding:5px 8px;${i===0?'color:var(--muted);font-weight:600;text-transform:uppercase;font-size:.65rem':'color:var(--text)'}">${c}</${i===0?'th':'td'}>`).join('')}
-    </tr>`).join('')}
-  </table>
-  <div style="margin-top:10px">
-    ${['5m','15m'].map(k => {
-      const s = data[k] || {};
-      const bs = s.by_signal || {};
-      const bt = s.by_side   || {};
-      const be = s.by_elapsed|| {};
-      const p = v => v==null?'—':(v*100).toFixed(0)+'%';
-      return `<div style="display:inline-block;vertical-align:top;margin-right:20px;margin-top:8px">
-        <b style="color:var(--muted);font-size:.7rem">${k} — Por señal:</b>
-        débil ${p(bs.weak)} · media ${p(bs.med)} · fuerte ${p(bs.strong)}<br>
-        <b style="color:var(--muted);font-size:.7rem">Por lado:</b>
-        UP ${p(bt.UP)} · DOWN ${p(bt.DOWN)}<br>
-        <b style="color:var(--muted);font-size:.7rem">Por timing:</b>
-        temprano ${p(be.early)} · medio ${p(be.mid)} · tardío ${p(be.late)}
+
+  const pct  = v => v == null ? '<span style="color:var(--muted)">—</span>'
+    : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
+  const pctN = v => v == null ? '—' : (v*100).toFixed(0)+'%';
+  const clr  = v => v==null?'var(--muted)':v>=0.5?'var(--green)':v>=0.4?'var(--yellow)':'var(--red)';
+
+  let html = '';
+
+  ['5m','15m'].forEach(k => {
+    const s  = data[k] || {};
+    const ap = s.adaptive || {};
+    const bs = s.by_signal  || {};
+    const bt = s.by_side    || {};
+    const be = s.by_elapsed || {};
+    const ph = s.phantom;
+
+    const hasData = (s.total || 0) > 0;
+
+    html += `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <b style="color:#a78bfa;font-size:.8rem">⚡ UpDown ${k}</b>
+        <span style="color:var(--muted);font-size:.72rem">${s.total||0} trades reales</span>
+        ${hasData ? `<span style="font-size:.9rem;font-weight:700;color:${clr(s.win_rate)}">${pctN(s.win_rate)} WR total</span>
+          <span style="font-size:.8rem;color:${clr(s.recent_wr)}">reciente: ${pctN(s.recent_wr)}</span>
+          <span style="font-size:.72rem;color:var(--muted)">Acc TA: ${pctN(s.ta_accuracy)}</span>`
+          : '<span style="color:var(--muted);font-size:.72rem;font-style:italic">Sin datos aún — acumulando historial...</span>'}
       </div>`;
-    }).join('')}
-  </div>`;
+
+    if (hasData) {
+      // Desglose por categorías
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:.71rem;margin-bottom:10px">
+        <div>
+          <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por señal</div>
+          <div>débil: ${pct(bs.weak)} · media: ${pct(bs.med)} · fuerte: ${pct(bs.strong)}</div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por lado</div>
+          <div>UP: ${pct(bt.UP)} · DOWN: ${pct(bt.DOWN)}</div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px;text-transform:uppercase">Por timing</div>
+          <div>temprano: ${pct(be.early)} · medio: ${pct(be.mid)} · tardío: ${pct(be.late)}</div>
+        </div>
+      </div>`;
+    }
+
+    // Parámetros adaptativos actuales
+    html += `<div style="background:var(--bg3);border-radius:6px;padding:8px 10px;font-size:.71rem;margin-bottom:${ph?'8px':'0'}">
+      <div style="color:var(--blue);font-size:.65rem;font-weight:700;margin-bottom:4px;text-transform:uppercase">Parámetros adaptativos activos</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span>señal mín: <b>${ap.min_signal != null ? ap.min_signal.toFixed(2) : '0.10'}</b></span>
+        <span>EV mín: <b>${ap.min_ev != null ? ap.min_ev.toFixed(3) : '0.030'}</b></span>
+        <span>invertir señal: <b style="color:${ap.invert_signal?'var(--yellow)':'var(--green)'}">${ap.invert_signal?'⚠️ SÍ':'No'}</b></span>
+        ${ap.block_up   ? '<span style="color:var(--red)">🚫 UP bloqueado</span>' : ''}
+        ${ap.block_down ? '<span style="color:var(--red)">🚫 DOWN bloqueado</span>' : ''}
+        ${ap.max_elapsed_min != null ? `<span>max elapsed: <b>${ap.max_elapsed_min}min</b></span>` : ''}
+        ${ap.momentum_gate_strict ? '<span style="color:var(--yellow)">⚡ gate momentum estricto</span>' : ''}
+      </div>
+      ${ap.reason ? `<div style="color:var(--muted);font-size:.68rem;margin-top:4px;border-top:1px solid var(--border);padding-top:4px">📊 ${ap.reason}</div>` : ''}
+    </div>`;
+
+    // Phantom bets (apuestas fantasma)
+    if (ph && ph.total > 0) {
+      const phBs = ph.by_signal || {};
+      const phBt = ph.by_side   || {};
+      const phSr = ph.by_skip_reason || {};
+      html += `<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;padding:8px 10px;font-size:.71rem;margin-top:8px">
+        <div style="color:var(--blue);font-size:.65rem;font-weight:700;margin-bottom:6px;text-transform:uppercase">
+          👻 Apuestas fantasma (señales no ejecutadas): ${ph.total} | WR ${pctN(ph.win_rate)} | reciente ${pctN(ph.recent_wr)}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+          <div>Por señal: débil ${pct(phBs.weak)} · media ${pct(phBs.med)} · fuerte ${pct(phBs.strong)}</div>
+          <div>Por lado: UP ${pct(phBt.UP)} · DOWN ${pct(phBt.DOWN)}</div>
+        </div>
+        <div style="color:var(--muted);font-size:.68rem">
+          <b>Por motivo de skip:</b>
+          ${Object.entries(phSr).map(([k2,v2])=>{
+            const t = (v2.total||0); const wr = v2.wr != null ? (v2.wr*100).toFixed(0)+'%' : '—';
+            const c = v2.wr != null ? (v2.wr>=0.55?'var(--green)':v2.wr>=0.42?'var(--yellow)':'var(--red)') : 'var(--muted)';
+            return `<span style="margin-right:8px">${k2} (${t}) <span style="color:${c}">${wr}</span></span>`;
+          }).join('')}
+        </div>
+        ${ph.win_rate != null && ph.win_rate > 0.55 ? `<div style="color:var(--yellow);font-size:.7rem;margin-top:4px">⚠️ Win rate fantasma alto — considera relajar los filtros</div>` : ''}
+        ${ph.win_rate != null && ph.win_rate < 0.35 ? `<div style="color:var(--green);font-size:.7rem;margin-top:4px">✅ Filtros correctos — fantasmas perderían</div>` : ''}
+      </div>`;
+    }
+
+    html += `</div>`;
+  });
+
+  const wrapper = html
+    ? `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="color:#a78bfa;font-size:.8rem;font-weight:700;margin-bottom:10px">⚡ UpDown — Aprendizaje Adaptativo</div>
+        ${html}
+       </div>`
+    : '<div style="color:var(--muted);font-style:italic;font-size:.75rem">Sin datos del learner aún. Se acumularán automáticamente con cada trade UpDown.</div>';
+  el.innerHTML = wrapper;
 }
 
 function _loadNoteFields(notes) {
@@ -3729,6 +4081,101 @@ async function sendChat() {
   box.scrollTop = box.scrollHeight;
 }
 
+// ── Notificaciones del asesor proactivo ────────────────────────────────────
+
+let _unreadAdvisor = 0;
+
+async function loadAdvisorNotifications() {
+  try {
+    const r = await fetch('/api/advisor/notifications');
+    const d = await r.json();
+    _unreadAdvisor = d.unread || 0;
+    const badge = document.getElementById('advisor-badge');
+    if (badge) {
+      badge.style.display = _unreadAdvisor > 0 ? 'inline' : 'none';
+      badge.textContent = `● ${_unreadAdvisor} nueva${_unreadAdvisor > 1 ? 's' : ''}`;
+    }
+  } catch(e) {}
+}
+
+async function showAdvisorNotifications() {
+  try {
+    const r = await fetch('/api/advisor/notifications');
+    const d = await r.json();
+    const notifs = d.notifications || [];
+    const box = document.getElementById('chat-messages');
+
+    // Insertar notificaciones como mensajes del asistente
+    if (!notifs.length) {
+      _appendMsg('assistant', '📭 No hay notificaciones del asesor aún. Haz clic en 🔍 Analizar para pedir un análisis inmediato.');
+    } else {
+      notifs.slice(0, 3).forEach(n => {
+        const txt = `**🔔 Notificación del asesor** (${n.time})\n\n${_parseAdvisorMsg(n.text)}`;
+        _appendMsg('assistant', txt);
+      });
+    }
+
+    // Marcar como leídas
+    await fetch('/api/advisor/notifications/read', { method: 'POST' });
+    _unreadAdvisor = 0;
+    const badge = document.getElementById('advisor-badge');
+    if (badge) badge.style.display = 'none';
+  } catch(e) {
+    _appendMsg('assistant', 'Error cargando notificaciones.');
+  }
+}
+
+function _parseAdvisorMsg(text) {
+  // Si tiene PARAMS_JSON, renderizar como acción aplicable
+  const paramsMatch = text.match(/PARAMS_JSON:\s*(\{[^}]+\})/);
+  const cambioMatch = text.match(/CAMBIO_SUGERIDO:\s*(.+?)(?:\n|$)/);
+  if (paramsMatch && cambioMatch) {
+    const mainText = text.replace(/CAMBIO_SUGERIDO:.*$/s, '').trim();
+    const paramsJson = paramsMatch[1];
+    const cambioDesc = cambioMatch[1];
+    return `${mainText}\n\n<div class="advisor-suggestion">
+      <div class="advisor-sug-label">💡 Cambio sugerido</div>
+      <div class="advisor-sug-detail">${escHtml(cambioDesc)}</div>
+      <button class="advisor-sug-apply" onclick="applyAdvisorParams(${escHtml(paramsJson).replace(/&quot;/g,'"')}, '${escHtml(cambioDesc)}')">Aplicar cambio</button>
+    </div>`;
+  }
+  return text;
+}
+
+async function applyAdvisorParams(paramsJson, reason) {
+  try {
+    const params = typeof paramsJson === 'string' ? JSON.parse(paramsJson) : paramsJson;
+    // Enviar como mensaje de chat para que Claude lo aplique via tool
+    document.getElementById('chat-input').value = `Aplica este cambio: ${reason}. Parámetros: ${JSON.stringify(params)}`;
+    sendChat();
+  } catch(e) {
+    alert('Error al aplicar parámetros: ' + e.message);
+  }
+}
+
+async function requestAdvisorAnalysis() {
+  _appendMsg('assistant', '🔍 Analizando el sistema... (esto puede tomar unos segundos)');
+  try {
+    const r = await fetch('/api/advisor/analyze-now', { method: 'POST' });
+    const d = await r.json();
+    const box = document.getElementById('chat-messages');
+    // Remover el mensaje "analizando"
+    const lastMsg = box.lastElementChild;
+    if (lastMsg) lastMsg.remove();
+    if (d.notification) {
+      _appendMsg('assistant', `**🔔 Análisis del asesor**\n\n${_parseAdvisorMsg(d.notification)}`);
+    } else {
+      _appendMsg('assistant', '✅ El sistema está funcionando bien. Sin alertas en este momento.');
+    }
+  } catch(e) {
+    _appendMsg('assistant', 'Error al solicitar análisis: ' + e.message);
+  }
+}
+
+// Cargar notificaciones al inicio y cada 5 min
+loadAdvisorNotifications();
+setInterval(loadAdvisorNotifications, 5 * 60 * 1000);
+
 </script>
 
 <!-- MODAL GRAFICA POSICION -->
@@ -3777,6 +4224,19 @@ async function sendChat() {
 
 <div id="help-popup"></div>
 
+<!-- MODAL DETALLE WARN RECURSOS -->
+<div id="warn-modal-overlay" onclick="if(event.target===this)document.getElementById('warn-modal-overlay').style.display='none'"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:1200;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid #5a4a00;border-radius:12px;padding:24px 28px;width:min(560px,95vw);max-height:88vh;overflow-y:auto;position:relative;">
+    <button onclick="document.getElementById('warn-modal-overlay').style.display='none'"
+            style="position:absolute;top:12px;right:14px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;">
+      ✕ Cerrar
+    </button>
+    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#d29922;margin-bottom:14px">Detalle de Advertencia</div>
+    <div id="warn-modal-body"></div>
+  </div>
+</div>
+
 <!-- MODAL DETALLE ORDEN ABIERTA -->
 <div id="ord-modal-overlay" onclick="if(event.target===this)closeOrderModal()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1100;align-items:center;justify-content:center;">
@@ -3790,5 +4250,447 @@ async function sendChat() {
   </div>
 </div>
 
+<script>
+// ── Performance Monitor ────────────────────────────────────────────────────
+
+let _perfChartCPU = null;
+let _perfChartRAM = null;
+let _perfInterval = null;
+
+const COMPONENT_LABELS = {
+  scan_cycle_total:       'Ciclo completo',
+  fetch_weather_markets:  'Fetch mercados',
+  ensemble_forecast:      'Forecast ensemble',
+  live_price:             'Precio en vivo',
+  claude_analysis:        'Análisis Claude',
+  noaa_forecast:          'NOAA forecast',
+  openmeteo_forecast:     'OpenMeteo forecast',
+  kalman_correction:      'Kalman correction',
+  btc_price:              'BTC precio',
+  portfolio_analysis:     'Análisis portafolio',
+};
+
+function _msColor(ms) {
+  if (ms === null || ms === undefined) return 'var(--muted)';
+  if (ms < 200)   return 'var(--green)';
+  if (ms < 1000)  return 'var(--yellow)';
+  if (ms < 5000)  return '#f97316';
+  return 'var(--red)';
+}
+
+function _barWidth(ms, maxMs) {
+  if (!ms || !maxMs) return '2%';
+  return Math.max(2, Math.min(100, (ms / maxMs) * 100)).toFixed(1) + '%';
+}
+
+function _initPerfCharts() {
+  const cpuCtx = document.getElementById('chart-cpu');
+  const ramCtx = document.getElementById('chart-ram');
+  if (!cpuCtx || !ramCtx) return;
+  if (_perfChartCPU) { _perfChartCPU.destroy(); _perfChartCPU = null; }
+  if (_perfChartRAM) { _perfChartRAM.destroy(); _perfChartRAM = null; }
+
+  const commonOpts = {
+    responsive: true,
+    animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { display: true, ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#1e2a38' } },
+    },
+  };
+
+  _perfChartCPU = new Chart(cpuCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }] },
+    options: { ...commonOpts, scales: { ...commonOpts.scales, y: { ...commonOpts.scales.y, min: 0, max: 100 } } },
+  });
+
+  _perfChartRAM = new Chart(ramCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }] },
+    options: commonOpts,
+  });
+}
+
+function _updatePerfCharts(history) {
+  if (!_perfChartCPU || !_perfChartRAM) return;
+  const labels = history.ts.map((_, i) => i);
+  _perfChartCPU.data.labels = labels;
+  _perfChartCPU.data.datasets[0].data = history.cpu;
+  _perfChartCPU.update('none');
+  _perfChartRAM.data.labels = labels;
+  _perfChartRAM.data.datasets[0].data = history.ram_mb;
+  _perfChartRAM.update('none');
+}
+
+async function fetchPerformance() {
+  try {
+    const d = await fetch('/api/performance').then(r => r.json());
+    _renderPerformance(d);
+  } catch(e) {
+    console.warn('fetchPerformance error', e);
+  }
+}
+
+function _renderPerformance(d) {
+  const proc = d.process || {};
+  const sys  = d.system  || {};
+  const bot  = d.bot     || {};
+  const hist = d.history || {};
+  const tim  = d.timings || {};
+
+  // CPU
+  const cpuNow = proc.cpu_pct ?? 0;
+  document.getElementById('perf-cpu-now').textContent = cpuNow.toFixed(1);
+  document.getElementById('perf-cpu-avg').textContent = (proc.cpu_avg_1m ?? 0).toFixed(1);
+  document.getElementById('perf-cpu-bar').style.width = Math.min(100, cpuNow) + '%';
+  document.getElementById('perf-cpu-bar').style.background = cpuNow > 80 ? 'var(--red)' : cpuNow > 50 ? 'var(--yellow)' : 'var(--blue)';
+  document.getElementById('perf-cpu-sys').textContent = (sys.cpu_pct ?? 0).toFixed(1);
+
+  // RAM
+  const ramNow = proc.ram_mb ?? 0;
+  const ramMax = sys.ram_total_mb || 1;
+  document.getElementById('perf-ram-now').textContent = ramNow.toFixed(0);
+  document.getElementById('perf-ram-avg').textContent = (proc.ram_avg_1m ?? 0).toFixed(0);
+  document.getElementById('perf-ram-bar').style.width = Math.min(100, (ramNow / ramMax * 100)) + '%';
+  document.getElementById('perf-ram-used').textContent = (sys.ram_used_mb ?? 0).toFixed(0);
+  document.getElementById('perf-ram-total').textContent = (sys.ram_total_mb ?? 0).toFixed(0);
+  document.getElementById('perf-ram-sys-pct').textContent = (sys.ram_pct ?? 0).toFixed(1);
+
+  // Bot ciclos
+  document.getElementById('perf-scan-count').textContent  = bot.scan_count ?? 0;
+  document.getElementById('perf-last-scan-ms').textContent = bot.last_scan_ms ? bot.last_scan_ms.toFixed(0) : '—';
+  document.getElementById('perf-markets-scan').textContent = bot.markets_per_scan ?? '—';
+  document.getElementById('perf-opps-found').textContent   = bot.opps_found ?? 0;
+
+  // Charts
+  if (hist.len > 0) {
+    if (!_perfChartCPU) _initPerfCharts();
+    _updatePerfCharts(hist);
+  }
+
+  // Timings table
+  const tbody = document.getElementById('perf-timings-body');
+  const noData = document.getElementById('perf-no-data');
+  const keys = Object.keys(tim);
+
+  if (keys.length === 0) {
+    tbody.innerHTML = '';
+    noData.style.display = 'block';
+    return;
+  }
+  noData.style.display = 'none';
+
+  // Calcular max avg para la barra proporcional
+  const maxAvg = Math.max(...keys.map(k => tim[k].avg_ms || 0), 1);
+
+  // Ordenar: scan_cycle_total primero, luego por avg_ms desc
+  const sorted = keys.sort((a, b) => {
+    if (a === 'scan_cycle_total') return -1;
+    if (b === 'scan_cycle_total') return  1;
+    return (tim[b].avg_ms || 0) - (tim[a].avg_ms || 0);
+  });
+
+  tbody.innerHTML = sorted.map(k => {
+    const t = tim[k];
+    const label = COMPONENT_LABELS[k] || k;
+    const avg   = t.avg_ms  != null ? t.avg_ms.toFixed(0)  : '—';
+    const last  = t.last_ms != null ? t.last_ms.toFixed(0) : '—';
+    const p95   = t.p95_ms  != null ? t.p95_ms.toFixed(0)  : '—';
+    const max   = t.max_ms  != null ? t.max_ms.toFixed(0)  : '—';
+    const errColor = t.errors > 0 ? 'var(--red)' : 'var(--muted)';
+    const barW  = _barWidth(t.avg_ms, maxAvg);
+    const barC  = _msColor(t.avg_ms);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:600;color:var(--text)">${label}</td>
+      <td style="text-align:right;padding:5px 8px;color:${_msColor(t.last_ms)}">${last} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:${_msColor(t.avg_ms)}">${avg} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--muted)">${p95} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--muted)">${max} ms</td>
+      <td style="text-align:right;padding:5px 8px;color:var(--muted)">${t.calls}</td>
+      <td style="text-align:right;padding:5px 8px;color:${errColor}">${t.errors}</td>
+      <td style="padding:5px 8px;min-width:80px">
+        <div style="background:var(--bg3);border-radius:2px;height:8px;overflow:hidden">
+          <div style="height:100%;background:${barC};border-radius:2px;width:${barW}"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Resource Log ──────────────────────────────────────────────────────────
+
+const _PERF_LOG_MAX = 500;
+
+// Colores por nivel
+const _LEVEL_COLOR = { INFO: '#58a6ff', WARN: '#d29922', ERROR: '#f85149' };
+
+// Badge de categoría
+const _CAT_STYLE = {
+  API:      'background:#0f2a1f;color:#3fb950;border:1px solid #1a4a2e',
+  FORECAST: 'background:#0e1f3d;color:#58a6ff;border:1px solid #1e3a5f',
+  AI:       'background:#1a0e3d;color:#bc8cff;border:1px solid #3a1c7a',
+  CYCLE:    'background:#1a1a0e;color:#d29922;border:1px solid #5a4a00',
+  MEMORY:   'background:#2a0e0e;color:#f97316;border:1px solid #7a2a00',
+  CPU:      'background:#3a1c1c;color:#f85149;border:1px solid #7a1c1c',
+  COMPUTE:  'background:#0e2a2a;color:#22d3ee;border:1px solid #0e5a5a',
+  OTHER:    'background:var(--bg3);color:var(--muted);border:1px solid var(--border)',
+};
+
+function _perfLogFilter() {
+  const lvlSel = document.getElementById('perf-log-level');
+  const catSel = document.getElementById('perf-log-cat');
+  const lvl = lvlSel ? lvlSel.value : 'ALL';
+  const cat = catSel ? catSel.value : 'ALL';
+  const c = document.getElementById('perf-log-container');
+  if (!c) return;
+  Array.from(c.querySelectorAll('.rlog-line')).forEach(el => {
+    const elLvl = el.dataset.level || 'INFO';
+    const elCat = el.dataset.cat   || 'OTHER';
+    const show = (lvl === 'ALL' || elLvl === lvl) && (cat === 'ALL' || elCat === cat);
+    el.style.display = show ? '' : 'none';
+  });
+}
+
+function _clearPerfLog() {
+  const c = document.getElementById('perf-log-container');
+  if (!c) return;
+  c.innerHTML = '<div style="color:var(--muted);font-style:italic" id="perf-log-empty">Log limpiado.</div>';
+}
+
+function _renderResourceLog(entries) {
+  const c = document.getElementById('perf-log-container');
+  if (!c) return;
+
+  const lvlSel = document.getElementById('perf-log-level');
+  const catSel = document.getElementById('perf-log-cat');
+  const activeLvl = lvlSel ? lvlSel.value : 'ALL';
+  const activeCat = catSel ? catSel.value : 'ALL';
+
+  // Renderizar solo entradas nuevas (comparar por longitud actual)
+  const existing = c.querySelectorAll('.rlog-line').length;
+  const toAdd = entries.slice(existing);
+  if (toAdd.length === 0) return;
+
+  // Quitar placeholder
+  const empty = document.getElementById('perf-log-empty');
+  if (empty) empty.remove();
+
+  toAdd.forEach(entry => {
+    const lvl  = entry.level    || 'INFO';
+    const cat  = entry.category || 'OTHER';
+    const lvlColor = _LEVEL_COLOR[lvl] || 'var(--muted)';
+    const catStyle = _CAT_STYLE[cat]   || _CAT_STYLE.OTHER;
+    const isWarn   = lvl === 'WARN' || lvl === 'ERROR';
+
+    // Resumen inline (ms, ram, mercados)
+    const d = entry.detail || {};
+    let inlineStr = '';
+    if (d.ms     != null) inlineStr += ` <span style="color:#666">${d.ms} ms</span>`;
+    if (d.delta_mb != null) inlineStr += ` <span style="color:#f97316">+${d.delta_mb} MB</span>`;
+    if (d.cpu_pct  != null && cat === 'CPU') inlineStr += ` <span style="color:#f85149">${d.cpu_pct}%</span>`;
+    if (d.markets  != null) inlineStr += ` <span style="color:#555">${d.markets} mkt</span>`;
+    if (d.opps     != null && d.opps > 0) inlineStr += ` <span style="color:#3fb950">${d.opps} opps</span>`;
+
+    // Indicador clickable para WARN/ERROR
+    const clickHint = isWarn
+      ? `<span style="font-size:.6rem;color:#555;margin-left:6px;border:1px solid #333;border-radius:3px;padding:0 4px;vertical-align:middle">ver detalle</span>`
+      : '';
+
+    const show = (activeLvl === 'ALL' || activeLvl === lvl) && (activeCat === 'ALL' || activeCat === cat);
+
+    const div = document.createElement('div');
+    div.className = 'rlog-line';
+    div.dataset.level = lvl;
+    div.dataset.cat   = cat;
+    div.style.display = show ? '' : 'none';
+    div.style.cssText += ';padding:3px 0;border-bottom:1px solid #1a1a1a;';
+    if (isWarn) {
+      div.style.cursor = 'pointer';
+      div.addEventListener('click', () => _showWarnDetail(entry));
+    }
+    div.innerHTML =
+      `<span style="color:#444;margin-right:6px">[${entry.time}]</span>` +
+      `<span style="font-size:.65rem;padding:1px 5px;border-radius:3px;margin-right:5px;${catStyle}">${cat}</span>` +
+      `<span style="color:${lvlColor};font-weight:600;margin-right:5px">${lvl}</span>` +
+      `<span style="color:var(--text)">${escHtml(entry.msg)}</span>` +
+      inlineStr + clickHint;
+    c.appendChild(div);
+  });
+
+  // Limitar
+  const all = c.querySelectorAll('.rlog-line');
+  while (all.length > _PERF_LOG_MAX) {
+    const first = c.querySelector('.rlog-line');
+    if (first) first.remove();
+  }
+
+  // Auto-scroll
+  const scrollCb = document.getElementById('perf-log-scroll');
+  if (scrollCb && scrollCb.checked) c.scrollTop = c.scrollHeight;
+}
+
+// Cargar resource log al abrir el tab
+async function _loadPerfLogHistory() {
+  try {
+    const entries = await fetch('/api/performance/log').then(r => r.json());
+    const c = document.getElementById('perf-log-container');
+    if (!c) return;
+    c.innerHTML = '';  // reset
+    _renderResourceLog(entries);
+  } catch(e) {}
+}
+
+// ── Modal de detalle WARN ─────────────────────────────────────────────────
+
+function _sec(title, content, borderColor) {
+  const bc = borderColor || 'var(--border)';
+  return `<div style="background:#0d1117;border:1px solid ${bc};border-radius:6px;padding:11px 14px;margin-bottom:10px">
+    <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:1px;color:#555;margin-bottom:7px">${title}</div>
+    ${content}
+  </div>`;
+}
+
+function _kv(label, value, color) {
+  return `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #1a1a1a;font-size:.78rem">
+    <span style="color:#666">${label}</span>
+    <span style="color:${color || 'var(--text)'}; font-weight:600">${value}</span>
+  </div>`;
+}
+
+function _showWarnDetail(entry) {
+  const d   = entry.detail   || {};
+  const cat = entry.category || 'OTHER';
+  const snap = d.snapshot    || {};
+  const catStyle = _CAT_STYLE[cat] || _CAT_STYLE.OTHER;
+  const lvlColor = _LEVEL_COLOR[entry.level] || '#d29922';
+
+  let html = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span style="font-size:.65rem;padding:2px 8px;border-radius:3px;${catStyle}">${cat}</span>
+      <span style="color:${lvlColor};font-weight:700">${entry.level}</span>
+      <span style="color:#555;font-size:.75rem">[${entry.time}]</span>
+    </div>
+    <div style="color:var(--text);font-size:.9rem;font-weight:600;margin-bottom:12px">${escHtml(entry.msg)}</div>`;
+
+  // ── 1. Timing (para llamadas lentas) ──
+  if (d.ms != null) {
+    const sf = d.times_slower;
+    html += _sec('Tiempo de ejecucion', `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:${sf ? '8px' : '0'}">
+        <div style="text-align:center;padding:8px 4px;background:#1a1a0e;border-radius:5px;border:1px solid #5a4a00">
+          <div style="color:#d29922;font-size:1.2rem;font-weight:700">${d.ms.toLocaleString()}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">esta vez (ms)</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#0e1a0e;border-radius:5px;border:1px solid #1a4a2e">
+          <div style="color:#3fb950;font-size:1.2rem;font-weight:700">${d.avg_ms != null ? d.avg_ms.toLocaleString() : '—'}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">promedio (ms)</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#0e1522;border-radius:5px;border:1px solid #1e3a5f">
+          <div style="color:#58a6ff;font-size:1.2rem;font-weight:700">${d.min_ms != null ? d.min_ms.toLocaleString() : '—'}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">mínimo (ms)</div>
+        </div>
+        <div style="text-align:center;padding:8px 4px;background:#1a0e0e;border-radius:5px;border:1px solid #7a1c1c">
+          <div style="color:#f85149;font-size:1.2rem;font-weight:700">${d.max_ms != null ? d.max_ms.toLocaleString() : '—'}</div>
+          <div style="color:#666;font-size:.65rem;margin-top:2px">máximo (ms)</div>
+        </div>
+      </div>
+      ${sf ? `<div style="font-size:.78rem;color:#fb923c;padding:5px 8px;background:#2a1a0e;border-radius:4px">
+        Esta ejecucion fue <strong>${sf}× mas lenta</strong> que el promedio historico
+      </div>` : ''}
+    `, '#5a4a00');
+  }
+
+  // ── 2. Estado del proceso en ese momento ──
+  if (snap.cpu_pct != null || snap.ram_mb != null) {
+    html += _sec('Estado del proceso al ocurrir el evento', `
+      ${_kv('CPU proceso', (snap.cpu_pct || 0).toFixed(1) + '%', snap.cpu_pct > 70 ? '#f85149' : '#3fb950')}
+      ${_kv('RAM proceso', (snap.ram_mb || 0).toFixed(1) + ' MB', '#bc8cff')}
+      ${_kv('Threads activos', snap.threads || '—', '#58a6ff')}
+      ${_kv('CPU sistema', (snap.sys_cpu_pct || 0).toFixed(1) + '%', '#666')}
+      ${_kv('RAM sistema', (snap.sys_ram_pct || 0).toFixed(1) + '% usada', snap.sys_ram_pct > 85 ? '#f97316' : '#666')}
+      ${_kv('Conexiones red', snap.net_connections || 0, '#58a6ff')}
+      ${_kv('Conexiones establecidas', snap.net_established || 0, '#3fb950')}
+      ${_kv('I/O lectura acum.', (snap.io_read_mb || 0).toFixed(1) + ' MB', '#666')}
+      ${_kv('I/O escritura acum.', (snap.io_write_mb || 0).toFixed(1) + ' MB', '#666')}
+    `, '#1e3a5f');
+  }
+
+  // ── 3. Operaciones activas cuando ocurrio el evento ──
+  if (snap.active_ops && Object.keys(snap.active_ops).length > 0) {
+    const rows = Object.entries(snap.active_ops)
+      .map(([op, ms]) => _kv(op, ms.toLocaleString() + ' ms transcurridos', '#d29922'))
+      .join('');
+    html += _sec('Operaciones que estaban corriendo en ese momento', rows, '#5a4a00');
+  }
+
+  // ── 4. Top de memoria por modulo ──
+  if (snap.top_memory && snap.top_memory.length > 0) {
+    const maxKb = Math.max(...snap.top_memory.map(m => m.kb), 1);
+    const rows = snap.top_memory.map(m => {
+      const barW = Math.max(2, (m.kb / maxKb * 100)).toFixed(0);
+      const color = m.kb > maxKb * 0.5 ? '#f97316' : m.kb > maxKb * 0.25 ? '#d29922' : '#3fb950';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #1a1a1a;font-size:.75rem">
+        <div style="width:120px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(m.file)}">${escHtml(m.file)}</div>
+        <div style="flex:1;background:#1a1a1a;border-radius:2px;height:8px">
+          <div style="width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
+        </div>
+        <div style="width:70px;text-align:right;color:${color}">${m.kb.toFixed(1)} KB</div>
+        <div style="width:50px;text-align:right;color:#555">${m.count} obj</div>
+      </div>`;
+    }).join('');
+    html += _sec('Top consumidores de memoria (tracemalloc)', rows, '#3a1c7a');
+  }
+
+  // ── 5. Ultimas operaciones antes de este evento ──
+  if (snap.recent_ops && snap.recent_ops.length > 0) {
+    const rows = [...snap.recent_ops].reverse().slice(0, 6).map(op => {
+      const c = op.error ? '#f85149' : op.ms > 3000 ? '#d29922' : '#555';
+      return _kv(`[${op.time}] ${op.name}`, op.ms.toLocaleString() + ' ms' + (op.error ? ' ✗' : ''), c);
+    }).join('');
+    html += _sec('Ultimas operaciones completadas antes de este evento', rows);
+  }
+
+  // ── 6. Historial del componente ──
+  if (d.total_calls != null) {
+    const errRate = d.total_calls > 0 ? ((d.total_errors / d.total_calls) * 100).toFixed(1) : '0.0';
+    html += _sec('Historial del componente', `
+      ${_kv('Total de llamadas', d.total_calls)}
+      ${_kv('Errores totales', d.total_errors + ' (' + errRate + '%)', d.total_errors > 0 ? '#f85149' : '#3fb950')}
+    `);
+  }
+
+  document.getElementById('warn-modal-body').innerHTML = html;
+  document.getElementById('warn-modal-overlay').style.display = 'flex';
+}
+
+// Auto-refresh cuando el tab está visible
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && _perfInterval) {
+    clearInterval(_perfInterval);
+    _perfInterval = null;
+  }
+});
+
+// Inicializar charts cuando el tab se abre por primera vez
+const _origShowTab = showTab;
+// Refresh automático cada 3s cuando el tab de recursos está activo
+setInterval(async () => {
+  const perfTab = document.getElementById('tab-perf');
+  if (!perfTab || !perfTab.classList.contains('active')) return;
+  fetchPerformance();
+  // Resource log: pedir solo las ultimas entradas
+  try {
+    const entries = await fetch('/api/performance/log').then(r => r.json());
+    _renderResourceLog(entries);
+  } catch(e) {}
+}, 3000);
+
+// Inicializar charts al cargar (por si el tab queda activo)
+setTimeout(() => {
+  _initPerfCharts();
+}, 500);
+</script>
 </body>
 </html>

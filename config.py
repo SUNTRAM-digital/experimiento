@@ -17,15 +17,18 @@ class BotParams:
         self.min_position_usdc: float = float(os.getenv("MIN_POSITION_USDC", 1.0))
         self.kelly_fraction: float = float(os.getenv("KELLY_FRACTION", 0.25))
         # --- Edge ---
-        self.min_ev_threshold: float = float(os.getenv("MIN_EV_THRESHOLD", 0.15))
+        # 7% es el umbral óptimo según análisis de 400M trades (5%=61% hit rate, 7%=74%)
+        self.min_ev_threshold: float = float(os.getenv("MIN_EV_THRESHOLD", 0.07))
         # --- Riesgo ---
         self.max_daily_loss_pct: float = float(os.getenv("MAX_DAILY_LOSS_PCT", 0.20))
-        self.max_hours_to_resolution: int = int(os.getenv("MAX_HOURS_TO_RESOLUTION", 48))
+        # 72-hour rule: mercados <72h tienen mayor capital velocity (annualized return)
+        self.max_hours_to_resolution: int = int(os.getenv("MAX_HOURS_TO_RESOLUTION", 72))
         # --- Calidad de mercado ---
         self.min_liquidity_usdc: float = float(os.getenv("MIN_LIQUIDITY_USDC", 50.0))
         self.max_spread_pct: float = float(os.getenv("MAX_SPREAD_PCT", 0.60))
         self.min_volume_24h_usdc: float = float(os.getenv("MIN_VOLUME_24H_USDC", 5.0))
-        self.min_book_depth_usdc: float = float(os.getenv("MIN_BOOK_DEPTH_USDC", 0.0))
+        # $200 depth mínimo: sin profundidad suficiente no se puede salir (scanner article)
+        self.min_book_depth_usdc: float = float(os.getenv("MIN_BOOK_DEPTH_USDC", 200.0))
         self.min_competitive_score: float = float(os.getenv("MIN_COMPETITIVE_SCORE", 0.0))
         # --- Operacion ---
         self.scan_interval_minutes: int = int(os.getenv("SCAN_INTERVAL_MINUTES", 30))

@@ -25,6 +25,20 @@ def _bucket():
     return {"w": 0, "l": 0}
 
 
+def _default_phantom_stats() -> dict:
+    """Stats para apuestas fantasma (no ejecutadas) — rastrear oportunidades perdidas."""
+    return {
+        "total": 0,
+        "wins": 0,
+        "recent": [],
+        "by_signal": {"weak": _bucket(), "med": _bucket(), "strong": _bucket()},
+        "by_side":   {"UP": _bucket(), "DOWN": _bucket()},
+        "by_elapsed": {"early": _bucket(), "mid": _bucket(), "late": _bucket()},
+        # Agrupado por motivo de no-entrada
+        "by_skip_reason": {},
+    }
+
+
 def _default_stats() -> dict:
     return {
         "total": 0,
@@ -68,6 +82,8 @@ def _default_stats() -> dict:
         # Calibración TA: ¿cuántas veces la dirección TA fue correcta?
         "dir_correct": 0,
         "dir_total":   0,
+        # Apuestas fantasma (no ejecutadas)
+        "phantom": _default_phantom_stats(),
     }
 
 
@@ -198,6 +214,86 @@ def record_result(interval_minutes: int, trade: dict, won: bool):
     )
 
 
+def record_phantom_result(interval_minutes: int, trade: dict, won: bool):
+    """
+    Registra el resultado de una apuesta fantasma (señal detectada pero no ejecutada).
+
+    trade: dict con side, confidence, combined_signal, elapsed_minutes, skip_reason, etc.
+    won:   True si BTC se movió en la dirección que habríamos apostado.
+
+    Estos datos alimentan el aprendizaje para ajustar los filtros del bot:
+    - Phantoms que ganan mucho → estamos siendo demasiado conservadores (subir umbral vacío)
+    - Phantoms que pierden → los filtros son correctos
+    """
+    key = str(interval_minutes)
+    if key not in _stats:
+        _stats[key] = _default_stats()
+    s = _stats[key]
+    if "phantom" not in s:
+        s["phantom"] = _default_phantom_stats()
+    p = s["phantom"]
+    w = 1 if won else 0
+
+    p["total"] += 1
+    p["wins"]  += w
+
+    p["recent"].append(w)
+    if len(p["recent"]) > _RECENT_WINDOW:
+        p["recent"] = p["recent"][-_RECENT_WINDOW:]
+
+    # ── Por fuerza de señal ──────────────────────────────────────────────────
+    confidence_pct = trade.get("confidence")
+    sig_abs = (confidence_pct / 100.0) if confidence_pct is not None else abs(trade.get("combined_signal") or 0.0)
+    sig_key = "weak" if sig_abs < 0.25 else ("med" if sig_abs < 0.50 else "strong")
+    p["by_signal"][sig_key]["w" if won else "l"] += 1
+
+    # ── Por lado ─────────────────────────────────────────────────────────────
+    side = trade.get("side", "UP")
+    if side in p["by_side"]:
+        p["by_side"][side]["w" if won else "l"] += 1
+
+    # ── Por timing ───────────────────────────────────────────────────────────
+    elapsed = trade.get("elapsed_minutes") or 0.0
+    el_key = "early" if elapsed < 1.5 else ("mid" if elapsed < 3.0 else "late")
+    p["by_elapsed"][el_key]["w" if won else "l"] += 1
+
+    # ── Por motivo de no-entrada ─────────────────────────────────────────────
+    skip_reason = trade.get("skip_reason", "unknown")
+    skip_lower  = skip_reason.lower()
+    if skip_lower == "traded_real":
+        srk = "traded_real"
+    elif "débil" in skip_lower or "señal" in skip_lower or "confianza" in skip_lower:
+        srk = "weak_signal"
+    elif "gate" in skip_lower or ("momentum" in skip_lower and "gate" in skip_lower):
+        srk = "momentum_gate"
+    elif "timing" in skip_lower or "temprana" in skip_lower or "avanzada" in skip_lower:
+        srk = "timing"
+    elif "precio" in skip_lower or "caro" in skip_lower:
+        srk = "price_expensive"
+    elif "presupuesto" in skip_lower or "cash" in skip_lower:
+        srk = "budget"
+    elif "bloqueado" in skip_lower:
+        srk = "blocked_side"
+    elif skip_lower in ("no_signal", ""):
+        srk = "no_signal"
+    else:
+        srk = "other"
+
+    if srk not in p["by_skip_reason"]:
+        p["by_skip_reason"][srk] = _bucket()
+    p["by_skip_reason"][srk]["w" if won else "l"] += 1
+
+    _save()
+
+    recent = p["recent"]
+    wr = sum(recent) / len(recent) if recent else 0
+    logger.info(
+        f"UpDown {interval_minutes}m | PHANTOM {'WIN' if won else 'LOSS'} "
+        f"[{srk}] | WR phantom {sum(recent)}/{len(recent)} ({wr:.0%}) | "
+        f"Total phantom {p['wins']}/{p['total']}"
+    )
+
+
 def _wr(bucket: dict) -> Optional[float]:
     """Win rate de un bucket si tiene suficientes muestras."""
     total = bucket["w"] + bucket["l"]
@@ -217,9 +313,9 @@ def get_adaptive_params(interval_minutes: int) -> dict:
         reason          – texto para logging/UI
     """
     defaults = {
-        "min_signal":      0.10,
+        "min_signal":      0.20,   # subido 0.10→0.20: sin historia suficiente, ser conservador
         "momentum_weight": 0.15,
-        "min_ev":          0.03,
+        "min_ev":          0.05,   # subido 0.03→0.05: EV mínimo sin datos históricos
         "invert_signal":   False,
         "max_elapsed_min": None,
         "reason":          "defaults (historia insuficiente)",
@@ -261,10 +357,13 @@ def get_adaptive_params(interval_minutes: int) -> dict:
             reasons.append(f"TA poco fiable {dir_acc:.0%} → reducir peso TA")
 
     # ── Timing: entradas tempranas pierden más ──────────────────────────────
+    # min_elapsed proporcional al intervalo para no entrar en el primer 20% de la ventana
     wr_early = _wr(s["by_elapsed"]["early"])
     if wr_early is not None and wr_early < 0.40:
-        p["min_elapsed_min"] = 1.5
-        reasons.append(f"entradas tempranas WR {wr_early:.0%} → esperar >1.5min")
+        # 5m → esperar 2.0min (40%), 15m → esperar 5.0min (33%)
+        _min_el = 5.0 if interval_minutes >= 15 else 2.0
+        p["min_elapsed_min"] = _min_el
+        reasons.append(f"entradas tempranas WR {wr_early:.0%} → esperar >{_min_el}min")
 
     # ── Timing: entradas tardías pierden más ─────────────────────────────────
     wr_late  = _wr(s["by_elapsed"]["late"])
@@ -336,6 +435,28 @@ def get_summary(interval_minutes: int) -> dict:
         return round(r, 3) if r is not None else None
 
     dir_total = s.get("dir_total", 0)
+
+    # Phantom summary
+    ph = s.get("phantom", {})
+    ph_total  = ph.get("total", 0)
+    ph_wins   = ph.get("wins", 0)
+    ph_recent = ph.get("recent", [])
+    phantom_summary = None
+    if ph_total > 0:
+        phantom_summary = {
+            "total":     ph_total,
+            "wins":      ph_wins,
+            "win_rate":  round(ph_wins / ph_total, 3),
+            "recent_wr": round(sum(ph_recent) / len(ph_recent), 3) if ph_recent else None,
+            "by_signal": {k: _wr_pct(v) for k, v in ph.get("by_signal", {}).items()},
+            "by_side":   {k: _wr_pct(v) for k, v in ph.get("by_side",   {}).items()},
+            "by_elapsed":{k: _wr_pct(v) for k, v in ph.get("by_elapsed",{}).items()},
+            "by_skip_reason": {
+                k: {"wr": _wr_pct(v), "total": v["w"] + v["l"]}
+                for k, v in ph.get("by_skip_reason", {}).items()
+            },
+        }
+
     return {
         "total":     s["total"],
         "wins":      s["wins"],
@@ -346,4 +467,5 @@ def get_summary(interval_minutes: int) -> dict:
         "by_elapsed":{k: _wr_pct(v) for k, v in s.get("by_elapsed",{}).items()},
         "ta_accuracy": round(s["dir_correct"] / dir_total, 3) if dir_total >= _MIN_SAMPLES else None,
         "adaptive":  get_adaptive_params(interval_minutes),
+        "phantom":   phantom_summary,
     }
