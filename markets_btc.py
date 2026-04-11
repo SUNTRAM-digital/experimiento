@@ -93,6 +93,9 @@ async def fetch_btc_markets() -> list[dict]:
     Filtra por mercados que cierran dentro de la ventana configurada.
     """
     markets = []
+    # Limite por pagina reducido a 100 para evitar OSError(34, 'Result too large')
+    # en Windows cuando la respuesta supera ~3MB en un solo read del socket.
+    _PAGE_SIZE = 100
     async with httpx.AsyncClient() as client:
         raw_markets = []
         offset = 0
@@ -103,7 +106,7 @@ async def fetch_btc_markets() -> list[dict]:
                     params={
                         "active":  "true",
                         "closed":  "false",
-                        "limit":   500,
+                        "limit":   _PAGE_SIZE,
                         "offset":  offset,
                         "order":   "volume",
                         "tag":     "crypto",        # filtrar por categoría
@@ -125,7 +128,7 @@ async def fetch_btc_markets() -> list[dict]:
                 )
                 if btc_count >= 40:
                     break
-                offset += 500
+                offset += _PAGE_SIZE
             except Exception:
                 break
 
@@ -177,6 +180,10 @@ async def fetch_btc_markets() -> list[dict]:
             if volume_24h < bot_params.min_volume_24h_usdc:
                 continue
 
+            # Filtro: profundidad mínima del libro
+            if bot_params.min_book_depth_usdc > 0 and liquidity < bot_params.min_book_depth_usdc * 2:
+                continue
+
             # Parsear mercado
             parsed = _parse_btc_market(title, end_date_str)
             if not parsed:
@@ -209,9 +216,25 @@ async def fetch_btc_markets() -> list[dict]:
             except Exception:
                 continue
 
+            # Slug y URL para Polymarket
+            _m_event_slug = (
+                m.get("eventSlug") or m.get("event_slug")
+                or (m.get("event") or {}).get("slug")
+                or m.get("slug", "")
+            )
+            # Strip outcome suffix (-yes/-no) if market slug was returned
+            if _m_event_slug:
+                for _sfx in ("-yes", "-no", "-up", "-down"):
+                    if _m_event_slug.lower().endswith(_sfx):
+                        _m_event_slug = _m_event_slug[:-len(_sfx)]
+                        break
+            _m_poly_url = f"https://polymarket.com/event/{_m_event_slug}" if _m_event_slug else ""
+
             markets.append({
                 # Identificación
                 "condition_id":    m.get("conditionId", ""),
+                "slug":            _m_event_slug,
+                "poly_url":        _m_poly_url,
                 "title":           title,
                 "asset":           "BTC",
                 "threshold":       parsed["threshold"],
