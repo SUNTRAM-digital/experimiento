@@ -502,6 +502,10 @@ def _sell_position(token_id: str, size: float, market_title: str, reason: str = 
         return False
 
 
+_UPDOWN_MAX_ENTRY_PRICE = 0.89   # igual que _MAX_ENTRY_PRICE en strategy_updown.py
+_UPDOWN_SLIPPAGE        = 0.02   # centavos de margen sobre el ask para garantizar fill
+
+
 def _execute_trade(opportunity: dict) -> bool:
     if _clob_client is None:
         return False
@@ -512,15 +516,47 @@ def _execute_trade(opportunity: dict) -> bool:
         shares = opportunity["shares"]
         price  = opportunity["entry_price"]
         market_title = opportunity.get("market_title") or opportunity.get("title", "Unknown")
-
-        # Seguridad: el costo real (shares × price) nunca debe superar el max configurado
         is_updown = opportunity.get("asset") == "BTC_UPDOWN"
+
+        # ── UpDown: ajustar al precio real del CLOB ──────────────────────────
+        # El Gamma API devuelve outcome_prices que puede ser el mid teórico (ej. 0.50)
+        # mientras el CLOB ya tiene asks a 0.80-0.90. Una orden límite a 0.50 nunca
+        # llena. Consultamos el ask real del CLOB y usamos ESE precio + slippage.
         if is_updown:
+            token_id = opportunity["token_id"]
+            try:
+                live_ask = float(_clob_client.get_price(token_id, "BUY") or 0)
+            except Exception as _pe:
+                live_ask = 0.0
+                _log("WARN", f"UpDown | No se pudo obtener precio real del CLOB ({_pe}) — usando outcome_price={price:.3f}")
+
+            if live_ask > 0:
+                if abs(live_ask - price) > 0.02:
+                    _log("INFO",
+                         f"UpDown | Precio corregido: outcome_price={price:.3f} → CLOB ask real={live_ask:.3f} "
+                         f"(delta={live_ask - price:+.3f})")
+                # Aplicar slippage para garantizar fill inmediato
+                price = round(min(live_ask + _UPDOWN_SLIPPAGE, 0.99), 4)
+
+                # Re-verificar el límite de precio con el dato real del CLOB
+                if live_ask >= _UPDOWN_MAX_ENTRY_PRICE:
+                    _log("WARN",
+                         f"UpDown | Ask real ({live_ask:.3f}) ≥ límite ({_UPDOWN_MAX_ENTRY_PRICE}) — "
+                         f"ratio riesgo/ganancia inaceptable. Trade cancelado.")
+                    return False
+
+            # Actualizar entry_price en la oportunidad con el precio real ajustado
+            opportunity["entry_price"] = price
+
             max_usdc = max(1.0, round(float(bot_params.updown_max_usdc), 2))
-            actual_cost = round(shares * price, 2)
-            if actual_cost > max_usdc + 0.05:
-                shares = round(max_usdc / price, 2)
-                _log("WARN", f"UpDown | Shares recortados para respetar max ${max_usdc} (costo era ${actual_cost:.2f} → ahora ${round(shares*price,2):.2f})")
+            shares   = round(max_usdc / price, 2)
+
+            # Mínimo 5 shares
+            if shares < 5:
+                _log("WARN", f"UpDown | Shares mínimos (5) a precio {price:.3f} requieren ${5*price:.2f} > max ${max_usdc}")
+                return False
+        else:
+            max_usdc = None
 
         order = OrderArgs(
             token_id=opportunity["token_id"],
@@ -530,11 +566,13 @@ def _execute_trade(opportunity: dict) -> bool:
             fee_rate_bps=1000,
         )
         signed = _clob_client.create_order(order)
-        # Todos los trades usan GTC. Para UpDown, las órdenes abiertas se cancelan
-        # automáticamente al inicio del siguiente ciclo (_cancel_stale_updown_orders).
+        # GTC. Para UpDown, las órdenes abiertas se cancelan automáticamente
+        # al inicio del siguiente ciclo (_cancel_stale_updown_orders).
         response = _clob_client.post_order(signed, OrderType.GTC)
 
         if response.get("success") or response.get("status") in ("live", "matched"):
+            # Actualizar entry_price en la oportunidad para que el trade_record refleje el precio real
+            opportunity["entry_price"] = price
             cost = shares * price
             state.balance_usdc -= cost
             # No sumamos cost a daily_loss — la perdida real se calcula en _daily_loss_limit_reached
