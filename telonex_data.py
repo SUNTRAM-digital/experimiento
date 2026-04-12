@@ -58,6 +58,10 @@ _MIN_FILLS_VOLUME = 5.0   # USDC
 # Thread pool para llamadas síncronas del paquete telonex
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="telonex")
 
+# Flag: desactivar OFI automáticamente si la API devuelve limit_reached
+# Se resetea al reiniciar el bot (es solo in-session para no spamear logs)
+_ofi_limit_reached: bool = False
+
 
 def _get_api_key() -> str:
     try:
@@ -269,8 +273,11 @@ class TelonexData:
         empty = {"ofi": 0.0, "up_volume": 0.0, "down_volume": 0.0,
                  "total_fills": 0, "total_usdc": 0.0, "source": "unavailable"}
 
+        global _ofi_limit_reached
         if not _is_enabled() or not _get_api_key():
             return {**empty, "source": "proxy"}
+        if _ofi_limit_reached:
+            return {**empty, "source": "limit_reached"}
 
         # Verificar cache en memoria
         import time
@@ -281,8 +288,6 @@ class TelonexData:
 
         try:
             api_key = _get_api_key()
-            today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            # Solicitar también el día anterior (mercados que cruzaron medianoche)
             yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
             tomorrow  = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -305,9 +310,7 @@ class TelonexData:
             result = _calc_ofi_from_fills(df, up_token, window_start_us)
             result["source"] = "telonex"
 
-            # Guardar en cache
             self._ofi_cache[up_token] = (now_mono, result)
-
             logger.info(
                 f"[TELONEX] OFI real: {result['ofi']:+.3f} "
                 f"({result['total_fills']} fills, ${result['total_usdc']:.2f} USDC)"
@@ -315,7 +318,13 @@ class TelonexData:
             return result
 
         except Exception as e:
-            logger.warning(f"[TELONEX] get_real_ofi error: {e}")
+            err_str = str(e)
+            if "limit_reached" in err_str:
+                _ofi_limit_reached = True
+                logger.warning("[TELONEX] Límite de API alcanzado — OFI desactivado hasta el próximo reinicio. "
+                               "Upgrade a Pro en telonex.io para acceso ilimitado.")
+            else:
+                logger.warning(f"[TELONEX] get_real_ofi error: {e}")
             return {**empty, "source": "error"}
 
     # ── Smart wallet flow ─────────────────────────────────────────────────────
@@ -396,7 +405,12 @@ class TelonexData:
             return float(round(bias, 4))
 
         except Exception as e:
-            logger.debug(f"[TELONEX] get_smart_wallet_bias error: {e}")
+            if "limit_reached" in str(e):
+                global _ofi_limit_reached
+                _ofi_limit_reached = True
+                logger.warning("[TELONEX] Límite de API alcanzado en smart_wallet_bias — desactivando OFI.")
+            else:
+                logger.debug(f"[TELONEX] get_smart_wallet_bias error: {e}")
             return 0.0
 
     # ── Actualización periódica del ranking de wallets ────────────────────────

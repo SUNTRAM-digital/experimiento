@@ -263,6 +263,11 @@ def _save_state():
             "total_volume_traded": state.total_volume_traded,
             "avg_capital_deployed": state.avg_capital_deployed,
             "capital_velocity": state.capital_velocity,
+            # Racha UpDown — persistir para no perder el conteo entre reinicios
+            "updown_5m_consecutive_losses":  state.updown_5m_consecutive_losses,
+            "updown_15m_consecutive_losses": state.updown_15m_consecutive_losses,
+            "updown_5m_stopped":             state.updown_5m_stopped,
+            "updown_15m_stopped":            state.updown_15m_stopped,
         }
         STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
@@ -287,6 +292,10 @@ def _load_state():
         state.total_volume_traded  = float(payload.get("total_volume_traded", 0))
         state.avg_capital_deployed = float(payload.get("avg_capital_deployed", 0))
         state.capital_velocity     = float(payload.get("capital_velocity", 0))
+        state.updown_5m_consecutive_losses  = int(payload.get("updown_5m_consecutive_losses", 0))
+        state.updown_15m_consecutive_losses = int(payload.get("updown_15m_consecutive_losses", 0))
+        state.updown_5m_stopped  = bool(payload.get("updown_5m_stopped", False))
+        state.updown_15m_stopped = bool(payload.get("updown_15m_stopped", False))
         raw_date = payload.get("daily_date")
         if raw_date:
             state.daily_date = date.fromisoformat(raw_date)
@@ -2165,6 +2174,12 @@ async def run_bot():
     while state.running:
         try:
             await _scan_cycle()
+        except OSError as e:
+            state.error_count += 1
+            if e.errno == 34:  # Result too large — respuesta HTTP demasiado grande
+                _log("WARN", "Ciclo de escaneo: respuesta demasiado grande (OSError 34) — reintentando en el próximo ciclo")
+            else:
+                _log("ERROR", f"Error en ciclo de escaneo: {e}")
         except Exception as e:
             state.error_count += 1
             _log("ERROR", f"Error en ciclo de escaneo: {e}")
