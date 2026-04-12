@@ -694,6 +694,7 @@
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
       <div class="tab" onclick="showTab('tab-telonex')">🔗 Telonex</div>
+      <div class="tab" onclick="showTab('tab-capital')">💰 Capital</div>
       <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
     </div>
 
@@ -1320,6 +1321,99 @@
               <tr><td colspan="6" style="color:var(--muted);padding:8px">Cargando...</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAPITAL BUCKETS -->
+    <div id="tab-capital" class="tab-content">
+      <!-- Estado del sistema -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+        <div class="card">
+          <div class="label">Sistema</div>
+          <div id="cap-active" style="font-size:1.1rem;font-weight:700">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Pool de Apuestas</div>
+          <div id="cap-pool" style="font-size:1.6rem;font-weight:700">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Cash Libre</div>
+          <div id="cap-cash-free" style="font-size:1.6rem;font-weight:700;color:var(--green)">—</div>
+        </div>
+      </div>
+
+      <!-- Buckets actuales -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Saldo de Buckets</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px" id="cap-buckets">
+          <div class="card" style="text-align:center">
+            <div class="label">⛅ Weather</div>
+            <div id="bkt-weather" style="font-size:1.4rem;font-weight:700">—</div>
+            <div id="bkt-weather-pct" style="font-size:.75rem;color:var(--muted)">—</div>
+            <button onclick="reloadBucket('weather')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+          </div>
+          <div class="card" style="text-align:center">
+            <div class="label">₿ BTC</div>
+            <div id="bkt-btc" style="font-size:1.4rem;font-weight:700">—</div>
+            <div id="bkt-btc-pct" style="font-size:.75rem;color:var(--muted)">—</div>
+            <button onclick="reloadBucket('btc')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+          </div>
+          <div class="card" style="text-align:center">
+            <div class="label">⚡ UpDown 5m</div>
+            <div id="bkt-updown5" style="font-size:1.4rem;font-weight:700">—</div>
+            <div id="bkt-updown5-pct" style="font-size:.75rem;color:var(--muted)">—</div>
+            <button onclick="reloadBucket('updown_5m')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+          </div>
+          <div class="card" style="text-align:center">
+            <div class="label">⚡ UpDown 15m</div>
+            <div id="bkt-updown15" style="font-size:1.4rem;font-weight:700">—</div>
+            <div id="bkt-updown15-pct" style="font-size:.75rem;color:var(--muted)">—</div>
+            <button onclick="reloadBucket('updown_15m')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formulario de asignación -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Asignar Capital</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <label style="font-size:.8rem;color:var(--muted)">Pool de Apuestas (USDC)</label>
+            <input id="cap-inp-pool" type="number" step="0.01" min="0" placeholder="ej. 50.00"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label style="font-size:.8rem;color:var(--muted)">Weather %</label>
+              <input id="cap-inp-w" type="number" step="1" min="0" max="100" placeholder="20"
+                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+            </div>
+            <div>
+              <label style="font-size:.8rem;color:var(--muted)">BTC %</label>
+              <input id="cap-inp-b" type="number" step="1" min="0" max="100" placeholder="20"
+                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+            </div>
+            <div>
+              <label style="font-size:.8rem;color:var(--muted)">UpDown 5m %</label>
+              <input id="cap-inp-u5" type="number" step="1" min="0" max="100" placeholder="15"
+                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+            </div>
+            <div>
+              <label style="font-size:.8rem;color:var(--muted)">UpDown 15m %</label>
+              <input id="cap-inp-u15" type="number" step="1" min="0" max="100" placeholder="45"
+                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          <button onclick="assignCapital()" style="padding:8px 18px;background:#059669;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600">Asignar y Recargar Buckets</button>
+          <button onclick="assignCapital(false)" style="padding:8px 18px;background:#374151;border:none;border-radius:6px;color:#fff;cursor:pointer">Solo guardar %</button>
+          <span id="cap-msg" style="font-size:.8rem;color:var(--green)"></span>
+        </div>
+        <div style="margin-top:8px;font-size:.75rem;color:var(--muted)">
+          Pool=0 desactiva el sistema de buckets y usa el sistema legacy (% del total de cuenta).
+          Los porcentajes deben sumar ≤ 100%.
         </div>
       </div>
     </div>
@@ -4813,7 +4907,88 @@ const _origShowTabTx = showTab;
 showTab = function(id) {
   _origShowTabTx(id);
   if (id === 'tab-telonex') loadTelonex();
+  if (id === 'tab-capital') loadCapital();
 };
+
+// ── Capital Buckets ────────────────────────────────────────────────────────
+async function loadCapital() {
+  try {
+    const d = await fetch('/api/capital').then(r => r.json());
+    document.getElementById('cap-active').textContent   = d.active ? '✅ Activo' : '⚪ Legacy (%)';
+    document.getElementById('cap-active').style.color   = d.active ? 'var(--green)' : 'var(--muted)';
+    document.getElementById('cap-pool').textContent     = '$' + d.betting_pool_usdc.toFixed(2);
+    document.getElementById('cap-cash-free').textContent= '$' + d.cash_free.toFixed(2);
+
+    const bkts = d.buckets;
+    const pool = d.betting_pool_usdc || 1;
+    document.getElementById('bkt-weather').textContent   = '$' + bkts.weather.usdc.toFixed(2);
+    document.getElementById('bkt-weather-pct').textContent = (bkts.weather.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-btc').textContent       = '$' + bkts.btc.usdc.toFixed(2);
+    document.getElementById('bkt-btc-pct').textContent   = (bkts.btc.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-updown5').textContent   = '$' + bkts.updown_5m.usdc.toFixed(2);
+    document.getElementById('bkt-updown5-pct').textContent= (bkts.updown_5m.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-updown15').textContent  = '$' + bkts.updown_15m.usdc.toFixed(2);
+    document.getElementById('bkt-updown15-pct').textContent=(bkts.updown_15m.pct*100).toFixed(0) + '% del pool';
+
+    // Pre-fill form with current values
+    document.getElementById('cap-inp-pool').value = d.betting_pool_usdc || '';
+    document.getElementById('cap-inp-w').value    = Math.round(bkts.weather.pct * 100) || '';
+    document.getElementById('cap-inp-b').value    = Math.round(bkts.btc.pct * 100) || '';
+    document.getElementById('cap-inp-u5').value   = Math.round(bkts.updown_5m.pct * 100) || '';
+    document.getElementById('cap-inp-u15').value  = Math.round(bkts.updown_15m.pct * 100) || '';
+  } catch(e) { console.error('loadCapital:', e); }
+}
+
+async function assignCapital(fillBuckets = true) {
+  const pool  = parseFloat(document.getElementById('cap-inp-pool').value) || 0;
+  const wPct  = (parseFloat(document.getElementById('cap-inp-w').value)   || 0) / 100;
+  const bPct  = (parseFloat(document.getElementById('cap-inp-b').value)   || 0) / 100;
+  const u5Pct = (parseFloat(document.getElementById('cap-inp-u5').value)  || 0) / 100;
+  const u15Pct= (parseFloat(document.getElementById('cap-inp-u15').value) || 0) / 100;
+  const total = wPct + bPct + u5Pct + u15Pct;
+  if (total > 1.001) {
+    document.getElementById('cap-msg').style.color = '#f85149';
+    document.getElementById('cap-msg').textContent = `Los % suman ${(total*100).toFixed(0)}% > 100%`;
+    return;
+  }
+  try {
+    const r = await fetch('/api/capital/assign', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        pool_usdc: pool,
+        weather_pct: wPct, btc_pct: bPct,
+        updown_5m_pct: u5Pct, updown_15m_pct: u15Pct,
+        fill_buckets: fillBuckets,
+      })
+    }).then(r => r.json());
+    if (r.ok) {
+      document.getElementById('cap-msg').style.color = 'var(--green)';
+      document.getElementById('cap-msg').textContent = fillBuckets ? 'Buckets asignados!' : 'Guardado!';
+      loadCapital();
+    } else {
+      document.getElementById('cap-msg').style.color = '#f85149';
+      document.getElementById('cap-msg').textContent = r.msg || 'Error';
+    }
+  } catch(e) {
+    document.getElementById('cap-msg').style.color = '#f85149';
+    document.getElementById('cap-msg').textContent = 'Error de red';
+  }
+}
+
+async function reloadBucket(market) {
+  try {
+    const r = await fetch(`/api/capital/reload/${market}`, {method:'POST'}).then(r => r.json());
+    if (r.ok) { loadCapital(); }
+    else { alert(r.msg || 'Error al recargar bucket'); }
+  } catch(e) { alert('Error de red'); }
+}
+
+// Auto-refresh del tab Capital
+setInterval(() => {
+  const capTab = document.getElementById('tab-capital');
+  if (capTab && capTab.classList.contains('active')) loadCapital();
+}, 5000);
 </script>
 </body>
 </html>

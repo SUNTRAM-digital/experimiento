@@ -284,23 +284,18 @@ async def get_order_book_depth(token_id: str, side: str, up_to_price: float) -> 
     Retorna cuantos shares y USDC estan disponibles hasta up_to_price.
     """
     try:
-        # Usar streaming con chunks pequeños para evitar OSError(34, 'Result too large')
-        # en Windows (ProactorEventLoop falla con lecturas de socket >~3MB de una vez).
-        import json as _json
+        # /book es un endpoint pequeño (un solo mercado) — client.get() simple es seguro.
+        # El streaming se usa solo en endpoints paginados de Gamma que pueden superar 3MB.
         async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "GET",
+            resp = await client.get(
                 f"{CLOB_BASE}/book",
                 params={"token_id": token_id},
                 headers=HEADERS,
                 timeout=8,
-            ) as resp:
-                if resp.status_code != 200:
-                    return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
-                chunks = []
-                async for chunk in resp.aiter_bytes(chunk_size=8192):
-                    chunks.append(chunk)
-                book = _json.loads(b"".join(chunks))
+            )
+            if resp.status_code != 200:
+                return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
+            book = resp.json()
             levels_key = "asks" if side == "ask" else "bids"
             levels = book.get(levels_key, [])
 

@@ -381,16 +381,24 @@ def get_adaptive_params(interval_minutes: int) -> dict:
         p["min_signal"] = max(p["min_signal"], 0.25)
         reasons.append(f"señal débil WR {wr_weak:.0%} → umbral min 0.25")
 
-    # ── Lado DOWN consistentemente pierde ────────────────────────────────────
-    wr_down = _wr(s["by_side"].get("DOWN", {}))
-    wr_up   = _wr(s["by_side"].get("UP",   {}))
-    if wr_down is not None and wr_down < 0.38:
+    # ── Lado DOWN/UP consistentemente pierde ─────────────────────────────────
+    # Requiere al menos 15 trades por lado antes de poder bloquearlo.
+    # Con 5-10 trades la varianza es demasiado alta — ciclo vicioso:
+    #   pocos DOWN trades → baja WR → block_down=True → nunca más DOWN trades
+    _MIN_SIDE_SAMPLES = 15
+    down_b = s["by_side"].get("DOWN", {})
+    up_b   = s["by_side"].get("UP",   {})
+    down_n = down_b.get("w", 0) + down_b.get("l", 0)
+    up_n   = up_b.get("w", 0)   + up_b.get("l", 0)
+    wr_down = (down_b["w"] / down_n) if down_n >= _MIN_SIDE_SAMPLES else None
+    wr_up   = (up_b["w"]   / up_n)   if up_n   >= _MIN_SIDE_SAMPLES else None
+    if wr_down is not None and wr_down < 0.30:
         if wr_up is None or wr_up >= wr_down:
             p["block_down"] = True
-            reasons.append(f"DOWN pierde {wr_down:.0%} → bloquear lado DOWN")
-    if wr_up is not None and wr_up < 0.38:
+            reasons.append(f"DOWN pierde {wr_down:.0%} (n={down_n}) → bloquear lado DOWN")
+    if wr_up is not None and wr_up < 0.30:
         p["block_up"] = True
-        reasons.append(f"UP pierde {wr_up:.0%} → bloquear lado UP")
+        reasons.append(f"UP pierde {wr_up:.0%} (n={up_n}) → bloquear lado UP")
 
     # ── TA vs Momentum: aprender si el conflicto es tóxico ───────────────────
     by_ta_mom   = s.get("by_ta_mom", {})

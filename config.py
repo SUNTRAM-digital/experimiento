@@ -58,6 +58,19 @@ class BotParams:
         self.profit_goal_hours: float = 24.0
         self.profit_goal_start_iso: str = ""       # ISO timestamp al activar meta
         self.profit_goal_start_value: float = 0.0  # valor total de cuenta al activar meta
+        # --- Sistema de buckets de capital (Fase 12) ---
+        # betting_pool_usdc > 0 activa el sistema de buckets (0 = sistema legacy por %)
+        self.betting_pool_usdc: float = 0.0
+        # Porcentajes de referencia para recarga (suman ≤ 1.0)
+        self.bucket_weather_pct: float = 0.20
+        self.bucket_btc_pct: float = 0.20
+        self.bucket_updown_5m_pct: float = 0.15
+        self.bucket_updown_15m_pct: float = 0.45
+        # Saldo actual de cada bucket (decrece al apostar, sube al ganar)
+        self.bucket_weather_usdc: float = 0.0
+        self.bucket_btc_usdc: float = 0.0
+        self.bucket_updown_5m_usdc: float = 0.0
+        self.bucket_updown_15m_usdc: float = 0.0
         # Cargar valores guardados previamente (sobreescriben los defaults)
         self._load()
 
@@ -95,6 +108,15 @@ class BotParams:
             "profit_goal_hours": self.profit_goal_hours,
             "profit_goal_start_iso": self.profit_goal_start_iso,
             "profit_goal_start_value": self.profit_goal_start_value,
+            "betting_pool_usdc": self.betting_pool_usdc,
+            "bucket_weather_pct": self.bucket_weather_pct,
+            "bucket_btc_pct": self.bucket_btc_pct,
+            "bucket_updown_5m_pct": self.bucket_updown_5m_pct,
+            "bucket_updown_15m_pct": self.bucket_updown_15m_pct,
+            "bucket_weather_usdc": self.bucket_weather_usdc,
+            "bucket_btc_usdc": self.bucket_btc_usdc,
+            "bucket_updown_5m_usdc": self.bucket_updown_5m_usdc,
+            "bucket_updown_15m_usdc": self.bucket_updown_15m_usdc,
         }
 
     def _load(self):

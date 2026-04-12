@@ -106,12 +106,62 @@ class BotState:
         self.capital_velocity: float = 0.0
         self.total_volume_traded: float = 0.0             # USDC total comprado (acumulado)
         self.avg_capital_deployed: float = 0.0            # promedio movil del capital desplegado
+        # Sistema de buckets (Fase 12)
+        self.cash_free: float = 0.0                       # balance - suma de buckets asignados
 
 
 state = BotState()
 _log_callbacks: list[Callable] = []
 _log_history: list[dict] = []
 _clob_client = None
+
+
+# ── Helpers de buckets de capital (Fase 12) ───────────────────────────────────
+
+def _bucket_attr(bucket_id: str) -> str:
+    """Retorna el nombre del atributo en bot_params para el bucket dado."""
+    return {
+        "weather":    "bucket_weather_usdc",
+        "btc":        "bucket_btc_usdc",
+        "updown_5m":  "bucket_updown_5m_usdc",
+        "updown_15m": "bucket_updown_15m_usdc",
+    }.get(bucket_id, "")
+
+
+def _deduct_from_bucket(bucket_id: str, amount: float):
+    """Resta amount del bucket; persiste. No-op si sistema de buckets inactivo."""
+    if not bot_params.betting_pool_usdc or not bucket_id:
+        return
+    attr = _bucket_attr(bucket_id)
+    if not attr:
+        return
+    current = getattr(bot_params, attr, 0.0)
+    setattr(bot_params, attr, round(max(0.0, current - amount), 4))
+    bot_params.save()
+
+
+def _return_stake_to_bucket(bucket_id: str, amount: float):
+    """Devuelve stake al bucket tras ganar una apuesta; persiste."""
+    if not bot_params.betting_pool_usdc or not bucket_id or not amount:
+        return
+    attr = _bucket_attr(bucket_id)
+    if not attr:
+        return
+    current = getattr(bot_params, attr, 0.0)
+    setattr(bot_params, attr, round(current + amount, 4))
+    bot_params.save()
+    _log("INFO", f"Capital | Stake ${amount:.2f} devuelto a bucket '{bucket_id}' → saldo ${getattr(bot_params, attr):.2f}")
+
+
+def _bucket_id_from_opportunity(opp: dict) -> str:
+    """Determina el bucket_id a partir del diccionario de oportunidad."""
+    asset = opp.get("asset", "WEATHER")
+    interval = opp.get("interval_minutes")
+    if asset == "BTC_UPDOWN":
+        return "updown_5m" if interval == 5 else "updown_15m"
+    if asset == "BTC":
+        return "btc"
+    return "weather"
 
 
 def add_log_callback(cb: Callable):
@@ -448,6 +498,10 @@ def _execute_trade(opportunity: dict) -> bool:
             # Capital Velocity: acumular volumen total tradeado
             state.total_volume_traded += cost
 
+            bucket_id = _bucket_id_from_opportunity(opportunity)
+            # Descontar del bucket correspondiente
+            _deduct_from_bucket(bucket_id, cost)
+
             trade = {
                 "id": response.get("orderID", ""),
                 "time": datetime.now(timezone.utc).isoformat(),
@@ -465,6 +519,8 @@ def _execute_trade(opportunity: dict) -> bool:
                 "interval_minutes": opportunity.get("interval_minutes"),
                 # URL de Polymarket para el botón "Ver en Polymarket"
                 "poly_url": opportunity.get("poly_url", ""),
+                # Bucket de capital (Fase 12)
+                "bucket_id": bucket_id,
             }
             state.active_positions.append(trade)
             state.trade_history.insert(0, trade)
@@ -497,33 +553,41 @@ async def _scan_cycle():
     if balance > 0:
         state.balance_usdc = balance
 
-    # ── Asignación de capital: 60% weather / 20% BTC / 20% UpDown ───────────
-    # Deployed primero: capital ya comprometido en posiciones abiertas
+    # ── Asignación de capital ─────────────────────────────────────────────────
     _dep = _calc_deployed_by_type()
     state.deployed_weather = round(_dep.get("WEATHER",    0.0), 2)
     state.deployed_btc     = round(_dep.get("BTC",        0.0), 2)
     state.deployed_updown  = round(_dep.get("BTC_UPDOWN", 0.0), 2)
-
-    # Total = cash libre + capital ya desplegado (valor total de la cuenta)
     _total_deployed = state.deployed_weather + state.deployed_btc + state.deployed_updown
-    _total = state.balance_usdc + _total_deployed
 
-    state.budget_weather = round(_total * bot_params.alloc_weather_pct, 2)
-    state.budget_btc     = round(_total * bot_params.alloc_btc_pct,     2)
-    state.budget_updown  = round(_total * bot_params.alloc_updown_pct,  2)
-
-    # Disponible: distribuir el cash entre las categorías con headroom libre.
-    # Si una categoría está sobre presupuesto, su cash se redistribuye proporcionalmente
-    # a las otras que sí tienen espacio. Total distribuido = balance_usdc exacto.
-    _cash = state.balance_usdc
-    _hw = max(0.0, state.budget_weather - state.deployed_weather)
-    _hb = max(0.0, state.budget_btc     - state.deployed_btc)
-    _hu = max(0.0, state.budget_updown  - state.deployed_updown)
-    _total_h = _hw + _hb + _hu
-    _ratio = min(1.0, _cash / _total_h) if _total_h > 0 else 0.0
-    state.available_weather = round(_hw * _ratio, 2)
-    state.available_btc     = round(_hb * _ratio, 2)
-    state.available_updown  = round(_hu * _ratio, 2)
+    if bot_params.betting_pool_usdc > 0:
+        # ── Sistema de buckets (Fase 12) ──────────────────────────────────────
+        # Cada mercado opera con su bucket independiente; presupuesto = saldo del bucket
+        _bucket_sum = (bot_params.bucket_weather_usdc + bot_params.bucket_btc_usdc +
+                       bot_params.bucket_updown_5m_usdc + bot_params.bucket_updown_15m_usdc)
+        state.cash_free = round(max(0.0, state.balance_usdc - _bucket_sum), 2)
+        state.budget_weather  = round(bot_params.bucket_weather_usdc, 2)
+        state.budget_btc      = round(bot_params.bucket_btc_usdc, 2)
+        state.budget_updown   = round(bot_params.bucket_updown_5m_usdc + bot_params.bucket_updown_15m_usdc, 2)
+        state.available_weather = state.budget_weather
+        state.available_btc     = state.budget_btc
+        state.available_updown  = state.budget_updown
+    else:
+        # ── Sistema legacy: asignación por % del total de la cuenta ──────────
+        state.cash_free = 0.0
+        _total = state.balance_usdc + _total_deployed
+        state.budget_weather = round(_total * bot_params.alloc_weather_pct, 2)
+        state.budget_btc     = round(_total * bot_params.alloc_btc_pct,     2)
+        state.budget_updown  = round(_total * bot_params.alloc_updown_pct,  2)
+        _cash = state.balance_usdc
+        _hw = max(0.0, state.budget_weather - state.deployed_weather)
+        _hb = max(0.0, state.budget_btc     - state.deployed_btc)
+        _hu = max(0.0, state.budget_updown  - state.deployed_updown)
+        _total_h = _hw + _hb + _hu
+        _ratio = min(1.0, _cash / _total_h) if _total_h > 0 else 0.0
+        state.available_weather = round(_hw * _ratio, 2)
+        state.available_btc     = round(_hb * _ratio, 2)
+        state.available_updown  = round(_hu * _ratio, 2)
 
     # ── Capital Velocity (Fase 3) ─────────────────────────────────────────────
     # Calcula cuantas veces hemos rotado el capital (target: >20x)
@@ -536,13 +600,22 @@ async def _scan_cycle():
     if state.avg_capital_deployed > 0:
         state.capital_velocity = round(state.total_volume_traded / state.avg_capital_deployed, 2)
 
-    _log(
-        "INFO",
-        f"Capital — Weather: ${state.budget_weather:.2f} (dep ${state.deployed_weather:.2f} / avail ${state.available_weather:.2f}) | "
-        f"BTC: ${state.budget_btc:.2f} (dep ${state.deployed_btc:.2f} / avail ${state.available_btc:.2f}) | "
-        f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f}) | "
-        f"Velocity: {state.capital_velocity:.1f}x (target >20x)",
-    )
+    if bot_params.betting_pool_usdc > 0:
+        _log(
+            "INFO",
+            f"Capital (buckets) — Weather: ${state.budget_weather:.2f} | "
+            f"BTC: ${state.budget_btc:.2f} | "
+            f"UpDown: ${state.budget_updown:.2f} (5m:${bot_params.bucket_updown_5m_usdc:.2f} 15m:${bot_params.bucket_updown_15m_usdc:.2f}) | "
+            f"CashLibre: ${state.cash_free:.2f} | Velocity: {state.capital_velocity:.1f}x",
+        )
+    else:
+        _log(
+            "INFO",
+            f"Capital — Weather: ${state.budget_weather:.2f} (dep ${state.deployed_weather:.2f} / avail ${state.available_weather:.2f}) | "
+            f"BTC: ${state.budget_btc:.2f} (dep ${state.deployed_btc:.2f} / avail ${state.available_btc:.2f}) | "
+            f"UpDown: ${state.budget_updown:.2f} (dep ${state.deployed_updown:.2f} / avail ${state.available_updown:.2f}) | "
+            f"Velocity: {state.capital_velocity:.1f}x (target >20x)",
+        )
 
     _check_daily_reset()
 
@@ -585,11 +658,13 @@ async def _scan_cycle():
                         _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
-                        # Actualizar trade_history con resultado WIN
+                        # Actualizar trade_history con resultado WIN + devolver stake al bucket
                         _tk = pos.get("token_id", "")
                         for _th in state.trade_history:
                             if _th.get("token_id") == _tk and _th.get("result") is None:
                                 _th["result"] = "WIN"
+                                # Devolver stake original al bucket (la ganancia queda en balance)
+                                _return_stake_to_bucket(_th.get("bucket_id", ""), _th.get("cost_usdc", 0.0))
                                 break
                         await asyncio.get_event_loop().run_in_executor(
                             None,
@@ -1362,10 +1437,16 @@ async def _scan_updown(interval_minutes: int):
         f"RR ratio:{opp.get('rr_ratio',0):.3f} | BTC movió {opp.get('window_pct',0):+.3f}% en ventana",
     )
 
-    # Recomputar disponible en tiempo real (evita usar state.available_updown obsoleto)
-    # Disponible = mínimo entre: headroom del presupuesto y el cash real
-    _updown_headroom = max(0.0, state.budget_updown - state.deployed_updown)
-    _avail_now = round(min(_updown_headroom, state.balance_usdc), 2)
+    # Calcular disponible para este intervalo
+    if bot_params.betting_pool_usdc > 0:
+        # Sistema de buckets: cada intervalo tiene su propio bucket
+        _avail_now = round(bot_params.bucket_updown_5m_usdc if is_5m else bot_params.bucket_updown_15m_usdc, 2)
+        _bucket_label = "updown_5m" if is_5m else "updown_15m"
+    else:
+        # Sistema legacy
+        _updown_headroom = max(0.0, state.budget_updown - state.deployed_updown)
+        _avail_now = round(min(_updown_headroom, state.balance_usdc), 2)
+        _bucket_label = "UpDown"
 
     if state.balance_usdc < opp["size_usdc"]:
         _log("WARN", (
@@ -1376,10 +1457,8 @@ async def _scan_updown(interval_minutes: int):
         return
     if opp["size_usdc"] > _avail_now:
         _log("WARN", (
-            f"UpDown {interval_minutes}m | Presupuesto UpDown agotado: "
-            f"quieres gastar ${opp['size_usdc']} pero solo hay ${_avail_now:.2f} disponible | "
-            f"Budget=${state.budget_updown:.2f} Deployed=${state.deployed_updown:.2f} "
-            f"Headroom=${_updown_headroom:.2f} Cash=${state.balance_usdc:.2f}"
+            f"UpDown {interval_minutes}m | Bucket [{_bucket_label}] agotado: "
+            f"quieres gastar ${opp['size_usdc']} pero solo hay ${_avail_now:.2f} disponible"
         ))
         return
     if _daily_loss_limit_reached():
@@ -1479,10 +1558,15 @@ async def _scan_updown(interval_minutes: int):
             "slug":     slug,
         }
 
-        # Descontar del disponible para que el siguiente scan (5m o 15m) no gaste de más
+        # Descontar del bucket (ya hecho en _execute_trade via _deduct_from_bucket)
+        # Actualizar estado en memoria para coherencia
         state.available_updown = round(max(0.0, state.available_updown - opp["size_usdc"]), 2)
         state.deployed_updown  = round(state.deployed_updown + opp["size_usdc"], 2)
-        _log("INFO", f"UpDown {interval_minutes}m | TRADE {opp['side']} ${opp['size_usdc']} @ {opp['entry_price']:.3f} | EV {opp['ev_pct']}% | avail restante ${state.available_updown:.2f}")
+        if bot_params.betting_pool_usdc > 0:
+            _bkt_val = bot_params.bucket_updown_5m_usdc if is_5m else bot_params.bucket_updown_15m_usdc
+            _log("INFO", f"UpDown {interval_minutes}m | TRADE {opp['side']} ${opp['size_usdc']} @ {opp['entry_price']:.3f} | EV {opp['ev_pct']}% | bucket restante ${_bkt_val:.2f}")
+        else:
+            _log("INFO", f"UpDown {interval_minutes}m | TRADE {opp['side']} ${opp['size_usdc']} @ {opp['entry_price']:.3f} | EV {opp['ev_pct']}% | avail restante ${state.available_updown:.2f}")
     else:
         _log("WARN", f"UpDown {interval_minutes}m | Fallo al ejecutar trade")
 
@@ -2074,16 +2158,21 @@ async def _run_updown_loop():
 
             # Calcular budget si el ciclo principal aún no lo ha hecho
             if state.balance_usdc > 0 and state.budget_updown == 0:
-                _dep = _calc_deployed_by_type()
-                state.deployed_weather = round(_dep.get("WEATHER",    0.0), 2)
-                state.deployed_btc     = round(_dep.get("BTC",        0.0), 2)
-                state.deployed_updown  = round(_dep.get("BTC_UPDOWN", 0.0), 2)
-                _total_dep = state.deployed_weather + state.deployed_btc + state.deployed_updown
-                total = state.balance_usdc + _total_dep
-                state.budget_updown    = round(total * bot_params.alloc_updown_pct, 2)
-                _ud_headroom           = max(0.0, state.budget_updown - state.deployed_updown)
-                state.available_updown = round(min(_ud_headroom, state.balance_usdc), 2)
-                _log("INFO", f"UpDown | Budget calculado: ${state.budget_updown:.2f} / headroom ${_ud_headroom:.2f} / disponible ${state.available_updown:.2f}")
+                if bot_params.betting_pool_usdc > 0:
+                    state.budget_updown    = round(bot_params.bucket_updown_5m_usdc + bot_params.bucket_updown_15m_usdc, 2)
+                    state.available_updown = state.budget_updown
+                    _log("INFO", f"UpDown | Buckets: 5m=${bot_params.bucket_updown_5m_usdc:.2f} 15m=${bot_params.bucket_updown_15m_usdc:.2f}")
+                else:
+                    _dep = _calc_deployed_by_type()
+                    state.deployed_weather = round(_dep.get("WEATHER",    0.0), 2)
+                    state.deployed_btc     = round(_dep.get("BTC",        0.0), 2)
+                    state.deployed_updown  = round(_dep.get("BTC_UPDOWN", 0.0), 2)
+                    _total_dep = state.deployed_weather + state.deployed_btc + state.deployed_updown
+                    total = state.balance_usdc + _total_dep
+                    state.budget_updown    = round(total * bot_params.alloc_updown_pct, 2)
+                    _ud_headroom           = max(0.0, state.budget_updown - state.deployed_updown)
+                    state.available_updown = round(min(_ud_headroom, state.balance_usdc), 2)
+                    _log("INFO", f"UpDown | Budget calculado: ${state.budget_updown:.2f} / headroom ${_ud_headroom:.2f} / disponible ${state.available_updown:.2f}")
 
             # Actualizar smart wallet ranking (Telonex) cada 2h
             if bot_params.telonex_enabled and _now_mono - _telonex_last_wallet_update >= 7200:

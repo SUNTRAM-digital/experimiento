@@ -348,7 +348,7 @@ class PerformanceMonitor:
         }
 
         if error or elapsed_ms >= _SLOW_MS:
-            self._mon._rlog_warn_with_snapshot(category,
+            self._rlog_warn_with_snapshot(category,
                 f"{name} {'FALLÓ' if error else 'lento'}: {elapsed_ms:.0f} ms", base_detail)
         else:
             self._rlog("INFO", category, f"{name}: {elapsed_ms:.0f} ms", base_detail)

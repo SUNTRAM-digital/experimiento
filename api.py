@@ -97,18 +97,27 @@ def _build_status() -> dict:
     bot.state.deployed_weather = dep_w
     bot.state.deployed_btc     = dep_b
     bot.state.deployed_updown  = dep_u
-    # Calcular disponibles distribuyendo el cash entre categorías con espacio libre
-    bud_w = round(total_value * bot_params.alloc_weather_pct, 2)
-    bud_b = round(total_value * bot_params.alloc_btc_pct,     2)
-    bud_u = round(total_value * bot_params.alloc_updown_pct,  2)
-    hw = max(0.0, bud_w - dep_w)
-    hb = max(0.0, bud_b - dep_b)
-    hu = max(0.0, bud_u - dep_u)
-    total_h = hw + hb + hu
-    ratio = min(1.0, cash / total_h) if total_h > 0 else 0.0
-    avail_w = round(hw * ratio, 2)
-    avail_b = round(hb * ratio, 2)
-    avail_u = round(hu * ratio, 2)
+    # Calcular disponibles
+    if bot_params.betting_pool_usdc > 0:
+        # Sistema de buckets
+        bud_w  = round(bot_params.bucket_weather_usdc, 2)
+        bud_b  = round(bot_params.bucket_btc_usdc, 2)
+        bud_u  = round(bot_params.bucket_updown_5m_usdc + bot_params.bucket_updown_15m_usdc, 2)
+        avail_w = bud_w
+        avail_b = bud_b
+        avail_u = bud_u
+    else:
+        bud_w = round(total_value * bot_params.alloc_weather_pct, 2)
+        bud_b = round(total_value * bot_params.alloc_btc_pct,     2)
+        bud_u = round(total_value * bot_params.alloc_updown_pct,  2)
+        hw = max(0.0, bud_w - dep_w)
+        hb = max(0.0, bud_b - dep_b)
+        hu = max(0.0, bud_u - dep_u)
+        total_h = hw + hb + hu
+        ratio = min(1.0, cash / total_h) if total_h > 0 else 0.0
+        avail_w = round(hw * ratio, 2)
+        avail_b = round(hb * ratio, 2)
+        avail_u = round(hu * ratio, 2)
     return {
         "running":             bot.state.running,
         "balance_usdc":        round(bot.state.balance_usdc, 2),
@@ -144,6 +153,14 @@ def _build_status() -> dict:
         "available_weather":  avail_w,
         "available_btc":      avail_b,
         "available_updown":   avail_u,
+        # Sistema de buckets (Fase 12)
+        "capital_buckets_active": bot_params.betting_pool_usdc > 0,
+        "cash_free":          bot.state.cash_free,
+        "betting_pool_usdc":  round(bot_params.betting_pool_usdc, 2),
+        "bucket_weather_usdc":    round(bot_params.bucket_weather_usdc, 2),
+        "bucket_btc_usdc":        round(bot_params.bucket_btc_usdc, 2),
+        "bucket_updown_5m_usdc":  round(bot_params.bucket_updown_5m_usdc, 2),
+        "bucket_updown_15m_usdc": round(bot_params.bucket_updown_15m_usdc, 2),
         # Tipos de trade habilitados
         "weather_enabled":              bot_params.weather_enabled,
         "btc_enabled":                  bot_params.btc_enabled,
@@ -254,7 +271,7 @@ async def on_startup():
 
 # ── Análisis proactivo de Claude ──────────────────────────────────────────
 
-_PROACTIVE_INTERVAL_H = 2      # horas entre análisis proactivos
+_PROACTIVE_INTERVAL_H = 0.5    # horas entre análisis proactivos (30 min)
 _proactive_last_run: datetime | None = None
 
 _PROACTIVE_SYSTEM = """Eres el asesor proactivo de WeatherBot. Analiza el estado completo del sistema y detecta:
@@ -316,17 +333,15 @@ async def _proactive_advisor_loop():
     await asyncio.sleep(180)
     while True:
         try:
+            _proactive_last_run = datetime.now(timezone.utc)
             msg = await _run_proactive_analysis()
             if msg:
-                _proactive_last_run = datetime.now(timezone.utc)
-                # Guardar como mensaje en el chat de notificaciones
                 _store_advisor_notification(msg)
-                # Broadcast a todos los clientes WebSocket
                 await _broadcast({
                     "type": "advisor_notification",
                     "data": {
                         "text": msg,
-                        "time": _proactive_last_run.strftime("%H:%M UTC"),
+                        "time": _proactive_last_run.strftime("%Y-%m-%d %H:%M UTC"),
                     },
                 })
         except Exception:
@@ -390,7 +405,7 @@ async def advisor_analyze_now():
         _proactive_last_run_val = datetime.now(timezone.utc)
         await _broadcast({
             "type": "advisor_notification",
-            "data": {"text": msg, "time": _proactive_last_run_val.strftime("%H:%M UTC")},
+            "data": {"text": msg, "time": _proactive_last_run_val.strftime("%Y-%m-%d %H:%M UTC")},
         })
         return {"ok": True, "notification": msg}
     return {"ok": True, "notification": None, "msg": "Sin alertas en este momento"}
@@ -1890,6 +1905,116 @@ async def refresh_telonex_wallets():
         return {"ok": True, "message": "Wallets actualizados"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ── Capital Buckets (Fase 12) ──────────────────────────────────────────────
+
+@app.get("/api/capital")
+async def get_capital():
+    """Estado actual del sistema de buckets de capital."""
+    bp = bot_params
+    balance = round(bot.state.balance_usdc, 2)
+    bucket_sum = round(
+        bp.bucket_weather_usdc + bp.bucket_btc_usdc +
+        bp.bucket_updown_5m_usdc + bp.bucket_updown_15m_usdc, 2
+    )
+    cash_free = round(max(0.0, balance - bucket_sum), 2)
+    return {
+        "active": bp.betting_pool_usdc > 0,
+        "betting_pool_usdc": round(bp.betting_pool_usdc, 2),
+        "cash_free": cash_free,
+        "balance_usdc": balance,
+        "buckets": {
+            "weather":    {"usdc": round(bp.bucket_weather_usdc, 2),    "pct": round(bp.bucket_weather_pct, 2)},
+            "btc":        {"usdc": round(bp.bucket_btc_usdc, 2),        "pct": round(bp.bucket_btc_pct, 2)},
+            "updown_5m":  {"usdc": round(bp.bucket_updown_5m_usdc, 2),  "pct": round(bp.bucket_updown_5m_pct, 2)},
+            "updown_15m": {"usdc": round(bp.bucket_updown_15m_usdc, 2), "pct": round(bp.bucket_updown_15m_pct, 2)},
+        },
+    }
+
+
+@app.post("/api/capital/assign")
+async def assign_capital(data: dict):
+    """
+    Asigna capital al pool de apuestas y define los buckets.
+
+    Body (todos opcionales):
+      pool_usdc:         float  — nuevo total del pool de apuestas
+      weather_pct:       float  — % para weather (0-1)
+      btc_pct:           float  — % para BTC
+      updown_5m_pct:     float  — % para UpDown 5m
+      updown_15m_pct:    float  — % para UpDown 15m
+      fill_buckets:      bool   — si True, rellena los buckets según los % (default True)
+
+    Si fill_buckets=True los buckets se recalculan: bucket_X = pool_usdc * pct_X.
+    Si fill_buckets=False solo se guardan los parámetros sin tocar los saldos actuales.
+    """
+    bp = bot_params
+
+    pool = float(data.get("pool_usdc", bp.betting_pool_usdc))
+    w_pct  = float(data.get("weather_pct",    bp.bucket_weather_pct))
+    b_pct  = float(data.get("btc_pct",        bp.bucket_btc_pct))
+    u5_pct = float(data.get("updown_5m_pct",  bp.bucket_updown_5m_pct))
+    u15_pct= float(data.get("updown_15m_pct", bp.bucket_updown_15m_pct))
+    fill   = bool(data.get("fill_buckets", True))
+
+    if pool < 0:
+        return JSONResponse(status_code=400, content={"ok": False, "msg": "pool_usdc no puede ser negativo"})
+    total_pct = w_pct + b_pct + u5_pct + u15_pct
+    if total_pct > 1.001:
+        return JSONResponse(status_code=400, content={"ok": False, "msg": f"La suma de porcentajes es {total_pct:.2f} > 1.0"})
+
+    update = {
+        "betting_pool_usdc":   round(pool, 2),
+        "bucket_weather_pct":   round(w_pct, 4),
+        "bucket_btc_pct":       round(b_pct, 4),
+        "bucket_updown_5m_pct": round(u5_pct, 4),
+        "bucket_updown_15m_pct":round(u15_pct, 4),
+    }
+    if fill:
+        update["bucket_weather_usdc"]    = round(pool * w_pct, 4)
+        update["bucket_btc_usdc"]        = round(pool * b_pct, 4)
+        update["bucket_updown_5m_usdc"]  = round(pool * u5_pct, 4)
+        update["bucket_updown_15m_usdc"] = round(pool * u15_pct, 4)
+
+    bot_params.update(update)
+    bot._log(
+        "INFO",
+        f"Capital asignado — Pool: ${pool:.2f} | "
+        f"Weather {w_pct*100:.0f}% (${pool*w_pct:.2f}) | "
+        f"BTC {b_pct*100:.0f}% (${pool*b_pct:.2f}) | "
+        f"UpDown5m {u5_pct*100:.0f}% (${pool*u5_pct:.2f}) | "
+        f"UpDown15m {u15_pct*100:.0f}% (${pool*u15_pct:.2f})",
+    )
+    return {"ok": True, **update}
+
+
+@app.post("/api/capital/reload/{market}")
+async def reload_bucket(market: str):
+    """
+    Recarga el bucket de un mercado hasta su asignación configurada
+    (pool_usdc * bucket_pct). Solo opera si el sistema de buckets está activo.
+
+    market: 'weather' | 'btc' | 'updown_5m' | 'updown_15m'
+    """
+    bp = bot_params
+    if bp.betting_pool_usdc <= 0:
+        return JSONResponse(status_code=400, content={"ok": False, "msg": "Sistema de buckets no activo. Asigna un pool primero."})
+
+    markets_map = {
+        "weather":    ("bucket_weather_usdc",    "bucket_weather_pct"),
+        "btc":        ("bucket_btc_usdc",        "bucket_btc_pct"),
+        "updown_5m":  ("bucket_updown_5m_usdc",  "bucket_updown_5m_pct"),
+        "updown_15m": ("bucket_updown_15m_usdc", "bucket_updown_15m_pct"),
+    }
+    if market not in markets_map:
+        return JSONResponse(status_code=400, content={"ok": False, "msg": f"Mercado desconocido: {market}"})
+
+    usdc_attr, pct_attr = markets_map[market]
+    target = round(bp.betting_pool_usdc * getattr(bp, pct_attr), 2)
+    bot_params.update({usdc_attr: target})
+    bot._log("INFO", f"Capital | Bucket '{market}' recargado → ${target:.2f}")
+    return {"ok": True, "market": market, "bucket_usdc": target}
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────
