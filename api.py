@@ -2071,13 +2071,42 @@ async def get_phantom_analysis(interval: int = None):
         return {"ok": False, "error": str(e)}
 
 
+def _fetch_anthropic_credits(api_key: str) -> dict | None:
+    """
+    Intenta obtener el saldo de créditos de la cuenta Anthropic.
+    Prueba el endpoint de usage de la Admin API.
+    Retorna dict con 'credits_usd' si tiene éxito, None si no está disponible.
+    """
+    import httpx
+    endpoints = [
+        "https://api.anthropic.com/v1/organizations/billing/credits",
+        "https://api.anthropic.com/v1/usage/credits",
+    ]
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+    }
+    for url in endpoints:
+        try:
+            r = httpx.get(url, headers=headers, timeout=5.0)
+            if r.status_code == 200:
+                data = r.json()
+                # Distintos posibles nombres del campo de créditos
+                for key in ("credit_balance", "credits", "balance", "available_credits"):
+                    if key in data:
+                        return {"credits_usd": float(data[key])}
+                return {"credits_usd": None, "raw": data}
+        except Exception:
+            continue
+    return None
+
+
 @app.get("/api/claude-status")
 async def get_claude_status():
     """
-    Verifica el estado de la API de Claude (Anthropic).
-    Retorna si la clave es válida y cuándo fue la última llamada exitosa.
-    Nota: Anthropic no expone créditos restantes vía API; usar la Consola
-    para ver el saldo: https://console.anthropic.com/settings/billing
+    Verifica el estado de la API de Claude (Anthropic) y obtiene saldo de créditos.
+    El saldo de créditos se consulta vía Admin API; si la clave no tiene permisos
+    de Admin, devuelve credits_usd=null y se muestra link a la consola.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -2085,9 +2114,17 @@ async def get_claude_status():
             "ok": False,
             "status": "NO_KEY",
             "msg": "ANTHROPIC_API_KEY no configurada",
+            "credits_usd": None,
             "last_call": None,
             "console_url": "https://console.anthropic.com/settings/billing",
         }
+
+    # Intentar obtener saldo de créditos (puede fallar si no es admin key)
+    credits_info = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: _fetch_anthropic_credits(api_key)
+    )
+    credits_usd = credits_info.get("credits_usd") if credits_info else None
+
     try:
         import anthropic as _anthropic
         client = _anthropic.Anthropic(api_key=api_key)
@@ -2106,6 +2143,7 @@ async def get_claude_status():
             "msg": f"API activa — modelo {resp.model}",
             "input_tokens": resp.usage.input_tokens,
             "output_tokens": resp.usage.output_tokens,
+            "credits_usd": credits_usd,
             "last_call": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "console_url": "https://console.anthropic.com/settings/billing",
         }
@@ -2116,6 +2154,7 @@ async def get_claude_status():
             "ok": False,
             "status": status,
             "msg": err_str[:120],
+            "credits_usd": credits_usd,
             "last_call": None,
             "console_url": "https://console.anthropic.com/settings/billing",
         }

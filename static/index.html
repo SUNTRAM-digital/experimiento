@@ -314,6 +314,10 @@
     <span id="claude-api-indicator" title="Click para verificar estado de la API de Claude" onclick="checkClaudeStatus()" style="cursor:pointer;display:flex;align-items:center;gap:4px">
       <span id="claude-api-dot" style="width:7px;height:7px;border-radius:50%;background:#6b7280;display:inline-block"></span>
       <span id="claude-api-text" style="font-size:10px;color:var(--muted)">Claude API</span>
+      <span id="claude-api-balance" style="font-size:10px;color:var(--muted);display:none"></span>
+      <a id="claude-api-billing-link" href="https://console.anthropic.com/settings/billing" target="_blank"
+         title="Ver saldo en consola Anthropic"
+         style="font-size:10px;color:#60a5fa;text-decoration:none;display:none" onclick="event.stopPropagation()">💳</a>
     </span>
   </span>
 </header>
@@ -5097,22 +5101,42 @@ async function loadPhantomAnalysis() {
 async function checkClaudeStatus() {
   try {
     const d = await fetch('/api/claude-status').then(r => r.json());
-    const dot  = document.getElementById('claude-api-dot');
-    const text = document.getElementById('claude-api-text');
+    const dot     = document.getElementById('claude-api-dot');
+    const text    = document.getElementById('claude-api-text');
+    const balance = document.getElementById('claude-api-balance');
+    const billLink= document.getElementById('claude-api-billing-link');
     if (!dot || !text) return;
+
     if (d.ok) {
       dot.style.background = '#22c55e';
       text.style.color = '#86efac';
       text.textContent = 'Claude API ✓';
-      text.title = d.msg;
     } else {
       dot.style.background = '#ef4444';
       text.style.color = '#fca5a5';
       text.textContent = 'Claude API ✗';
-      text.title = `${d.status}: ${d.msg} | Ver saldo: ${d.console_url}`;
     }
-    document.getElementById('claude-api-indicator').title =
-      d.ok ? `${d.msg} | Ver saldo: ${d.console_url}` : `Error: ${d.msg} | ${d.console_url}`;
+
+    // Saldo de créditos
+    if (balance) {
+      if (d.credits_usd != null) {
+        const credColor = d.credits_usd < 2 ? '#ef4444' : d.credits_usd < 10 ? '#f59e0b' : '#86efac';
+        balance.textContent = `$${d.credits_usd.toFixed(2)}`;
+        balance.style.color = credColor;
+        balance.style.fontWeight = '700';
+        balance.style.display = 'inline';
+        if (billLink) billLink.style.display = 'none';
+      } else {
+        // Sin acceso al balance: mostrar link a consola
+        balance.style.display = 'none';
+        if (billLink) billLink.style.display = 'inline';
+      }
+    }
+
+    const tooltip = d.ok
+      ? `${d.msg}${d.credits_usd != null ? ' | Saldo: $' + d.credits_usd.toFixed(2) : ''}`
+      : `Error: ${d.msg}`;
+    document.getElementById('claude-api-indicator').title = tooltip + ' | Consola: ' + d.console_url;
   } catch(e) {
     const dot = document.getElementById('claude-api-dot');
     if (dot) dot.style.background = '#6b7280';
