@@ -673,15 +673,20 @@ async def _scan_cycle():
                     cur_price = pos.get("cur_price", 0)
                     token_id  = pos.get("token_id", "")
                     # Actualizar racha UpDown si aplica (via precio posición redeemable)
+                    # Solo si aún no fue resuelto por _resolve_pending_updown_outcomes
                     _ud_interval = None
                     if token_id in _updown_pending_outcomes:
+                        # Pendiente en memoria → resolver aquí y sacar del dict
                         pending = _updown_pending_outcomes.pop(token_id)
                         _ud_interval = pending["interval"] if isinstance(pending, dict) else pending
                     else:
-                        # Bot reiniciado — buscar intervalo en historial de trades por token_id
+                        # Posible restart: buscar en trade_history por token_id
+                        # Solo actuar si el trade aún no tiene resultado (evita doble-conteo)
                         for _th in state.trade_history:
                             if _th.get("token_id") == token_id:
-                                _ud_interval = _th.get("interval_minutes")
+                                if _th.get("result") is None:
+                                    _ud_interval = _th.get("interval_minutes")
+                                # Si ya tiene resultado, _resolve_pending ya lo procesó → no tocar
                                 break
                     if _ud_interval:
                         won = cur_price > 0.5
