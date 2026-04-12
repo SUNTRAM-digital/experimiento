@@ -885,6 +885,19 @@ async def _scan_cycle():
         # Saltar al resto del ciclo (BTC sigue adelante abajo)
         markets = []
     else:
+        # Aviso si el bucket de weather es 0 en modo bucket (nunca operaría)
+        if bot_params.betting_pool_usdc > 0 and bot_params.bucket_weather_usdc <= 0:
+            _log(
+                "WARN",
+                "Weather HABILITADO pero bucket_weather_usdc = $0 — asigna capital en la sección Capital. "
+                "Usando fallback a asignación legacy para este ciclo.",
+            )
+            # Fallback: calcular presupuesto weather desde el balance disponible
+            _total_for_weather = state.balance_usdc + _total_deployed
+            _weather_legacy = round(_total_for_weather * bot_params.alloc_weather_pct, 2)
+            _hw_legacy = max(0.0, _weather_legacy - state.deployed_weather)
+            state.available_weather = round(min(_hw_legacy, state.balance_usdc), 2)
+            state.budget_weather    = _weather_legacy
         with perf.timer("fetch_weather_markets"):
             markets = await fetch_weather_markets()
         _log("INFO", f"Mercados encontrados: {len(markets)}")
@@ -1820,6 +1833,31 @@ async def _get_btc_price_at_ts(unix_ts: int) -> Optional[float]:
     return round(final, 2)
 
 
+def _sync_consecutive_losses_from_history():
+    """
+    Recalcula los contadores de pérdidas consecutivas desde el historial
+    persistido (updown_recent_trades). Llamar al arrancar el bot para
+    asegurar que el estado sea consistente con el historial real.
+    Cuenta hacia atrás desde el trade más reciente de cada intervalo
+    hasta encontrar una ganancia o quedarse sin trades.
+    """
+    for interval, attr in [(5, "updown_5m_consecutive_losses"), (15, "updown_15m_consecutive_losses")]:
+        # Filtrar trades con resultado real (WIN/LOSS), ordenados más reciente primero
+        relevant = [
+            tr for tr in reversed(state.updown_recent_trades)
+            if tr.get("interval") == interval and tr.get("result") in ("WIN", "LOSS")
+        ]
+        streak = 0
+        for tr in relevant:
+            if tr["result"] == "LOSS":
+                streak += 1
+            else:
+                break  # WIN encontrado — la racha termina aquí
+        setattr(state, attr, streak)
+        if streak > 0:
+            _log("INFO", f"UpDown {interval}m | Racha de pérdidas recalculada desde historial: {streak}")
+
+
 def _update_updown_loss_streak(interval_minutes: int, won: bool, trade_record: Optional[dict]):
     """
     Actualiza el contador de pérdidas consecutivas, registra resultado en learner,
@@ -1976,6 +2014,17 @@ async def _resolve_pending_updown_outcomes():
         interval_tr = tr.get("interval", 5)
         side_tr     = tr.get("side", "UP")
         btc_start_tr = tr.get("btc_start") or tr.get("btc_price", 0)
+
+        # Trades muy viejos (>6h) sin datos históricos confiables → ABANDONED
+        if now_ts > end_ts_tr + 6 * 3600:
+            _log(
+                "WARN",
+                f"UpDown {interval_tr}m | Trade orphan muy antiguo (>6h desde {end_ts_tr}) "
+                f"— sin precio histórico confiable, marcando como ABANDONED",
+            )
+            tr["result"] = "ABANDONED"
+            continue
+
         if not btc_start_tr:
             continue
         btc_end_tr = await _get_btc_price_at_ts(end_ts_tr)
@@ -1991,6 +2040,8 @@ async def _resolve_pending_updown_outcomes():
             f"UpDown {interval_tr}m | Resolviendo trade pendiente (orphan) → "
             f"{'WIN ✓' if won_tr else 'LOSS ✗'} | BTC ${btc_start_tr:.0f}→${btc_end_tr:.0f} | apostamos {side_tr}",
         )
+        # Marcar directamente en el registro antes de actualizar el streak
+        tr["result"] = "WIN" if won_tr else "LOSS"
         _update_updown_loss_streak(interval_tr, won_tr, tr)
 
     if not _updown_pending_outcomes and not _updown_phantom_pending:
@@ -2279,6 +2330,9 @@ async def run_bot():
     # Sincronizar posiciones y trades existentes desde Polymarket
     _log("INFO", "Sincronizando cuenta con Polymarket...")
     await asyncio.get_event_loop().run_in_executor(None, _sync_account_from_polymarket)
+
+    # Sincronizar contadores derivados desde historial persistido
+    _sync_consecutive_losses_from_history()
 
     while state.running:
         try:

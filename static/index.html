@@ -311,6 +311,10 @@
       Bot UTC: <span id="bot-clock" style="color:var(--blue); font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.5px;">—</span>
     </span>
     <span>Ultimo scan: <span id="last-scan">—</span></span>
+    <span id="claude-api-indicator" title="Click para verificar estado de la API de Claude" onclick="checkClaudeStatus()" style="cursor:pointer;display:flex;align-items:center;gap:4px">
+      <span id="claude-api-dot" style="width:7px;height:7px;border-radius:50%;background:#6b7280;display:inline-block"></span>
+      <span id="claude-api-text" style="font-size:10px;color:var(--muted)">Claude API</span>
+    </span>
   </span>
 </header>
 
@@ -1037,7 +1041,17 @@
         </div>
 
         <!-- Status bar -->
-        <div id="vps-status-bar" style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Cargando...</div>
+        <div id="vps-status-bar" style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Cargando...</div>
+
+        <!-- Saldo virtual -->
+        <div id="vps-virtual-balance" style="display:flex;gap:12px;margin-bottom:10px;font-size:.75rem">
+          <!-- inyectado por JS -->
+        </div>
+
+        <!-- Desglose por mercado -->
+        <div id="vps-market-breakdown" style="display:flex;gap:8px;margin-bottom:10px;font-size:.72rem">
+          <!-- inyectado por JS -->
+        </div>
 
         <!-- Comparativa principal VPS vs Fixed -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px" id="vps-cards">
@@ -1049,6 +1063,16 @@
           <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Win rate por nivel de confianza</div>
           <div id="vps-tiers" style="display:flex;flex-direction:column;gap:4px"><!-- inyectado --></div>
         </div>
+
+        <!-- Análisis de patrones phantom -->
+        <details style="margin-top:8px" id="phantom-analysis-details">
+          <summary style="font-size:.7rem;color:#f59e0b;cursor:pointer;user-select:none" onclick="loadPhantomAnalysis()">
+            ⚗️ Análisis de patrones — ¿por qué alta confianza pierde?
+          </summary>
+          <div id="phantom-analysis-content" style="margin-top:8px;font-size:.72rem;color:var(--muted)">
+            Haz clic para cargar análisis...
+          </div>
+        </details>
 
         <!-- Últimos trades -->
         <details style="margin-top:4px">
@@ -2485,6 +2509,10 @@ function showTab(id) {
     const c = document.getElementById('log-container');
     c.scrollTop = c.scrollHeight;
   }
+  if (id === 'tab-updown') {
+    const udLog = document.getElementById('ud-log-list');
+    if (udLog) udLog.scrollTop = udLog.scrollHeight;
+  }
   if (id === 'tab-dashboard')  fetchDashboard();
   if (id === 'tab-strategies') fetchStrategies();
   if (id === 'tab-perf')       { fetchPerformance(); _loadPerfLogHistory(); }
@@ -2506,8 +2534,27 @@ function _restoreTab() {
         }
       });
       if (saved === 'tab-dashboard') fetchDashboard();
+      if (saved === 'tab-updown') { loadVpsExperiment(); }
     }
   } catch(e) {}
+}
+
+async function _restoreLastChat() {
+  try {
+    const savedId = localStorage.getItem('wb_last_chat_id');
+    if (!savedId) return;
+    const r = await fetch(`/api/chats/${savedId}`);
+    if (!r.ok) return;
+    const chat = await r.json();
+    if (!chat || !chat.messages || !chat.messages.length) return;
+    _currentChatId = chat.id;
+    _chatHistory = chat.messages;
+    const box = document.getElementById('chat-messages');
+    box.innerHTML = chat.messages.map(m => `<div class="chat-msg ${m.role}">
+      <div class="chat-bubble">${_renderMarkdown(m.content)}</div>
+    </div>`).join('');
+    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 100);
+  } catch(e) { /* ignorar si el chat ya no existe */ }
 }
 
 async function startBot() {
@@ -3232,6 +3279,9 @@ connectWS();
 loadVersion();
 loadParams();
 fetchHistory();
+_restoreLastChat();
+// Verificar estado Claude API al arrancar (sin asumir nada, solo observar)
+setTimeout(checkClaudeStatus, 3000);
 
 // Polling solo para lo que no llega por WebSocket
 fetchPortfolioAnalysis();
@@ -3861,6 +3911,7 @@ async function _autoSave() {
     }
     const d = await r.json();
     _currentChatId = d.id;
+    try { localStorage.setItem('wb_last_chat_id', d.id); } catch(e) {}
   } catch(e) {
     console.error('[chat save] fetch error:', e);
   }
@@ -3869,6 +3920,7 @@ async function _autoSave() {
 function newChat() {
   _chatHistory = [];
   _currentChatId = null;
+  try { localStorage.removeItem('wb_last_chat_id'); } catch(e) {}
   const box = document.getElementById('chat-messages');
   box.innerHTML = `<div class="chat-msg assistant">
     <div class="chat-bubble">Nueva conversación iniciada. ¿En qué puedo ayudarte?</div>
@@ -4806,6 +4858,102 @@ setInterval(() => {
   if (capTab && capTab.classList.contains('active')) loadCapital(false);
 }, 5000);
 
+// ── Phantom Trade Analysis ─────────────────────────────────────────────────
+
+let _phantomAnalysisLoaded = false;
+async function loadPhantomAnalysis() {
+  if (_phantomAnalysisLoaded) return;  // solo cargar una vez por sesión
+  const el = document.getElementById('phantom-analysis-content');
+  if (!el) return;
+  el.textContent = 'Analizando patrones...';
+  try {
+    const d = await fetch('/api/phantom-analysis').then(r => r.json());
+    if (!d.ok) {
+      el.textContent = d.msg || d.error || 'Sin datos suficientes aún.';
+      return;
+    }
+    _phantomAnalysisLoaded = true;
+
+    const corrColor = c => c > 0.1 ? 'var(--green)' : c < -0.05 ? 'var(--red)' : 'var(--yellow)';
+    const corrs = d.correlations || {};
+
+    const bucketsHtml = (d.confidence_buckets || []).map(b => {
+      const wrColor = b.wr_pct >= 55 ? 'var(--green)' : b.wr_pct >= 45 ? 'var(--yellow)' : 'var(--red)';
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+        <span style="width:90px;color:var(--muted)">${b.range_lo}–${b.range_hi}%</span>
+        <div style="flex:1;background:var(--bg3);border-radius:2px;height:6px">
+          <div style="width:${b.wr_pct}%;background:${wrColor};height:100%;border-radius:2px"></div>
+        </div>
+        <span style="width:38px;text-align:right;color:${wrColor}">${b.wr_pct}%</span>
+        <span style="color:var(--muted);font-size:.65rem">(${b.n})</span>
+      </div>`;
+    }).join('');
+
+    const insightsHtml = (d.insights || []).map(i => {
+      const color = i.severity === 'WARN' ? '#fca5a5' : i.severity === 'OK' ? '#86efac' : '#93c5fd';
+      const icon  = i.severity === 'WARN' ? '⚠️' : i.severity === 'OK' ? '✓' : 'ℹ️';
+      return `<div style="margin-bottom:6px;padding:6px 8px;background:var(--bg3);border-radius:4px;border-left:3px solid ${color};color:${color};line-height:1.4">${icon} ${escHtml(i.finding)}</div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="margin-bottom:8px;color:var(--text)"><b>${d.trades_analyzed}</b> trades phantom analizados · WR global <b>${d.win_rate_pct}%</b></div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Correlaciones con WIN</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <span>Confianza: <b style="color:${corrColor(corrs.confidence_vs_result)}">${corrs.confidence_vs_result ?? '—'}</b></span>
+          <span>Momentum: <b style="color:${corrColor(corrs.momentum_vs_result)}">${corrs.momentum_vs_result ?? '—'}</b></span>
+          <span>TA Comb: <b style="color:${corrColor(corrs.ta_combined_vs_result)}">${corrs.ta_combined_vs_result ?? '—'}</b></span>
+        </div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">WR por rango de confianza</div>
+        ${bucketsHtml || '<span style="color:var(--muted)">Sin datos suficientes</span>'}
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">WR por lado · mercado</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <span>UP: <b>${d.wr_by_side?.UP ?? '—'}%</b> (${d.wr_by_side?.n_up ?? 0})</span>
+          <span>DOWN: <b>${d.wr_by_side?.DOWN ?? '—'}%</b> (${d.wr_by_side?.n_down ?? 0})</span>
+          <span>5m: <b>${d.wr_by_market?.updown_5m ?? '—'}%</b> (${d.wr_by_market?.n_5m ?? 0})</span>
+          <span>15m: <b>${d.wr_by_market?.updown_15m ?? '—'}%</b> (${d.wr_by_market?.n_15m ?? 0})</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Insights automáticos</div>
+        ${insightsHtml || '<span style="color:var(--muted)">Sin insights detectados</span>'}
+      </div>`;
+  } catch(e) {
+    el.textContent = 'Error cargando análisis: ' + e.message;
+  }
+}
+
+// ── Claude API Status ─────────────────────────────────────────────────────
+
+async function checkClaudeStatus() {
+  try {
+    const d = await fetch('/api/claude-status').then(r => r.json());
+    const dot  = document.getElementById('claude-api-dot');
+    const text = document.getElementById('claude-api-text');
+    if (!dot || !text) return;
+    if (d.ok) {
+      dot.style.background = '#22c55e';
+      text.style.color = '#86efac';
+      text.textContent = 'Claude API ✓';
+      text.title = d.msg;
+    } else {
+      dot.style.background = '#ef4444';
+      text.style.color = '#fca5a5';
+      text.textContent = 'Claude API ✗';
+      text.title = `${d.status}: ${d.msg} | Ver saldo: ${d.console_url}`;
+    }
+    document.getElementById('claude-api-indicator').title =
+      d.ok ? `${d.msg} | Ver saldo: ${d.console_url}` : `Error: ${d.msg} | ${d.console_url}`;
+  } catch(e) {
+    const dot = document.getElementById('claude-api-dot');
+    if (dot) dot.style.background = '#6b7280';
+  }
+}
+
 // ── Experimento VPS-Confianza ─────────────────────────────────────────────
 
 async function loadVpsExperiment() {
@@ -4848,6 +4996,42 @@ function _renderVpsExperiment(d) {
       &nbsp;|&nbsp; Correlación conf→result: <b>${corr}</b>`;
   }
 
+  // Saldo virtual
+  const vbEl = document.getElementById('vps-virtual-balance');
+  if (vbEl) {
+    const initBal = d.virtual_balance_initial ?? 50;
+    const vpsB  = d.virtual_balance_vps   ?? initBal;
+    const fixB  = d.virtual_balance_fixed ?? initBal;
+    const vpsGain = vpsB - initBal;
+    const fixGain = fixB - initBal;
+    vbEl.innerHTML = `
+      <div style="background:#1e1b4b;border:1px solid #7c3aed44;border-radius:6px;padding:7px 12px;flex:1">
+        <div style="font-size:.6rem;color:#a78bfa;font-weight:700;margin-bottom:2px">SALDO VIRTUAL VPS</div>
+        <div style="font-size:.95rem;color:${vpsB>=initBal?'var(--green)':'var(--red)'};font-weight:700">$${vpsB.toFixed(2)}</div>
+        <div style="font-size:.65rem;color:var(--muted)">desde $${initBal} (${vpsGain>=0?'+':''}$${vpsGain.toFixed(2)})</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:7px 12px;flex:1">
+        <div style="font-size:.6rem;color:var(--muted);font-weight:700;margin-bottom:2px">SALDO VIRTUAL FIXED</div>
+        <div style="font-size:.95rem;color:${fixB>=initBal?'var(--green)':'var(--red)'};font-weight:700">$${fixB.toFixed(2)}</div>
+        <div style="font-size:.65rem;color:var(--muted)">desde $${initBal} (${fixGain>=0?'+':''}$${fixGain.toFixed(2)})</div>
+      </div>`;
+  }
+
+  // Desglose por mercado (5m vs 15m)
+  const mbEl = document.getElementById('vps-market-breakdown');
+  if (mbEl && d.market_breakdown) {
+    mbEl.innerHTML = Object.entries(d.market_breakdown).map(([key, m]) => {
+      const label = key === 'updown_5m' ? '5m' : '15m';
+      const color = key === 'updown_5m' ? '#60a5fa' : '#a78bfa';
+      const vWR = m.vps?.win_rate_pct ?? 0;
+      return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:6px 10px;flex:1;min-width:120px">
+        <div style="font-size:.6rem;color:${color};font-weight:700;margin-bottom:2px">UpDown ${label}</div>
+        <div style="font-size:.75rem;color:var(--text)">${m.resolved} trades · WR ${vWR}%</div>
+        <div style="font-size:.65rem;color:var(--muted)">VPS P&L: ${m.vps?.net_pnl >= 0 ? '+' : ''}$${(m.vps?.net_pnl ?? 0).toFixed(2)} | Fixed: ${(m.fixed?.net_pnl ?? 0) >= 0 ? '+' : ''}$${(m.fixed?.net_pnl ?? 0).toFixed(2)}</div>
+      </div>`;
+    }).join('');
+  }
+
   // Tarjetas comparativas
   const cards = document.getElementById('vps-cards');
   if (cards && d.vps && d.fixed) {
@@ -4886,11 +5070,11 @@ function _renderVpsExperiment(d) {
   const tiersEl = document.getElementById('vps-tiers');
   if (tiersEl && d.tier_breakdown) {
     const tierMeta = {
-      aggressive:   { label: '≥75%  → $10', color: '#22c55e' },
-      high:         { label: '60-74% → $8',  color: '#84cc16' },
-      moderate:     { label: '45-59% → $6',  color: '#f59e0b' },
-      low_moderate: { label: '30-44% → $4',  color: '#f97316' },
-      minimal:      { label: '<30%   → $3',  color: '#9ca3af' },
+      aggressive:   { label: '≥65%  → $10', color: '#22c55e' },
+      high:         { label: '50-64% → $8',  color: '#84cc16' },
+      moderate:     { label: '35-49% → $6',  color: '#f59e0b' },
+      low_moderate: { label: '20-34% → $4',  color: '#f97316' },
+      minimal:      { label: '<20%   → $3',  color: '#9ca3af' },
     };
     tiersEl.innerHTML = Object.entries(tierMeta).map(([key, meta]) => {
       const t = d.tier_breakdown[key] || {};

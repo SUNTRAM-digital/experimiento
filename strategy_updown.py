@@ -443,6 +443,20 @@ def evaluate_updown_market(
     if side == "UP" and adaptive_params.get("block_up"):
         return None, "Learner: lado UP bloqueado por bajo win rate histórico"
 
+    # ── Gate de entrada tardía con precio extremo ────────────────────────────
+    # Si el mercado tiene <2min restantes Y el precio del lado elegido ya está
+    # en zona extrema (>0.75), el mercado ya descontó el movimiento. El ratio
+    # riesgo/recompensa es malo y la probabilidad de reversión aumenta.
+    # Además, un precio extremo con poco tiempo sugiere que el precio BTC ya
+    # se movió fuertemente; entrar aquí es perseguir el mercado.
+    minutes_to_close = market.get("minutes_to_close", 999)
+    if minutes_to_close < 2.0 and entry_price > 0.75:
+        return None, (
+            f"Entrada tardía con precio extremo: {side} cuesta ${entry_price:.3f} "
+            f"con solo {minutes_to_close:.1f}min restantes — mercado ya descontó el movimiento. "
+            f"Ratio riesgo/recompensa inaceptable en la recta final."
+        )
+
     if entry_price >= _MAX_ENTRY_PRICE:
         rr = round((1 - entry_price) / entry_price, 3)
         return None, (

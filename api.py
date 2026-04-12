@@ -2060,6 +2060,67 @@ async def vps_daily_summary():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/api/phantom-analysis")
+async def get_phantom_analysis(interval: int = None):
+    """Analiza patrones en trades phantom para detectar por qué alta confianza pierde."""
+    try:
+        from phantom_analysis import analyze_phantom_trades
+        result = analyze_phantom_trades(interval=interval)
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/claude-status")
+async def get_claude_status():
+    """
+    Verifica el estado de la API de Claude (Anthropic).
+    Retorna si la clave es válida y cuándo fue la última llamada exitosa.
+    Nota: Anthropic no expone créditos restantes vía API; usar la Consola
+    para ver el saldo: https://console.anthropic.com/settings/billing
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return {
+            "ok": False,
+            "status": "NO_KEY",
+            "msg": "ANTHROPIC_API_KEY no configurada",
+            "last_call": None,
+            "console_url": "https://console.anthropic.com/settings/billing",
+        }
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=api_key)
+        # Mini-llamada para verificar validez de la clave
+        resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1,
+                messages=[{"role": "user", "content": "ping"}],
+            ),
+        )
+        return {
+            "ok": True,
+            "status": "OK",
+            "msg": f"API activa — modelo {resp.model}",
+            "input_tokens": resp.usage.input_tokens,
+            "output_tokens": resp.usage.output_tokens,
+            "last_call": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "console_url": "https://console.anthropic.com/settings/billing",
+        }
+    except Exception as e:
+        err_str = str(e)
+        status = "AUTH_ERROR" if "authentication" in err_str.lower() or "api_key" in err_str.lower() else "ERROR"
+        return {
+            "ok": False,
+            "status": status,
+            "msg": err_str[:120],
+            "last_call": None,
+            "console_url": "https://console.anthropic.com/settings/billing",
+        }
+
+
 @app.post("/api/vps-experiment/reset")
 async def reset_vps_experiment():
     """Reinicia el experimento VPS eliminando los datos y empezando de nuevo."""

@@ -24,15 +24,18 @@ PAYOUT_LOSS = -1.00   # pérdida  = size * -1.0
 EXPERIMENT_DAYS = 7
 
 # Mapeo confianza → (size_usdc, tier_name)
+# Umbrales ajustados a la distribución real de confianza del bot (típicamente 5-30%).
 # El mínimo es $3 (igual al fijo) — el experimento mide cuánto MÁS
 # genera apostar más en trades de alta confianza, nunca menos que la base.
 _TIERS = [
-    (75, 10.0, "aggressive"),   # ≥75%  → $10
-    (60,  8.0, "high"),         # 60-74% → $8
-    (45,  6.0, "moderate"),     # 45-59% → $6
-    (30,  4.0, "low_moderate"), # 30-44% → $4
-    ( 0,  3.0, "minimal"),      # <30%   → $3 (igual al fijo)
+    (65, 10.0, "aggressive"),   # ≥65%  → $10
+    (50,  8.0, "high"),         # 50-64% → $8
+    (35,  6.0, "moderate"),     # 35-49% → $6
+    (20,  4.0, "low_moderate"), # 20-34% → $4
+    ( 0,  3.0, "minimal"),      # <20%   → $3 (igual al fijo)
 ]
+
+VIRTUAL_BALANCE_INITIAL = 50.0   # Saldo ficticio inicial para simular el experimento
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -54,7 +57,18 @@ def _load() -> dict:
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            # Migrar datos existentes sin campo de saldo virtual
+            meta = data.setdefault("meta", {})
+            if "virtual_balance_vps" not in meta:
+                # Recalcular desde trades resueltos
+                resolved = [t for t in data.get("trades", []) if t.get("result") in ("WIN", "LOSS")]
+                vps_sum   = sum(t.get("pnl_vps",   0) or 0 for t in resolved)
+                fixed_sum = sum(t.get("pnl_fixed",  0) or 0 for t in resolved)
+                meta["virtual_balance_vps"]   = round(VIRTUAL_BALANCE_INITIAL + vps_sum,   4)
+                meta["virtual_balance_fixed"] = round(VIRTUAL_BALANCE_INITIAL + fixed_sum, 4)
+                _save(data)
+            return data
         except Exception as e:
             logger.warning(f"[VPS] Error leyendo {DATA_FILE}: {e}")
 
@@ -65,11 +79,13 @@ def _load() -> dict:
     data = {
         "meta": {
             "experiment_name": "VPS-Confianza Phantom UpDown",
-            "version": "1.0",
+            "version": "1.1",
             "started": now,
             "end_target": end_str,
             "duration_hours": EXPERIMENT_DAYS * 24,
             "status": "RUNNING",
+            "virtual_balance_vps":   VIRTUAL_BALANCE_INITIAL,
+            "virtual_balance_fixed": VIRTUAL_BALANCE_INITIAL,
         },
         "config": {
             "scope": ["updown_15m", "updown_5m"],
@@ -77,12 +93,13 @@ def _load() -> dict:
             "money_real": False,
             "max_position_usdc": 10.0,
             "baseline_fixed_usdc": FIXED_BASELINE,
+            "virtual_balance_initial": VIRTUAL_BALANCE_INITIAL,
             "confidence_tiers": {
-                "aggressive":   {"min": 75, "max": 100, "size": 10.0},
-                "high":         {"min": 60, "max":  74, "size":  8.0},
-                "moderate":     {"min": 45, "max":  59, "size":  6.0},
-                "low_moderate": {"min": 30, "max":  44, "size":  4.0},
-                "minimal":      {"min":  0, "max":  29, "size":  3.0},
+                "aggressive":   {"min": 65, "max": 100, "size": 10.0},
+                "high":         {"min": 50, "max":  64, "size":  8.0},
+                "moderate":     {"min": 35, "max":  49, "size":  6.0},
+                "low_moderate": {"min": 20, "max":  34, "size":  4.0},
+                "minimal":      {"min":  0, "max":  19, "size":  3.0},
             },
         },
         "trades": [],
@@ -197,6 +214,15 @@ def resolve_phantom_vps(slug: str, btc_end: float, won: bool) -> None:
     trade["pnl_fixed"]        = pnl_fixed
     trade["pnl_difference"]   = round(pnl_vps - pnl_fixed, 4)
 
+    # Actualizar saldo virtual
+    meta = data.setdefault("meta", {})
+    meta["virtual_balance_vps"]   = round(
+        meta.get("virtual_balance_vps",   VIRTUAL_BALANCE_INITIAL) + pnl_vps,   4
+    )
+    meta["virtual_balance_fixed"] = round(
+        meta.get("virtual_balance_fixed", VIRTUAL_BALANCE_INITIAL) + pnl_fixed, 4
+    )
+
     _save(data)
 
     logger.info(
@@ -231,6 +257,19 @@ def get_status() -> dict:
     except Exception:
         pass
 
+    # Desglose por mercado (5m vs 15m)
+    market_breakdown = {}
+    for mkt_key in ("updown_5m", "updown_15m"):
+        mkt_resolved = [t for t in resolved if t.get("market") == mkt_key]
+        mkt_pending  = [t for t in pending  if t.get("market") == mkt_key]
+        mkt_stats    = _calc_stats(mkt_resolved)
+        market_breakdown[mkt_key] = {
+            "resolved": len(mkt_resolved),
+            "pending":  len(mkt_pending),
+            "vps":      mkt_stats["vps"],
+            "fixed":    mkt_stats["fixed"],
+        }
+
     return {
         "status":        meta.get("status", "UNKNOWN"),
         "started":       meta.get("started"),
@@ -240,10 +279,14 @@ def get_status() -> dict:
         "total_trades":  len(trades),
         "resolved":      len(resolved),
         "pending":       len(pending),
+        "virtual_balance_vps":   round(meta.get("virtual_balance_vps",   VIRTUAL_BALANCE_INITIAL), 2),
+        "virtual_balance_fixed": round(meta.get("virtual_balance_fixed", VIRTUAL_BALANCE_INITIAL), 2),
+        "virtual_balance_initial": VIRTUAL_BALANCE_INITIAL,
         "vps":           stats["vps"],
         "fixed":         stats["fixed"],
         "comparison":    stats["comparison"],
-        "tier_breakdown": tier_breakdown,
+        "tier_breakdown":   tier_breakdown,
+        "market_breakdown": market_breakdown,
         "recent_trades": trades[-10:][::-1],  # últimos 10, más reciente primero
         "daily_summaries": data.get("daily_summaries", []),
     }

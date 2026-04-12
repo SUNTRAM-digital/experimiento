@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 3
-PATCH = 8
+PATCH = 9
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Capital Buckets + VPS Experiment"
+PHASE_NAME = "Capital Buckets + VPS + Phantom Analysis"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
