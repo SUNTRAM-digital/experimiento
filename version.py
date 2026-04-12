@@ -19,12 +19,12 @@ Historial de fases:
 """
 
 MAJOR = 9
-MINOR = 2
+MINOR = 3
 PATCH = 0
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom Bets + Claude Advisor + Telonex"
+PHASE_NAME = "Capital Buckets + Bug Fixes"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
@@ -39,4 +39,5 @@ PHASES = {
     7: "ML Models — Warming Model, Ensemble Calibrator adaptativo",
     8: "UpDown Markets — BTC 5m/15m, learner adaptativo, performance monitor",
     9: "Phantom Bets + Claude Advisor + Telonex — on-chain OFI, smart wallet flow, UI panel",
+    10: "Capital Buckets — pool manual, buckets por mercado, stake return on WIN, cleanup main.py",
 }
