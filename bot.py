@@ -603,6 +603,17 @@ def _execute_trade(opportunity: dict) -> bool:
                 "poly_url": opportunity.get("poly_url", ""),
                 # Bucket de capital (Fase 12)
                 "bucket_id": bucket_id,
+                # ── Contexto de decisión (por qué se puso) ──────────────────
+                "claude_reason":     opportunity.get("claude_reason", ""),
+                "claude_confidence": opportunity.get("claude_confidence", ""),
+                "confidence":        opportunity.get("confidence", 0),
+                "combined_signal":   round(float(opportunity.get("combined_signal", 0) or 0), 3),
+                "ta_recommendation": opportunity.get("ta_recommendation", ""),
+                "ta_rsi":            opportunity.get("ta_rsi"),
+                "ta_signal":         round(float(opportunity.get("ta_signal", 0) or 0), 3),
+                "window_momentum":   round(float(opportunity.get("window_momentum", 0) or 0), 3),
+                "elapsed_minutes":   round(float(opportunity.get("elapsed_minutes", 0) or 0), 1),
+                "our_prob":          round(float(opportunity.get("our_prob", 0) or 0), 3),
             }
             state.active_positions.append(trade)
             state.trade_history.insert(0, trade)

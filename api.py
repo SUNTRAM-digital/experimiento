@@ -2050,6 +2050,35 @@ async def get_vps_experiment():
         return {"error": str(e)}
 
 
+@app.get("/api/vps-experiment/trades")
+async def get_vps_trades(page: int = 0, limit: int = 50):
+    """
+    Historial paginado de trades phantom.
+    Devuelve los trades más recientes primero.
+    page=0 → primeros 50, page=1 → siguientes 50, etc.
+    """
+    try:
+        import json as _json
+        vps_file = os.path.join("data", "vps_phantom_experiment.json")
+        if not os.path.exists(vps_file):
+            return {"trades": [], "total": 0, "page": page, "limit": limit, "has_more": False}
+        with open(vps_file, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        all_trades = list(reversed(data.get("trades", [])))  # más reciente primero
+        total = len(all_trades)
+        offset = page * limit
+        page_trades = all_trades[offset: offset + limit]
+        return {
+            "trades":   page_trades,
+            "total":    total,
+            "page":     page,
+            "limit":    limit,
+            "has_more": (offset + limit) < total,
+        }
+    except Exception as e:
+        return {"trades": [], "total": 0, "error": str(e)}
+
+
 @app.post("/api/vps-experiment/daily-summary")
 async def vps_daily_summary():
     """Fuerza generación del resumen del día actual del experimento VPS."""

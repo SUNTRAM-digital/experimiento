@@ -1120,10 +1120,13 @@
           </div>
         </details>
 
-        <!-- Últimos trades -->
-        <details style="margin-top:4px">
-          <summary style="font-size:.7rem;color:var(--muted);cursor:pointer;user-select:none">Últimos trades registrados</summary>
-          <div style="margin-top:6px;max-height:200px;overflow-y:auto;border-radius:4px">
+        <!-- Historial completo de trades (con scroll infinito) -->
+        <details id="vps-trades-details" style="margin-top:4px" onToggle="if(this.open)_initVpsTrades()">
+          <summary style="font-size:.7rem;color:var(--muted);cursor:pointer;user-select:none">
+            Historial de trades phantom
+            <span id="vps-trades-count" style="color:var(--blue);margin-left:6px"></span>
+          </summary>
+          <div id="vps-trades-scroll" style="margin-top:6px;max-height:320px;overflow-y:auto;border-radius:4px" onscroll="_onVpsTradesScroll(this)">
             <table style="min-width:100%;font-size:.72rem">
               <thead><tr>
                 <th style="padding:3px 6px">Hora</th>
@@ -1140,6 +1143,7 @@
               </tr></thead>
               <tbody id="tbl-vps-trades"><tr><td colspan="11" class="empty">Sin datos aún</td></tr></tbody>
             </table>
+            <div id="vps-trades-loader" style="display:none;text-align:center;padding:8px;font-size:.72rem;color:var(--muted)">Cargando más...</div>
           </div>
         </details>
       </div>
@@ -2494,27 +2498,73 @@ function openOrderDetail(idx) {
   else statusExpl = `Estado: ${o.status}`;
 
   // ¿Por qué se puso la orden? (del trade history)
-  let whyHtml = '<span style="color:var(--muted)">No hay contexto guardado para esta orden.</span>';
+  let whyHtml;
   if (matchTrade) {
-    const evColor = (matchTrade.ev_pct >= 20) ? 'var(--green)' : 'var(--yellow)';
+    const evColor  = (matchTrade.ev_pct >= 20) ? 'var(--green)' : 'var(--yellow)';
+    const sigVal   = matchTrade.combined_signal ?? 0;
+    const sigColor = sigVal > 0.05 ? 'var(--green)' : sigVal < -0.05 ? 'var(--red)' : 'var(--muted)';
+    const sigDir   = sigVal > 0.05 ? '▲ UP' : sigVal < -0.05 ? '▼ DOWN' : '— neutro';
+    const confPct  = matchTrade.confidence ?? 0;
+    const confColor= confPct >= 50 ? 'var(--green)' : confPct >= 25 ? 'var(--yellow)' : 'var(--muted)';
+    const rsi      = matchTrade.ta_rsi != null ? matchTrade.ta_rsi : '—';
+    const rsiColor = matchTrade.ta_rsi != null
+      ? (matchTrade.ta_rsi > 70 ? 'var(--red)' : matchTrade.ta_rsi < 30 ? 'var(--green)' : 'var(--text)')
+      : 'var(--muted)';
+    const taRec    = matchTrade.ta_recommendation || '—';
+    const elapsed  = matchTrade.elapsed_minutes != null ? matchTrade.elapsed_minutes + 'min' : '—';
+    const ourProb  = matchTrade.our_prob ? (matchTrade.our_prob * 100).toFixed(1) + '%' : '—';
+    const claudeBlock = matchTrade.claude_reason
+      ? `<div style="margin-top:10px;background:var(--bg3);border-left:3px solid #fbbf24;border-radius:0 6px 6px 0;padding:8px 12px">
+           <div style="font-size:.68rem;color:#fbbf24;margin-bottom:4px">✦ Análisis Claude [${matchTrade.claude_confidence || 'N/A'}]</div>
+           <div style="font-size:.8rem;color:var(--text);line-height:1.5">${escHtml(matchTrade.claude_reason)}</div>
+         </div>`
+      : `<div style="margin-top:10px;font-size:.78rem;color:var(--muted)">⚡ Ejecutado como auto-trade (sin revisión de Claude)</div>`;
+
     whyHtml = `
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
-        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:100px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
           <div style="font-size:.68rem;color:var(--muted)">EV calculado</div>
           <div style="font-size:1.1rem;font-weight:bold;color:${evColor}">${matchTrade.ev_pct}%</div>
         </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:100px">
-          <div style="font-size:.68rem;color:var(--muted)">Costo total</div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">Confianza</div>
+          <div style="font-size:1.1rem;font-weight:bold;color:${confColor}">${confPct}%</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">Señal combinada</div>
+          <div style="font-size:1rem;font-weight:bold;color:${sigColor}">${sigDir} (${sigVal > 0 ? '+' : ''}${(sigVal*100).toFixed(1)}%)</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">RSI</div>
+          <div style="font-size:1.1rem;font-weight:bold;color:${rsiColor};font-family:monospace">${rsi}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">Rec. TA</div>
+          <div style="font-size:.9rem;font-weight:bold">${taRec}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">Tiempo transcurrido</div>
+          <div style="font-size:1rem;font-weight:bold">${elapsed}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">P(ganar) bot</div>
+          <div style="font-size:1rem;font-weight:bold">${ourProb}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:90px;text-align:center">
+          <div style="font-size:.68rem;color:var(--muted)">Costo</div>
           <div style="font-size:1.1rem;font-weight:bold">$${matchTrade.cost_usdc}</div>
         </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;flex:1;min-width:100px">
-          <div style="font-size:.68rem;color:var(--muted)">Aprobado por</div>
-          <div style="font-size:1rem;font-weight:bold;color:${matchTrade.claude_approved?'var(--green)':'var(--yellow)'}">
-            ${matchTrade.claude_approved ? '✓ Claude' : '⚡ Auto-trade'}
-          </div>
-        </div>
       </div>
+      ${claudeBlock}
     `;
+  } else {
+    // Sin trade en historial — mostrar lo que tengamos de la orden y la posición
+    const posCtx = matchPos ? `<div style="margin-top:8px;font-size:.8rem;color:var(--muted)">Token: <code style="color:var(--text)">${matchPos.token_id?.slice(0,12)}…</code></div>` : '';
+    whyHtml = `<div style="padding:10px;background:var(--bg3);border-radius:6px;border-left:3px solid var(--border)">
+      <div style="font-size:.8rem;color:var(--muted)">No se encontró el trade en el historial reciente (máx. 100 guardados).</div>
+      <div style="margin-top:6px;font-size:.8rem">Lado: <b>${o.side}</b> · Precio: <b>${(o.price*100).toFixed(1)}¢</b> · Shares: <b>${o.size_orig}</b></div>
+      ${posCtx}
+    </div>`;
   }
 
   // Polymarket link
@@ -5283,35 +5333,107 @@ function _renderVpsExperiment(d) {
   }
 
   // Tabla de últimos trades
-  const tbody = document.getElementById('tbl-vps-trades');
-  if (tbody) {
-    const trades = d.recent_trades || [];
-    if (!trades.length) {
-      tbody.innerHTML = '<tr><td colspan="11" class="empty">Sin trades phantom aún — esperando que el bot detecte señales UpDown</td></tr>';
-    } else {
-      tbody.innerHTML = trades.map(t => {
-        const resColor = t.result === 'WIN' ? 'var(--green)' : t.result === 'LOSS' ? 'var(--red)' : 'var(--muted)';
-        const pnlDiff = t.pnl_difference !== null ? (t.pnl_difference >= 0 ? `+$${t.pnl_difference.toFixed(2)}` : `-$${Math.abs(t.pnl_difference).toFixed(2)}`) : '—';
-        const diffColor = t.pnl_difference !== null ? (t.pnl_difference >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
-        const tierColors = { aggressive:'#22c55e', high:'#84cc16', moderate:'#f59e0b', low_moderate:'#f97316', minimal:'#ef4444' };
-        const tc = tierColors[t.confidence_tier] || 'var(--muted)';
-        return `<tr>
-          <td style="white-space:nowrap">${(t.timestamp||'').substring(11,19)}</td>
-          <td>${t.market||'—'}</td>
-          <td style="color:${t.signal==='UP'?'var(--green)':'var(--red)'};font-weight:600">${t.signal||'—'}</td>
-          <td>${t.confidence_pct ?? '—'}%</td>
-          <td style="color:${tc};font-size:.68rem">${t.confidence_tier||'—'}</td>
-          <td style="color:#a78bfa;font-weight:600">$${t.position_size_vps ?? '—'}</td>
-          <td style="color:var(--muted)">$${t.position_size_fixed ?? '—'}</td>
-          <td style="color:${resColor};font-weight:600">${t.result||'PEND.'}</td>
-          <td style="color:${t.pnl_vps!==null?(t.pnl_vps>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_vps !== null ? (t.pnl_vps >= 0 ? `+$${t.pnl_vps.toFixed(2)}` : `$${t.pnl_vps.toFixed(2)}`) : '—'}</td>
-          <td style="color:${t.pnl_fixed!==null?(t.pnl_fixed>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_fixed !== null ? (t.pnl_fixed >= 0 ? `+$${t.pnl_fixed.toFixed(2)}` : `$${t.pnl_fixed.toFixed(2)}`) : '—'}</td>
-          <td style="color:${diffColor};font-weight:600">${pnlDiff}</td>
-        </tr>`;
-      }).join('');
-    }
+  // La tabla ahora usa scroll infinito (_initVpsTrades / _onVpsTradesScroll)
+  // Solo actualizar el contador total aquí
+  const countEl = document.getElementById('vps-trades-count');
+  if (countEl) {
+    const total = (d.recent_trades || []).length;
+    // El total real se actualiza cuando se abre el panel de trades
+    if (total > 0) countEl.textContent = `(últimos ${total})`;
   }
 }
+
+// ── Scroll infinito de trades phantom ────────────────────────────────────────
+let _vpsTradesPage = 0;
+let _vpsTradesLoading = false;
+let _vpsTradesHasMore = true;
+let _vpsTradesInited = false;
+
+function _vpsTradeRow(t) {
+  const resColor  = t.result === 'WIN' ? 'var(--green)' : t.result === 'LOSS' ? 'var(--red)' : 'var(--muted)';
+  const pnlDiff   = t.pnl_difference != null
+    ? (t.pnl_difference >= 0 ? `+$${t.pnl_difference.toFixed(2)}` : `-$${Math.abs(t.pnl_difference).toFixed(2)}`)
+    : '—';
+  const diffColor = t.pnl_difference != null ? (t.pnl_difference >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
+  const tc = ({aggressive:'#22c55e',high:'#84cc16',moderate:'#f59e0b',low_moderate:'#f97316',minimal:'#ef4444'})[t.confidence_tier] || 'var(--muted)';
+  const ts = (t.timestamp || '').substring(0,19).replace('T',' ');
+  return `<tr>
+    <td style="white-space:nowrap;font-size:.68rem">${ts}</td>
+    <td>${t.market||'—'}</td>
+    <td style="color:${t.signal==='UP'?'var(--green)':'var(--red)'};font-weight:600">${t.signal||'—'}</td>
+    <td>${t.confidence_pct ?? '—'}%</td>
+    <td style="color:${tc};font-size:.68rem">${t.confidence_tier||'—'}</td>
+    <td style="color:#a78bfa;font-weight:600">$${t.position_size_vps ?? '—'}</td>
+    <td style="color:var(--muted)">$${t.position_size_fixed ?? '—'}</td>
+    <td style="color:${resColor};font-weight:600">${t.result||'PEND.'}</td>
+    <td style="color:${t.pnl_vps!=null?(t.pnl_vps>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_vps != null ? (t.pnl_vps >= 0 ? `+$${t.pnl_vps.toFixed(2)}` : `$${t.pnl_vps.toFixed(2)}`) : '—'}</td>
+    <td style="color:${t.pnl_fixed!=null?(t.pnl_fixed>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_fixed != null ? (t.pnl_fixed >= 0 ? `+$${t.pnl_fixed.toFixed(2)}` : `$${t.pnl_fixed.toFixed(2)}`) : '—'}</td>
+    <td style="color:${diffColor};font-weight:600">${pnlDiff}</td>
+  </tr>`;
+}
+
+async function _initVpsTrades() {
+  if (_vpsTradesInited) return;
+  _vpsTradesPage   = 0;
+  _vpsTradesHasMore= true;
+  _vpsTradesInited = true;
+  const tbody = document.getElementById('tbl-vps-trades');
+  if (tbody) tbody.innerHTML = '';
+  await _loadVpsTradesPage();
+}
+
+async function _loadVpsTradesPage() {
+  if (_vpsTradesLoading || !_vpsTradesHasMore) return;
+  _vpsTradesLoading = true;
+  const loader = document.getElementById('vps-trades-loader');
+  if (loader) loader.style.display = 'block';
+  try {
+    const r = await fetch(`/api/vps-experiment/trades?page=${_vpsTradesPage}&limit=50`);
+    const d = await r.json();
+    const tbody = document.getElementById('tbl-vps-trades');
+    if (tbody) {
+      if (_vpsTradesPage === 0 && !d.trades?.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="empty">Sin trades phantom aún</td></tr>';
+      } else {
+        tbody.insertAdjacentHTML('beforeend', (d.trades || []).map(_vpsTradeRow).join(''));
+      }
+    }
+    const countEl = document.getElementById('vps-trades-count');
+    if (countEl && d.total != null) countEl.textContent = `(${d.total} total)`;
+    _vpsTradesHasMore = d.has_more ?? false;
+    _vpsTradesPage++;
+  } catch(e) { console.error('_loadVpsTradesPage:', e); }
+  finally {
+    _vpsTradesLoading = false;
+    const loader = document.getElementById('vps-trades-loader');
+    if (loader) loader.style.display = _vpsTradesHasMore ? 'none' : 'none';
+  }
+}
+
+function _onVpsTradesScroll(el) {
+  // Cargar más cuando el scroll está a <80px del fondo
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+    _loadVpsTradesPage();
+  }
+}
+
+// Resetear al cambiar de tab para que muestre datos frescos
+const _origShowTabVps = showTab;
+showTab = function(id) {
+  _origShowTabVps(id);
+  if (id !== 'tab-updown') return;
+  // Resetear estado de paginación para mostrar datos frescos
+  _vpsTradesInited = false;
+  _vpsTradesPage   = 0;
+  _vpsTradesHasMore= true;
+  // Si el panel está abierto, recargar
+  const det = document.getElementById('vps-trades-details');
+  if (det && det.open) {
+    const tbody = document.getElementById('tbl-vps-trades');
+    if (tbody) tbody.innerHTML = '';
+    _initVpsTrades();
+  }
+};
 </script>
 </body>
 </html>
