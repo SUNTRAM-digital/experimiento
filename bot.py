@@ -1842,9 +1842,10 @@ def _sync_consecutive_losses_from_history():
     hasta encontrar una ganancia o quedarse sin trades.
     """
     for interval, attr in [(5, "updown_5m_consecutive_losses"), (15, "updown_15m_consecutive_losses")]:
-        # Filtrar trades con resultado real (WIN/LOSS), ordenados más reciente primero
+        # updown_recent_trades usa insert(0,...): índice 0 = trade más reciente.
+        # NO usar reversed() — ya viene más reciente primero.
         relevant = [
-            tr for tr in reversed(state.updown_recent_trades)
+            tr for tr in state.updown_recent_trades
             if tr.get("interval") == interval and tr.get("result") in ("WIN", "LOSS")
         ]
         streak = 0
