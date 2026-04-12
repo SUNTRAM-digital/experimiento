@@ -164,6 +164,33 @@ def _bucket_id_from_opportunity(opp: dict) -> str:
     return "weather"
 
 
+def _build_capital_context(bucket_id: str = "") -> dict:
+    """
+    Construye el dict de capital para pasarle a Claude en sus análisis.
+    Incluye estado del pool, buckets y cash libre.
+    """
+    bp = bot_params
+    bucket_sum = (bp.bucket_weather_usdc + bp.bucket_btc_usdc +
+                  bp.bucket_updown_5m_usdc + bp.bucket_updown_15m_usdc)
+    cash_free = round(max(0.0, state.balance_usdc - bucket_sum), 2)
+    bucket_usdc_map = {
+        "weather":    bp.bucket_weather_usdc,
+        "btc":        bp.bucket_btc_usdc,
+        "updown_5m":  bp.bucket_updown_5m_usdc,
+        "updown_15m": bp.bucket_updown_15m_usdc,
+    }
+    return {
+        "pool_usdc":       bp.betting_pool_usdc,
+        "cash_free":       cash_free,
+        "bucket_id":       bucket_id,
+        "bucket_usdc":     bucket_usdc_map.get(bucket_id, 0.0),
+        "bucket_weather":  bp.bucket_weather_usdc,
+        "bucket_btc":      bp.bucket_btc_usdc,
+        "bucket_updown_5m":  bp.bucket_updown_5m_usdc,
+        "bucket_updown_15m": bp.bucket_updown_15m_usdc,
+    }
+
+
 def add_log_callback(cb: Callable):
     _log_callbacks.append(cb)
 
@@ -753,7 +780,7 @@ async def _scan_cycle():
         if state.poly_positions and _hours_since_analysis >= _portfolio_analysis_interval_h:
             _log("INFO", f"Claude analizando portafolio ({len(state.poly_positions)} posiciones)... "
                  f"(proximo en {_portfolio_analysis_interval_h}h)")
-            port_analysis = await analyze_portfolio(state.poly_positions, state.balance_usdc)
+            port_analysis = await analyze_portfolio(state.poly_positions, state.balance_usdc, _build_capital_context())
             if not port_analysis["skipped"]:
                 state.portfolio_analysis = port_analysis["analysis"]
                 state.portfolio_recommendations = port_analysis.get("recommendations", [])
@@ -962,7 +989,8 @@ async def _scan_cycle():
         else:
             _log("INFO", f"Consultando a Claude sobre: {opp['market_title'][:55]}...")
             with perf.timer("claude_analysis"):
-                analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
+                analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [],
+                                                     _build_capital_context("weather"))
 
             if analysis["skipped"] or not analysis["approved"]:
                 if analysis["skipped"]:
@@ -1205,7 +1233,8 @@ async def _scan_btc_markets():
             _log("INFO", f"BTC AUTO-TRADE | Ejecutando sin aprobación: {opp['market_title'][:55]}...")
         else:
             _log("INFO", f"BTC | Consultando Claude sobre: {opp['market_title'][:55]}...")
-            analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [])
+            analysis = await analyze_opportunity(opp, state.balance_usdc, state.poly_positions or [],
+                                                 _build_capital_context("btc"))
 
             if analysis["skipped"] or not analysis["approved"]:
                 reason = analysis.get("reason", "")

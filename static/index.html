@@ -420,105 +420,6 @@
       </div>
     </div>
 
-    <!-- Capital Allocation -->
-    <div class="panel" id="alloc-panel">
-      <h2>Asignación de capital</h2>
-      <div id="alloc-rows">
-        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">
-          <span style="color:#60a5fa;font-weight:600">⛅ Weather</span>
-          <span id="alloc-w-pct" style="color:var(--muted)">60%</span>
-        </div>
-        <div style="display:flex;gap:4px;margin-bottom:6px;font-size:.75rem">
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Budget</div>
-            <div id="alloc-w-budget" style="color:var(--text);font-weight:600">$0.00</div>
-          </div>
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Desplegado</div>
-            <div id="alloc-w-dep" style="color:var(--yellow);font-weight:600">$0.00</div>
-          </div>
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Disponible</div>
-            <div id="alloc-w-avail" style="color:var(--green);font-weight:600">$0.00</div>
-          </div>
-        </div>
-        <div style="height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden">
-          <div id="alloc-w-bar" style="height:100%;background:#60a5fa;border-radius:2px;transition:width .5s;width:0%"></div>
-        </div>
-
-        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">
-          <span style="color:#f59e0b;font-weight:600">₿ BTC</span>
-          <span id="alloc-b-pct" style="color:var(--muted)">20%</span>
-        </div>
-        <div style="display:flex;gap:4px;margin-bottom:6px;font-size:.75rem">
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Budget</div>
-            <div id="alloc-b-budget" style="color:var(--text);font-weight:600">$0.00</div>
-          </div>
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Desplegado</div>
-            <div id="alloc-b-dep" style="color:var(--yellow);font-weight:600">$0.00</div>
-          </div>
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Disponible</div>
-            <div id="alloc-b-avail" style="color:var(--green);font-weight:600">$0.00</div>
-          </div>
-        </div>
-        <div style="height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden">
-          <div id="alloc-b-bar" style="height:100%;background:#f59e0b;border-radius:2px;transition:width .5s;width:0%"></div>
-        </div>
-
-        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">
-          <span style="color:#a78bfa;font-weight:600">⚡ UpDown</span>
-          <span id="alloc-u-pct" style="color:var(--muted)">20%</span>
-        </div>
-        <div style="display:flex;gap:4px;margin-bottom:6px;font-size:.75rem">
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Budget</div>
-            <div id="alloc-u-budget" style="color:var(--text);font-weight:600">$0.00</div>
-          </div>
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Desplegado</div>
-            <div id="alloc-u-dep" style="color:var(--yellow);font-weight:600">$0.00</div>
-          </div>
-          <div style="flex:1;background:var(--bg3);border-radius:3px;padding:3px 6px;text-align:center">
-            <div style="color:var(--muted);font-size:.65rem">Disponible</div>
-            <div id="alloc-u-avail" style="color:var(--green);font-weight:600">$0.00</div>
-          </div>
-        </div>
-        <div style="height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden">
-          <div id="alloc-u-bar" style="height:100%;background:#a78bfa;border-radius:2px;transition:width .5s;width:0%"></div>
-        </div>
-      </div>
-
-      <!-- Editar proporciones -->
-      <details style="margin-top:4px">
-        <summary style="font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none">Cambiar proporciones…</summary>
-        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;gap:6px;font-size:.75rem">
-            <span style="color:#60a5fa;width:60px">Weather</span>
-            <input type="number" id="alloc-inp-w" value="60" min="10" max="80" step="5" oninput="_allocInputsDirty=true" style="width:50px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:.75rem">
-            <span style="color:var(--muted)">%</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:.75rem">
-            <span style="color:#f59e0b;width:60px">BTC</span>
-            <input type="number" id="alloc-inp-b" value="20" min="5" max="50" step="5" oninput="_allocInputsDirty=true" style="width:50px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:.75rem">
-            <span style="color:var(--muted)">%</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:.75rem">
-            <span style="color:#a78bfa;width:60px">UpDown</span>
-            <input type="number" id="alloc-inp-u" value="20" min="5" max="50" step="5" oninput="_allocInputsDirty=true" style="width:50px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:.75rem">
-            <span style="color:var(--muted)">%</span>
-          </div>
-          <div id="alloc-sum-warn" style="font-size:.7rem;color:var(--red);display:none">La suma debe ser 100%</div>
-          <div style="display:flex;gap:6px">
-            <button onclick="saveAllocation()" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:4px;border:1px solid #2d5a8e;background:#1e3a5f;color:#60a5fa;cursor:pointer">Guardar</button>
-            <button onclick="resetAllocation()" title="Resetear a 60/20/20" style="padding:4px 8px;font-size:.75rem;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);cursor:pointer">↺ Reset</button>
-          </div>
-        </div>
-      </details>
-    </div>
-
     <!-- Tipos de trade -->
     <div class="panel">
       <h2>Tipos de trade</h2>
@@ -721,50 +622,15 @@
         </div>
       </div>
 
-      <!-- Row 2: Capital allocation chart + Trades by type -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-
-        <!-- Capital allocation donut -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
-          <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Asignación de capital</div>
-          <div style="display:flex;gap:16px;align-items:center">
-            <div style="position:relative;width:120px;height:120px;flex-shrink:0">
-              <canvas id="db-alloc-chart" width="120" height="120"></canvas>
-            </div>
-            <div id="db-alloc-legend" style="font-size:.78rem;line-height:2"></div>
-          </div>
-        </div>
-
-        <!-- Trades by type bar -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
-          <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Trades por tipo</div>
-          <div style="position:relative;height:120px">
-            <canvas id="db-type-chart"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 3: Full-width allocation detail table -->
+      <!-- Row 2: Trades by type -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
-        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Detalle de asignación de capital</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Proporción</th>
-              <th>Budget ($)</th>
-              <th>Desplegado ($)</th>
-              <th>Disponible ($)</th>
-              <th>% Utilizado</th>
-            </tr>
-          </thead>
-          <tbody id="db-alloc-table">
-            <tr><td colspan="6" class="empty">Sin datos — inicia el bot</td></tr>
-          </tbody>
-        </table>
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Trades por tipo</div>
+        <div style="position:relative;height:120px">
+          <canvas id="db-type-chart"></canvas>
+        </div>
       </div>
 
-      <!-- Row 4: P&L history line chart -->
+      <!-- Row 3: P&L history line chart -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">P&L acumulado (por trade)</div>
@@ -1880,49 +1746,8 @@ function renderStatus(d) {
   // Toggles de tipos de trade (panel izquierdo)
   _renderTradeToggles(d);
 
-  // Capital allocation sidebar widget
-  renderAllocationWidget(d);
-
-  // Actualizar tabla de asignación del dashboard con los mismos datos del status
-  _renderAllocTable(d);
-
   // Meta de ganancia
   renderGoalWidget(d.goal);
-}
-
-function _renderAllocTable(d) {
-  const tbl = document.getElementById('db-alloc-table');
-  if (!tbl) return;
-  const tv = d.total_value || d.balance_usdc || 0;
-  const rows = [
-    { icon:'⛅', name:'Weather', pct: d.alloc_weather_pct||0.7, dep: d.deployed_weather||0, avail: d.available_weather||0 },
-    { icon:'₿',  name:'BTC',    pct: d.alloc_btc_pct||0.1,     dep: d.deployed_btc||0,     avail: d.available_btc||0     },
-    { icon:'⚡', name:'UpDown', pct: d.alloc_updown_pct||0.2,  dep: d.deployed_updown||0,  avail: d.available_updown||0  },
-  ];
-  tbl.innerHTML = rows.map(r => {
-    const budget    = Math.round(tv * r.pct * 100) / 100;
-    const usedPct   = budget > 0 ? Math.min(100, r.dep / budget * 100) : 0;
-    const overBudget = budget > 0 && r.dep > budget;
-    const barColor  = usedPct >= 100 ? 'var(--red)' : usedPct > 80 ? 'var(--yellow)' : 'var(--green)';
-    const pctLabel  = overBudget
-      ? `<span title="Deployed supera el budget — posiciones antiguas pendientes de resolver" style="color:var(--red);font-family:monospace;font-size:.75rem">100% ⚠</span>`
-      : `<span style="font-family:monospace;font-size:.75rem;color:${barColor}">${usedPct.toFixed(1)}%</span>`;
-    return `<tr>
-      <td>${r.icon} ${r.name}</td>
-      <td style="color:var(--muted)">${Math.round(r.pct*100)}%</td>
-      <td style="font-family:monospace">$${budget.toFixed(2)}</td>
-      <td style="font-family:monospace;color:var(--yellow)">$${r.dep.toFixed(2)}</td>
-      <td style="font-family:monospace;color:${r.avail>0?'var(--green)':'var(--muted)'}">$${r.avail.toFixed(2)}</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="flex:1;background:var(--bg3);border-radius:2px;height:5px;overflow:hidden">
-            <div style="height:100%;background:${barColor};width:${usedPct}%;transition:width .5s"></div>
-          </div>
-          ${pctLabel}
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
 }
 
 async function fetchStatus() {
@@ -3164,73 +2989,9 @@ async function cancelGoal() {
   await fetch('/api/goal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({usdc:0, hours:24}) });
 }
 
-// ── Asignación de capital (sidebar widget) ─────────────────────────────────
-
-// Flag: true = usuario editó los inputs, no sobreescribir hasta que guarde o descarte
-let _allocInputsDirty = false;
-
-function renderAllocationWidget(d) {
-  const types = [
-    { key:'w', label:'Weather', color:'#60a5fa', budget: d.budget_weather||0, dep: d.deployed_weather||0, avail: d.available_weather||0, pct: d.alloc_weather_pct||0.6 },
-    { key:'b', label:'BTC',     color:'#f59e0b', budget: d.budget_btc||0,     dep: d.deployed_btc||0,     avail: d.available_btc||0,     pct: d.alloc_btc_pct||0.2 },
-    { key:'u', label:'UpDown',  color:'#a78bfa', budget: d.budget_updown||0,  dep: d.deployed_updown||0,  avail: d.available_updown||0,  pct: d.alloc_updown_pct||0.2 },
-  ];
-  for (const t of types) {
-    const usedPct = t.budget > 0 ? Math.min(100, (t.dep / t.budget) * 100) : 0;
-    const _s = id => document.getElementById(id);
-    _s(`alloc-${t.key}-pct`).textContent    = `${Math.round(t.pct*100)}%`;
-    _s(`alloc-${t.key}-budget`).textContent = `$${t.budget.toFixed(2)}`;
-    _s(`alloc-${t.key}-dep`).textContent    = `$${t.dep.toFixed(2)}`;
-    _s(`alloc-${t.key}-avail`).textContent  = `$${t.avail.toFixed(2)}`;
-    _s(`alloc-${t.key}-avail`).style.color  = t.avail > 0 ? 'var(--green)' : 'var(--muted)';
-    _s(`alloc-${t.key}-bar`).style.width    = usedPct + '%';
-  }
-  // Solo sincronizar inputs si el usuario NO los ha tocado
-  if (!_allocInputsDirty) {
-    const vals = { w: Math.round((d.alloc_weather_pct||0.6)*100), b: Math.round((d.alloc_btc_pct||0.2)*100), u: Math.round((d.alloc_updown_pct||0.2)*100) };
-    for (const [k, id] of Object.entries({ w:'alloc-inp-w', b:'alloc-inp-b', u:'alloc-inp-u' })) {
-      const el = document.getElementById(id);
-      if (el) el.value = vals[k];
-    }
-  }
-}
-
-async function saveAllocation() {
-  const w = parseInt(document.getElementById('alloc-inp-w').value) || 0;
-  const b = parseInt(document.getElementById('alloc-inp-b').value) || 0;
-  const u = parseInt(document.getElementById('alloc-inp-u').value) || 0;
-  const warn = document.getElementById('alloc-sum-warn');
-  if (w + b + u !== 100) { warn.style.display = 'block'; return; }
-  warn.style.display = 'none';
-  const r = await fetch('/api/allocation', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ weather_pct: w/100, btc_pct: b/100, updown_pct: u/100 }),
-  });
-  const d = await r.json();
-  if (d.ok) {
-    _allocInputsDirty = false;
-    fetchStatus();
-    fetchDashboard();  // actualizar tabla de asignación inmediatamente
-  } else {
-    warn.textContent = d.msg || 'Error al guardar';
-    warn.style.display = 'block';
-  }
-}
-
-async function resetAllocation() {
-  // Resetear a defaults 60/20/20 y recalcular
-  document.getElementById('alloc-inp-w').value = 60;
-  document.getElementById('alloc-inp-b').value = 20;
-  document.getElementById('alloc-inp-u').value = 20;
-  document.getElementById('alloc-sum-warn').style.display = 'none';
-  _allocInputsDirty = true;
-  await saveAllocation();
-}
-
 // ── Dashboard tab ──────────────────────────────────────────────────────────
 
-let _dbAllocChart = null, _dbTypeChart = null, _dbPnlChart = null;
+let _dbTypeChart = null, _dbPnlChart = null;
 
 async function fetchDashboard() {
   try {
@@ -3259,84 +3020,6 @@ function renderDashboard(d) {
     const delta = (d.total_value||0) - d.daily_start_balance;
     deltaEl.textContent = `${delta>=0?'+':''}$${delta.toFixed(2)} hoy`;
     deltaEl.style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
-  }
-
-  // Allocation donut
-  const alloc = d.allocation || {};
-  const aW = alloc.weather || {}, aB = alloc.btc || {}, aU = alloc.updown || {};
-  const depW = aW.deployed||0, depB = aB.deployed||0, depU = aU.deployed||0;
-  const avW  = aW.available||0, avB = aB.available||0, avU = aU.available||0;
-  const budW = aW.budget||0, budB = aB.budget||0, budU = aU.budget||0;
-
-  const allocCtx = document.getElementById('db-alloc-chart');
-  if (allocCtx) {
-    if (_dbAllocChart) _dbAllocChart.destroy();
-    _dbAllocChart = new Chart(allocCtx.getContext('2d'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Weather (dep)', 'Weather (avail)', 'BTC (dep)', 'BTC (avail)', 'UpDown (dep)', 'UpDown (avail)'],
-        datasets: [{
-          data: [depW, avW, depB, avB, depU, avU],
-          backgroundColor: ['#2563eb','#93c5fd','#d97706','#fcd34d','#7c3aed','#c4b5fd'],
-          borderWidth: 0,
-          hoverOffset: 4,
-        }],
-      },
-      options: {
-        responsive: false, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: {
-          callbacks: { label: ctx => ` $${ctx.parsed.toFixed(2)}` }
-        }},
-        cutout: '65%',
-      },
-    });
-  }
-
-  const legEl = document.getElementById('db-alloc-legend');
-  if (legEl) {
-    legEl.innerHTML = [
-      { color:'#60a5fa', label:`⛅ Weather`, budget:budW, dep:depW, avail:avW },
-      { color:'#f59e0b', label:`₿ BTC`,     budget:budB, dep:depB, avail:avB },
-      { color:'#a78bfa', label:`⚡ UpDown`,  budget:budU, dep:depU, avail:avU },
-    ].map(t => `<div>
-      <span style="color:${t.color};font-weight:600">${t.label}</span>
-      <span style="color:var(--muted)"> $${t.budget.toFixed(2)} budget · </span>
-      <span style="color:var(--yellow)">$${t.dep.toFixed(2)} dep</span>
-      <span style="color:var(--muted)"> · </span>
-      <span style="color:var(--green)">$${t.avail.toFixed(2)} libre</span>
-    </div>`).join('');
-  }
-
-  // Allocation detail table
-  const tbl = document.getElementById('db-alloc-table');
-  if (tbl) {
-    const rows = [
-      { icon:'⛅', name:'Weather', a: aW },
-      { icon:'₿',  name:'BTC',    a: aB },
-      { icon:'⚡', name:'UpDown', a: aU },
-    ];
-    tbl.innerHTML = rows.map(r => {
-      const usedPct   = Math.min(100, r.a.used_pct != null ? r.a.used_pct : (r.a.budget > 0 ? (r.a.deployed/r.a.budget*100) : 0));
-      const overBudget = r.a.over_budget || false;
-      const barColor  = usedPct >= 100 ? 'var(--red)' : usedPct > 80 ? 'var(--red)' : usedPct > 50 ? 'var(--yellow)' : 'var(--green)';
-      const pctLabel  = overBudget ? `<span title="Deployed supera el budget de esta categoría" style="color:var(--red);font-family:monospace;font-size:.75rem">100% ⚠</span>`
-                                   : `<span style="font-family:monospace;font-size:.75rem;color:${barColor}">${usedPct.toFixed(1)}%</span>`;
-      return `<tr>
-        <td>${r.icon} ${r.name}</td>
-        <td style="color:var(--muted)">${Math.round((r.a.pct||0)*100)}%</td>
-        <td style="font-family:monospace">$${(r.a.budget||0).toFixed(2)}</td>
-        <td style="font-family:monospace;color:var(--yellow)">$${(r.a.deployed||0).toFixed(2)}</td>
-        <td style="font-family:monospace;color:var(--green)">$${(r.a.available||0).toFixed(2)}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:6px">
-            <div style="flex:1;background:var(--bg3);border-radius:2px;height:5px;overflow:hidden">
-              <div style="height:100%;background:${barColor};width:${usedPct}%;transition:width .5s"></div>
-            </div>
-            ${pctLabel}
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
   }
 
   // Trades by type bar chart

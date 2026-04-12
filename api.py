@@ -603,7 +603,8 @@ async def refresh_portfolio_analysis():
     if not bot.state.poly_positions:
         return {"ok": False, "msg": "No hay posiciones abiertas para analizar"}
 
-    result = await analyze_portfolio(bot.state.poly_positions, bot.state.balance_usdc)
+    result = await analyze_portfolio(bot.state.poly_positions, bot.state.balance_usdc,
+                                     bot._build_capital_context())
     if result["skipped"]:
         return {"ok": False, "msg": "Claude API no configurada (falta ANTHROPIC_API_KEY)"}
 
@@ -1284,7 +1285,6 @@ def _build_chat_context(include_logs: bool = True, include_learner: bool = True)
         "=== PARÁMETROS DEL BOT ===",
         f"Auto-trade global: {'ACTIVO' if s.auto_trade_mode else 'INACTIVO'}",
         f"Intervalo de escaneo: {bp['scan_interval_minutes']} min",
-        f"Capital asignado — Clima: {bp['alloc_weather_pct']*100:.0f}% | BTC: {bp['alloc_btc_pct']*100:.0f}% | UpDown: {bp['alloc_updown_pct']*100:.0f}%",
         f"EV mínimo clima: {bp['min_ev_threshold']*100:.0f}% | Kelly fraction: {bp['kelly_fraction']}",
         f"Posición máx clima: ${bp['max_position_usdc']} | mín: ${bp['min_position_usdc']}",
         f"Liquidez mín: ${bp['min_liquidity_usdc']} | Spread máx: {bp['max_spread_pct']*100:.0f}%",
@@ -1293,14 +1293,35 @@ def _build_chat_context(include_logs: bool = True, include_learner: bool = True)
         f"BTC habilitado: {'Sí' if bp['btc_enabled'] else 'No'} | BTC max posición: ${bp['btc_max_position_usdc']}",
     ]
 
-    # === CAPITAL ===
-    lines += [
-        "",
-        "=== ASIGNACIÓN DE CAPITAL ===",
-        f"Clima   — Presupuesto: ${getattr(s,'budget_weather',0):.2f} | Deployed: ${getattr(s,'deployed_weather',0):.2f} | Disponible: ${getattr(s,'available_weather',0):.2f}",
-        f"BTC     — Presupuesto: ${getattr(s,'budget_btc',0):.2f} | Deployed: ${getattr(s,'deployed_btc',0):.2f} | Disponible: ${getattr(s,'available_btc',0):.2f}",
-        f"UpDown  — Presupuesto: ${getattr(s,'budget_updown',0):.2f} | Deployed: ${getattr(s,'deployed_updown',0):.2f} | Disponible: ${getattr(s,'available_updown',0):.2f}",
-    ]
+    # === CAPITAL (sistema de buckets Fase 12) ===
+    _pool = bp.get("betting_pool_usdc", 0.0)
+    if _pool > 0:
+        _bkt_sum = (bp.get("bucket_weather_usdc", 0) + bp.get("bucket_btc_usdc", 0) +
+                    bp.get("bucket_updown_5m_usdc", 0) + bp.get("bucket_updown_15m_usdc", 0))
+        _cash_free = round(max(0.0, s.balance_usdc - _bkt_sum), 2)
+        lines += [
+            "",
+            "=== CAPITAL (sistema de buckets activo) ===",
+            f"Pool de apuestas asignado: ${_pool:.2f} USDC",
+            f"Cash libre (no asignado): ${_cash_free:.2f} USDC",
+            f"Balance total Polymarket: ${s.balance_usdc:.2f} USDC",
+            f"Bucket Weather   — disponible: ${bp.get('bucket_weather_usdc',0):.2f} | % asignado: {bp.get('bucket_weather_pct',0)*100:.0f}%",
+            f"Bucket BTC       — disponible: ${bp.get('bucket_btc_usdc',0):.2f} | % asignado: {bp.get('bucket_btc_pct',0)*100:.0f}%",
+            f"Bucket UpDown 5m — disponible: ${bp.get('bucket_updown_5m_usdc',0):.2f} | % asignado: {bp.get('bucket_updown_5m_pct',0)*100:.0f}%",
+            f"Bucket UpDown 15m— disponible: ${bp.get('bucket_updown_15m_usdc',0):.2f} | % asignado: {bp.get('bucket_updown_15m_pct',0)*100:.0f}%",
+            f"Deployed Weather: ${getattr(s,'deployed_weather',0):.2f} | BTC: ${getattr(s,'deployed_btc',0):.2f} | UpDown: ${getattr(s,'deployed_updown',0):.2f}",
+        ]
+    else:
+        lines += [
+            "",
+            "=== CAPITAL (sistema legacy por %) ===",
+            f"Balance Polymarket: ${s.balance_usdc:.2f} USDC",
+            f"Asignación: Clima {bp.get('alloc_weather_pct',0.6)*100:.0f}% | BTC {bp.get('alloc_btc_pct',0.2)*100:.0f}% | UpDown {bp.get('alloc_updown_pct',0.2)*100:.0f}%",
+            f"Clima   — Presupuesto: ${getattr(s,'budget_weather',0):.2f} | Deployed: ${getattr(s,'deployed_weather',0):.2f} | Disponible: ${getattr(s,'available_weather',0):.2f}",
+            f"BTC     — Presupuesto: ${getattr(s,'budget_btc',0):.2f} | Deployed: ${getattr(s,'deployed_btc',0):.2f} | Disponible: ${getattr(s,'available_btc',0):.2f}",
+            f"UpDown  — Presupuesto: ${getattr(s,'budget_updown',0):.2f} | Deployed: ${getattr(s,'deployed_updown',0):.2f} | Disponible: ${getattr(s,'available_updown',0):.2f}",
+            f"NOTA: Para activar el sistema de buckets, asigna un pool en /api/capital/assign",
+        ]
 
     # === META DE GANANCIA ===
     if bp.get("profit_goal_usdc", 0) > 0:

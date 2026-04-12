@@ -107,6 +107,7 @@ async def analyze_opportunity(
     opportunity: dict,
     balance_usdc: float,
     open_positions: list[dict] | None = None,
+    capital_context: dict | None = None,
 ) -> dict:
     """
     Pide a Claude que analice una oportunidad antes de tradear.
@@ -260,6 +261,20 @@ Capital en posiciones: ${total_cost:.2f} | Valor actual: ${total_value:.2f} | P&
 Considera el portafolio completo al decidir si abrir esta posicion adicional."""
     else:
         user_msg += "\n═══ PORTAFOLIO ACTUAL ═══\nSin posiciones abiertas — primera entrada."
+
+    # Contexto de capital: bucket disponible para este trade
+    if capital_context:
+        bucket_id   = capital_context.get("bucket_id", "")
+        bucket_bal  = capital_context.get("bucket_usdc", 0.0)
+        pool_usdc   = capital_context.get("pool_usdc", 0.0)
+        cash_free   = capital_context.get("cash_free", 0.0)
+        if pool_usdc > 0:
+            user_msg += f"""
+═══ CAPITAL (sistema de buckets) ═══
+Bucket asignado a este trade: {bucket_id} — saldo disponible: ${bucket_bal:.2f} USDC
+Pool total de apuestas: ${pool_usdc:.2f} USDC | Cash libre (no asignado): ${cash_free:.2f} USDC
+Tamaño del trade como % del bucket: {(opportunity['size_usdc']/bucket_bal*100) if bucket_bal > 0 else 0:.1f}%
+Considera si este trade es prudente dado el saldo restante del bucket."""
 
     user_msg += "\n\n¿Apruebas este trade?"
 
@@ -508,7 +523,7 @@ Al final:
 RESUMEN_PORTAFOLIO: [2-3 oraciones sobre riesgo global y salud del portafolio]"""
 
 
-async def analyze_portfolio(positions: list[dict], balance_usdc: float) -> dict:
+async def analyze_portfolio(positions: list[dict], balance_usdc: float, capital_context: dict | None = None) -> dict:
     """
     Pide a Claude que analice el portafolio completo de posiciones abiertas.
 
@@ -547,6 +562,19 @@ async def analyze_portfolio(positions: list[dict], balance_usdc: float) -> dict:
             f"Cierra en: {hours}{redeemable}"
         )
 
+    # Sección de capital
+    cap_section = ""
+    if capital_context and capital_context.get("pool_usdc", 0) > 0:
+        bp = capital_context
+        cap_section = f"""
+═══ CAPITAL (sistema de buckets) ═══
+Pool de apuestas: ${bp.get('pool_usdc',0):.2f} USDC | Cash libre: ${bp.get('cash_free',0):.2f} USDC
+  Bucket Weather    ${bp.get('bucket_weather',0):.2f} USDC disponible
+  Bucket BTC        ${bp.get('bucket_btc',0):.2f} USDC disponible
+  Bucket UpDown 5m  ${bp.get('bucket_updown_5m',0):.2f} USDC disponible
+  Bucket UpDown 15m ${bp.get('bucket_updown_15m',0):.2f} USDC disponible
+Considera el estado de los buckets al evaluar si es viable abrir más posiciones."""
+
     user_msg = f"""ANALISIS DE PORTAFOLIO — {len(positions)} posiciones abiertas
 
 ═══ RESUMEN GLOBAL ═══
@@ -554,7 +582,7 @@ Capital invertido total: ${total_cost:.2f} USDC
 Valor actual total:      ${total_value:.2f} USDC
 P&L no realizado:        ${total_pnl:+.2f} USDC ({(total_pnl/total_cost*100) if total_cost > 0 else 0:+.1f}%)
 Balance disponible:      ${balance_usdc:.2f} USDC
-
+{cap_section}
 ═══ POSICIONES DETALLADAS ═══
 {chr(10).join(pos_lines)}
 
