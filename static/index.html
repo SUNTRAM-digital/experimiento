@@ -1707,7 +1707,13 @@ function _appendUpdownLog(entry) {
   // Detectar tipo de evento para badge
   const msg = entry.msg || '';
   let badge = '';
-  if (/SEÑAL|signal/i.test(msg))             badge = `<span style="background:#1d4ed8;color:#93c5fd;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">SEÑAL</span>`;
+  if (/\[PHANTOM\].*✓|HUBIERA GANADO/i.test(msg))         badge = `<span style="background:#14532d;color:#86efac;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">PHANTOM WIN</span>`;
+  else if (/\[PHANTOM\].*✗.*HUBIERA PERDIDO/i.test(msg))  badge = `<span style="background:#7f1d1d;color:#fca5a5;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">PHANTOM LOSS</span>`;
+  else if (/\[PHANTOM\].*✦.*registrado/i.test(msg))        badge = `<span style="background:#4c1d95;color:#c4b5fd;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">PHANTOM ✦</span>`;
+  else if (/\[PHANTOM\].*NEUTRAL/i.test(msg))              badge = `<span style="background:#1f2937;color:#9ca3af;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">PHANTOM NEUTRAL</span>`;
+  else if (/\[PHANTOM\].*ya registrado/i.test(msg))        badge = `<span style="background:#1f2937;color:#6b7280;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">PHANTOM ⟳</span>`;
+  else if (/\[REAL\].*✗.*Sin entrada/i.test(msg))          badge = `<span style="background:#1f2937;color:#6b7280;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">REAL SKIP</span>`;
+  else if (/SEÑAL|signal/i.test(msg))             badge = `<span style="background:#1d4ed8;color:#93c5fd;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">SEÑAL</span>`;
   else if (/ejecutad|trade|orden|compra/i.test(msg)) badge = `<span style="background:#14532d;color:#4ade80;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">TRADE</span>`;
   else if (/claude|análisis|analiz/i.test(msg))      badge = `<span style="background:#312e81;color:#a5b4fc;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">CLAUDE</span>`;
   else if (/WIN|ganó|ganancia/i.test(msg))           badge = `<span style="background:#14532d;color:#4ade80;border-radius:3px;padding:0 5px;font-size:.68rem;margin-right:5px">WIN ✓</span>`;

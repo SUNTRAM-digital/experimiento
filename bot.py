@@ -1486,8 +1486,9 @@ async def _scan_updown(interval_minutes: int):
             _updown_phantom_slugs.add(slug)
             _log(
                 "INFO",
-                f"UpDown {interval_minutes}m | PHANTOM {phantom_dir} registrado "
-                f"(confianza {phantom_conf:.0f}%, motivo={_ph_reason})",
+                f"UpDown {interval_minutes}m | [PHANTOM] ✦ {phantom_dir} registrado — "
+                f"confianza {phantom_conf:.0f}% | combined={_sig['combined']:+.3f} | "
+                f"motivo_skip={_ph_reason}",
             )
             # ── Experimento VPS-Confianza (solo phantom, sin dinero real) ────
             try:
@@ -1514,9 +1515,23 @@ async def _scan_updown(interval_minutes: int):
                 )
             except Exception as _vps_err:
                 _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
+        else:
+            # Señal neutral — phantom no se registra porque no hay dirección clara
+            _updown_phantom_slugs.add(slug)  # evitar spam en ciclos siguientes del mismo slug
+            _log(
+                "INFO",
+                f"UpDown {interval_minutes}m | [PHANTOM] ✗ NEUTRAL — señal sin dirección clara "
+                f"(combined={_sig['combined']:+.3f} | TA:{_sig['ta_raw']:+.3f} "
+                f"RSI:{_sig.get('rsi','?')} Momentum:{_sig['momentum']:+.3f})",
+            )
+    else:
+        _log(
+            "INFO",
+            f"UpDown {interval_minutes}m | [PHANTOM] ⟳ ya registrado para este slug — esperando resolución",
+        )
 
     if not opp:
-        _log("INFO", f"UpDown {interval_minutes}m | Sin entrada — {skip_reason}")
+        _log("INFO", f"UpDown {interval_minutes}m | [REAL] ✗ Sin entrada — {skip_reason}")
         return
 
     _log(
@@ -2046,10 +2061,11 @@ async def _resolve_pending_updown_outcomes():
         direction   = "SUBIO" if btc_went_up else "BAJO"
 
         _log(
-            "INFO" if ph_won else "INFO",
-            f"UpDown {interval}m | PHANTOM {'HUBIERA GANADO ✓' if ph_won else 'HUBIERA PERDIDO ✗'} — "
-            f"BTC {direction} ${btc_start:.0f}→${btc_end:.0f} | "
-            f"fantasma apostaba {side} | motivo de skip: {pending.get('skip_reason','?')[:60]}",
+            "INFO" if ph_won else "WARN",
+            f"UpDown {interval}m | [PHANTOM] {'✓ HUBIERA GANADO' if ph_won else '✗ HUBIERA PERDIDO'} — "
+            f"apostaba {side} | BTC {direction} ${btc_start:.0f}→${btc_end:.0f} "
+            f"({(btc_end-btc_start)/btc_start*100:+.3f}%) | "
+            f"conf={pending.get('confidence',0):.0f}% | skip={pending.get('skip_reason','?')[:40]}",
         )
 
         try:
