@@ -1023,6 +1023,56 @@
         </div><!-- fin scroll -->
       </div>
       <div id="updown-learn-panel" style="margin-top:12px;padding:0 4px"></div>
+
+      <!-- ── Experimento VPS-Confianza ── -->
+      <div style="background:var(--bg2);border:1px solid #7c3aed44;border-radius:8px;padding:14px;margin-top:12px" id="vps-experiment-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:.72rem;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px;font-weight:700">
+            🧪 Experimento VPS-Confianza <span style="font-weight:400;color:var(--muted)">(phantom · sin dinero real)</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button onclick="loadVpsExperiment()" style="font-size:.7rem;background:transparent;border:1px solid #7c3aed;color:#a78bfa;border-radius:4px;padding:2px 8px;cursor:pointer">↻ Actualizar</button>
+            <button onclick="requestVpsDailySummary()" style="font-size:.7rem;background:transparent;border:1px solid #374151;color:#6b7280;border-radius:4px;padding:2px 8px;cursor:pointer">Resumen hoy</button>
+          </div>
+        </div>
+
+        <!-- Status bar -->
+        <div id="vps-status-bar" style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Cargando...</div>
+
+        <!-- Comparativa principal VPS vs Fixed -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px" id="vps-cards">
+          <!-- inyectado por JS -->
+        </div>
+
+        <!-- Tier breakdown -->
+        <div style="margin-bottom:10px">
+          <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Win rate por nivel de confianza</div>
+          <div id="vps-tiers" style="display:flex;flex-direction:column;gap:4px"><!-- inyectado --></div>
+        </div>
+
+        <!-- Últimos trades -->
+        <details style="margin-top:4px">
+          <summary style="font-size:.7rem;color:var(--muted);cursor:pointer;user-select:none">Últimos trades registrados</summary>
+          <div style="margin-top:6px;max-height:200px;overflow-y:auto;border-radius:4px">
+            <table style="min-width:100%;font-size:.72rem">
+              <thead><tr>
+                <th style="padding:3px 6px">Hora</th>
+                <th>Mercado</th>
+                <th>Lado</th>
+                <th>Conf%</th>
+                <th>Tier</th>
+                <th>Size VPS</th>
+                <th>Fixed</th>
+                <th>Resultado</th>
+                <th>P&L VPS</th>
+                <th>P&L Fixed</th>
+                <th>Δ</th>
+              </tr></thead>
+              <tbody id="tbl-vps-trades"><tr><td colspan="11" class="empty">Sin datos aún</td></tr></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
     </div>
 
     <!-- TAB ESTRATEGIAS -->
@@ -3829,13 +3879,13 @@ function clearChat() {
   </div>`;
 }
 
-function _appendMsg(role, text, streaming = false) {
+function _appendMsg(role, text, streaming = false, extraHtml = '') {
   const box = document.getElementById('chat-messages');
   const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   const div = document.createElement('div');
   div.className = `chat-msg ${role}`;
   div.innerHTML = `
-    <div class="chat-bubble${streaming ? ' streaming' : ''}" id="${streaming ? 'chat-streaming' : ''}">${_renderMarkdown(text)}</div>
+    <div class="chat-bubble${streaming ? ' streaming' : ''}" id="${streaming ? 'chat-streaming' : ''}">${_renderMarkdown(text)}${extraHtml}</div>
     <div class="chat-time">${time}</div>`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
@@ -3997,8 +4047,9 @@ async function showAdvisorNotifications() {
       _appendMsg('assistant', '📭 No hay notificaciones del asesor aún. Haz clic en 🔍 Analizar para pedir un análisis inmediato.');
     } else {
       notifs.slice(0, 3).forEach(n => {
-        const txt = `**🔔 Notificación del asesor** (${n.time})\n\n${_parseAdvisorMsg(n.text)}`;
-        _appendMsg('assistant', txt);
+        const parsed = _parseAdvisorMsg(n.text);
+        const txt = `**🔔 Notificación del asesor** (${n.time})\n\n${parsed.text}`;
+        _appendMsg('assistant', txt, false, parsed.cardHtml);
       });
     }
 
@@ -4013,20 +4064,29 @@ async function showAdvisorNotifications() {
 }
 
 function _parseAdvisorMsg(text) {
-  // Si tiene PARAMS_JSON, renderizar como acción aplicable
-  const paramsMatch = text.match(/PARAMS_JSON:\s*(\{[^}]+\})/);
+  // Retorna {text: string, cardHtml: string}
+  // text → pasa por _renderMarkdown (se escapa HTML)
+  // cardHtml → se inserta como HTML crudo después del markdown
+  const paramsMatch = text.match(/PARAMS_JSON:\s*(\{[\s\S]+?\})\s*(?:\n|CAMBIO_SUGERIDO|$)/);
   const cambioMatch = text.match(/CAMBIO_SUGERIDO:\s*(.+?)(?:\n|$)/);
   if (paramsMatch && cambioMatch) {
-    const mainText = text.replace(/CAMBIO_SUGERIDO:.*$/s, '').trim();
-    const paramsJson = paramsMatch[1];
-    const cambioDesc = cambioMatch[1];
-    return `${mainText}\n\n<div class="advisor-suggestion">
+    const mainText = text.replace(/PARAMS_JSON:[\s\S]+$/, '').replace(/CAMBIO_SUGERIDO:.*$/s, '').trim();
+    const paramsJson = paramsMatch[1].trim();
+    const cambioDesc = cambioMatch[1].trim();
+    // Usar data attributes para evitar problemas de escape en onclick
+    const safeDesc = cambioDesc.replace(/'/g, '&#39;');
+    const safeParams = paramsJson.replace(/'/g, '&#39;');
+    const cardHtml = `<div class="advisor-suggestion">
       <div class="advisor-sug-label">💡 Cambio sugerido</div>
       <div class="advisor-sug-detail">${escHtml(cambioDesc)}</div>
-      <button class="advisor-sug-apply" onclick="applyAdvisorParams(${escHtml(paramsJson).replace(/&quot;/g,'"')}, '${escHtml(cambioDesc)}')">Aplicar cambio</button>
+      <button class="advisor-sug-apply"
+        data-params='${safeParams}'
+        data-desc='${safeDesc}'
+        onclick="applyAdvisorParams(JSON.parse(this.dataset.params), this.dataset.desc)">Aplicar cambio</button>
     </div>`;
+    return { text: mainText, cardHtml };
   }
-  return text;
+  return { text, cardHtml: '' };
 }
 
 async function applyAdvisorParams(paramsJson, reason) {
@@ -4050,7 +4110,8 @@ async function requestAdvisorAnalysis() {
     const lastMsg = box.lastElementChild;
     if (lastMsg) lastMsg.remove();
     if (d.notification) {
-      _appendMsg('assistant', `**🔔 Análisis del asesor**\n\n${_parseAdvisorMsg(d.notification)}`);
+      const parsed = _parseAdvisorMsg(d.notification);
+      _appendMsg('assistant', `**🔔 Análisis del asesor**\n\n${parsed.text}`, false, parsed.cardHtml);
     } else {
       _appendMsg('assistant', '✅ El sistema está funcionando bien. Sin alertas en este momento.');
     }
@@ -4644,6 +4705,7 @@ showTab = function(id) {
   _origShowTabTx(id);
   if (id === 'tab-telonex') loadTelonex();
   if (id === 'tab-capital') { loadCapital(true); }
+  if (id === 'tab-updown')  { loadVpsExperiment(); }
 };
 
 // ── Capital Buckets ────────────────────────────────────────────────────────
@@ -4737,6 +4799,140 @@ setInterval(() => {
   const capTab = document.getElementById('tab-capital');
   if (capTab && capTab.classList.contains('active')) loadCapital(false);
 }, 5000);
+
+// ── Experimento VPS-Confianza ─────────────────────────────────────────────
+
+async function loadVpsExperiment() {
+  try {
+    const d = await fetch('/api/vps-experiment').then(r => r.json());
+    _renderVpsExperiment(d);
+  } catch(e) {
+    const sb = document.getElementById('vps-status-bar');
+    if (sb) sb.textContent = 'Error cargando experimento VPS.';
+  }
+}
+
+async function requestVpsDailySummary() {
+  try {
+    const d = await fetch('/api/vps-experiment/daily-summary', { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      _appendMsg('assistant', `**🧪 VPS — Resumen del día generado**\n\nTrades hoy: ${d.summary.trades_today}\nVPS net: $${d.summary.vps_results?.net_pnl ?? '—'} | Fixed net: $${d.summary.fixed_results?.net_pnl ?? '—'}`);
+      loadVpsExperiment();
+    } else {
+      _appendMsg('assistant', `🧪 VPS: ${d.msg || d.error || 'Sin trades suficientes hoy.'}`);
+    }
+  } catch(e) {}
+}
+
+function _renderVpsExperiment(d) {
+  if (d.error) {
+    const sb = document.getElementById('vps-status-bar');
+    if (sb) sb.textContent = 'Error: ' + d.error;
+    return;
+  }
+
+  // Status bar
+  const sb = document.getElementById('vps-status-bar');
+  if (sb) {
+    const pct = d.days_total > 0 ? Math.min(100, Math.round(d.days_elapsed / d.days_total * 100)) : 0;
+    const corr = d.comparison?.correlation_conf_result ?? '—';
+    sb.innerHTML = `Estado: <b style="color:${d.status==='RUNNING'?'var(--green)':'var(--muted)'}">${d.status}</b>
+      &nbsp;|&nbsp; Día ${d.days_elapsed}/${d.days_total} (${pct}%)
+      &nbsp;|&nbsp; Trades: ${d.resolved} resueltos / ${d.pending} pendientes
+      &nbsp;|&nbsp; Correlación conf→result: <b>${corr}</b>`;
+  }
+
+  // Tarjetas comparativas
+  const cards = document.getElementById('vps-cards');
+  if (cards && d.vps && d.fixed) {
+    const v = d.vps, f = d.fixed, c = d.comparison || {};
+    const vpsColor  = v.net_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const fixColor  = f.net_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const diffColor = (c.pnl_difference ?? 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    cards.innerHTML = `
+      <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid #7c3aed33">
+        <div style="font-size:.65rem;color:#a78bfa;font-weight:700;margin-bottom:4px">VPS NET P&L</div>
+        <div style="font-size:1.1rem;color:${vpsColor};font-weight:700">$${(v.net_pnl||0).toFixed(2)}</div>
+        <div style="font-size:.7rem;color:var(--muted)">ROI ${v.roi_pct??0}% | WR ${v.win_rate_pct??0}%</div>
+        <div style="font-size:.7rem;color:var(--muted)">Sharpe ${v.sharpe_ratio??0} | PF ${v.profit_factor??0}x</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid #374151">
+        <div style="font-size:.65rem;color:var(--muted);font-weight:700;margin-bottom:4px">FIXED $3.0 NET P&L</div>
+        <div style="font-size:1.1rem;color:${fixColor};font-weight:700">$${(f.net_pnl||0).toFixed(2)}</div>
+        <div style="font-size:.7rem;color:var(--muted)">ROI ${f.roi_pct??0}% | WR ${f.win_rate_pct??0}%</div>
+        <div style="font-size:.7rem;color:var(--muted)">Sharpe ${f.sharpe_ratio??0} | PF ${f.profit_factor??0}x</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid ${(c.pnl_difference??0)>=0?'#22c55e33':'#ef444433'}">
+        <div style="font-size:.65rem;color:var(--muted);font-weight:700;margin-bottom:4px">VENTAJA VPS</div>
+        <div style="font-size:1.1rem;color:${diffColor};font-weight:700">${(c.pnl_difference??0)>=0?'+':''}$${(c.pnl_difference||0).toFixed(2)}</div>
+        <div style="font-size:.7rem;color:var(--muted)">ROI Δ ${c.roi_difference??0} pp</div>
+        <div style="font-size:.7rem;color:var(--muted)">Sharpe Δ ${c.sharpe_difference??0}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid #374151">
+        <div style="font-size:.65rem;color:var(--muted);font-weight:700;margin-bottom:4px">EXPECTANCY / TRADE</div>
+        <div style="font-size:1.1rem;color:${(v.expectancy??0)>0?'var(--green)':'var(--red)'};font-weight:700">VPS $${(v.expectancy||0).toFixed(3)}</div>
+        <div style="font-size:.7rem;color:var(--muted)">Fixed $${(f.expectancy||0).toFixed(3)}</div>
+        <div style="font-size:.7rem;color:var(--muted)">Avg size VPS $${v.avg_position_size??0}</div>
+      </div>`;
+  }
+
+  // Tier breakdown (barras de progreso)
+  const tiersEl = document.getElementById('vps-tiers');
+  if (tiersEl && d.tier_breakdown) {
+    const tierMeta = {
+      aggressive:   { label: '≥75%  (size $10)', color: '#22c55e' },
+      high:         { label: '60-74% (size $7)',  color: '#84cc16' },
+      moderate:     { label: '45-59% (size $4)',  color: '#f59e0b' },
+      low_moderate: { label: '30-44% (size $2)',  color: '#f97316' },
+      minimal:      { label: '<30%   (size $0.5)',color: '#ef4444' },
+    };
+    tiersEl.innerHTML = Object.entries(tierMeta).map(([key, meta]) => {
+      const t = d.tier_breakdown[key] || {};
+      const wr = t.wr_pct ?? 0;
+      const pnlDiff = ((t.pnl_vps ?? 0) - (t.pnl_fixed ?? 0)).toFixed(2);
+      const diffColor = parseFloat(pnlDiff) >= 0 ? 'var(--green)' : 'var(--red)';
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:.72rem">
+        <div style="width:140px;color:var(--muted);flex-shrink:0">${meta.label}</div>
+        <div style="flex:1;background:var(--bg3);border-radius:3px;height:8px;overflow:hidden">
+          <div style="width:${wr}%;background:${meta.color};height:100%;border-radius:3px;transition:width .3s"></div>
+        </div>
+        <div style="width:40px;text-align:right;color:${meta.color};font-weight:600">${wr}%</div>
+        <div style="width:50px;text-align:right;color:var(--muted)">${t.trades ?? 0} trades</div>
+        <div style="width:65px;text-align:right;color:${diffColor};font-size:.68rem">VPS Δ ${parseFloat(pnlDiff)>=0?'+':''}$${pnlDiff}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Tabla de últimos trades
+  const tbody = document.getElementById('tbl-vps-trades');
+  if (tbody) {
+    const trades = d.recent_trades || [];
+    if (!trades.length) {
+      tbody.innerHTML = '<tr><td colspan="11" class="empty">Sin trades phantom aún — esperando que el bot detecte señales UpDown</td></tr>';
+    } else {
+      tbody.innerHTML = trades.map(t => {
+        const resColor = t.result === 'WIN' ? 'var(--green)' : t.result === 'LOSS' ? 'var(--red)' : 'var(--muted)';
+        const pnlDiff = t.pnl_difference !== null ? (t.pnl_difference >= 0 ? `+$${t.pnl_difference.toFixed(2)}` : `-$${Math.abs(t.pnl_difference).toFixed(2)}`) : '—';
+        const diffColor = t.pnl_difference !== null ? (t.pnl_difference >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
+        const tierColors = { aggressive:'#22c55e', high:'#84cc16', moderate:'#f59e0b', low_moderate:'#f97316', minimal:'#ef4444' };
+        const tc = tierColors[t.confidence_tier] || 'var(--muted)';
+        return `<tr>
+          <td style="white-space:nowrap">${(t.timestamp||'').substring(11,19)}</td>
+          <td>${t.market||'—'}</td>
+          <td style="color:${t.signal==='UP'?'var(--green)':'var(--red)'};font-weight:600">${t.signal||'—'}</td>
+          <td>${t.confidence_pct ?? '—'}%</td>
+          <td style="color:${tc};font-size:.68rem">${t.confidence_tier||'—'}</td>
+          <td style="color:#a78bfa;font-weight:600">$${t.position_size_vps ?? '—'}</td>
+          <td style="color:var(--muted)">$${t.position_size_fixed ?? '—'}</td>
+          <td style="color:${resColor};font-weight:600">${t.result||'PEND.'}</td>
+          <td style="color:${t.pnl_vps!==null?(t.pnl_vps>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_vps !== null ? (t.pnl_vps >= 0 ? `+$${t.pnl_vps.toFixed(2)}` : `$${t.pnl_vps.toFixed(2)}`) : '—'}</td>
+          <td style="color:${t.pnl_fixed!==null?(t.pnl_fixed>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_fixed !== null ? (t.pnl_fixed >= 0 ? `+$${t.pnl_fixed.toFixed(2)}` : `$${t.pnl_fixed.toFixed(2)}`) : '—'}</td>
+          <td style="color:${diffColor};font-weight:600">${pnlDiff}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+}
 </script>
 </body>
 </html>

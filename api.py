@@ -2038,6 +2038,43 @@ async def reload_bucket(market: str):
     return {"ok": True, "market": market, "bucket_usdc": target}
 
 
+# ── Experimento VPS-Confianza ──────────────────────────────────────────────
+
+@app.get("/api/vps-experiment")
+async def get_vps_experiment():
+    """Estado actual del experimento VPS-Confianza (phantom, sin dinero real)."""
+    try:
+        from vps_experiment import get_status as _vps_status
+        return _vps_status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/vps-experiment/daily-summary")
+async def vps_daily_summary():
+    """Fuerza generación del resumen del día actual del experimento VPS."""
+    try:
+        from vps_experiment import force_daily_summary as _vps_sum
+        return _vps_sum()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/vps-experiment/reset")
+async def reset_vps_experiment():
+    """Reinicia el experimento VPS eliminando los datos y empezando de nuevo."""
+    import os
+    try:
+        data_file = os.path.join("data", "vps_phantom_experiment.json")
+        if os.path.exists(data_file):
+            os.remove(data_file)
+        from vps_experiment import _load as _vps_load
+        _vps_load()  # crea estructura inicial
+        return {"ok": True, "msg": "Experimento reiniciado"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── WebSocket ──────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")

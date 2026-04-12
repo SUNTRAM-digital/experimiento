@@ -1489,6 +1489,31 @@ async def _scan_updown(interval_minutes: int):
                 f"UpDown {interval_minutes}m | PHANTOM {phantom_dir} registrado "
                 f"(confianza {phantom_conf:.0f}%, motivo={_ph_reason})",
             )
+            # ── Experimento VPS-Confianza (solo phantom, sin dinero real) ────
+            try:
+                from vps_experiment import record_phantom_vps as _vps_rec
+                _vps_rec(
+                    slug=slug,
+                    interval=interval_minutes,
+                    side=phantom_dir,
+                    confidence_pct=phantom_conf,
+                    btc_start=btc_price_start or 0,
+                    end_ts=end_ts,
+                    ta_scores={
+                        "combined":  _sig.get("combined", 0),
+                        "ta":        _sig.get("ta_raw", 0),
+                        "rsi":       _sig.get("rsi"),
+                        "macd":      _sig.get("macd_sig", 0),
+                        "ema":       _sig.get("ema_sig", 0),
+                        "momentum":  _sig.get("momentum", 0),
+                        "ofi":       _sig.get("ofi", 0),
+                        "market":    _sig.get("market_sig", 0),
+                        "macro":     _sig.get("macro", 0),
+                    },
+                    entry_price=opp["entry_price"] if opp else 0.50,
+                )
+            except Exception as _vps_err:
+                _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
 
     if not opp:
         _log("INFO", f"UpDown {interval_minutes}m | Sin entrada — {skip_reason}")
@@ -2032,6 +2057,13 @@ async def _resolve_pending_updown_outcomes():
             _rph(interval, pending, ph_won)
         except Exception as e:
             _log("WARN", f"UpDown phantom learner error: {e}")
+
+        # ── Experimento VPS-Confianza: resolver trade ────────────────────────
+        try:
+            from vps_experiment import resolve_phantom_vps as _vps_res
+            _vps_res(slug=ph_slug, btc_end=btc_end, won=ph_won)
+        except Exception as _vps_err:
+            _log("WARN", f"[VPS] Error resolviendo phantom: {_vps_err}")
 
         resolved_phantoms.append(ph_slug)
 
