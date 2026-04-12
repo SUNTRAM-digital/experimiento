@@ -24,12 +24,14 @@ PAYOUT_LOSS = -1.00   # pérdida  = size * -1.0
 EXPERIMENT_DAYS = 7
 
 # Mapeo confianza → (size_usdc, tier_name)
+# El mínimo es $3 (igual al fijo) — el experimento mide cuánto MÁS
+# genera apostar más en trades de alta confianza, nunca menos que la base.
 _TIERS = [
-    (75, 10.0, "aggressive"),
-    (60,  7.0, "high"),
-    (45,  4.0, "moderate"),
-    (30,  2.0, "low_moderate"),
-    ( 0,  0.5, "minimal"),
+    (75, 10.0, "aggressive"),   # ≥75%  → $10
+    (60,  8.0, "high"),         # 60-74% → $8
+    (45,  6.0, "moderate"),     # 45-59% → $6
+    (30,  4.0, "low_moderate"), # 30-44% → $4
+    ( 0,  3.0, "minimal"),      # <30%   → $3 (igual al fijo)
 ]
 
 
@@ -77,10 +79,10 @@ def _load() -> dict:
             "baseline_fixed_usdc": FIXED_BASELINE,
             "confidence_tiers": {
                 "aggressive":   {"min": 75, "max": 100, "size": 10.0},
-                "high":         {"min": 60, "max":  74, "size":  7.0},
-                "moderate":     {"min": 45, "max":  59, "size":  4.0},
-                "low_moderate": {"min": 30, "max":  44, "size":  2.0},
-                "minimal":      {"min":  0, "max":  29, "size":  0.5},
+                "high":         {"min": 60, "max":  74, "size":  8.0},
+                "moderate":     {"min": 45, "max":  59, "size":  6.0},
+                "low_moderate": {"min": 30, "max":  44, "size":  4.0},
+                "minimal":      {"min":  0, "max":  29, "size":  3.0},
             },
         },
         "trades": [],

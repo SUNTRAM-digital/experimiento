@@ -4886,11 +4886,11 @@ function _renderVpsExperiment(d) {
   const tiersEl = document.getElementById('vps-tiers');
   if (tiersEl && d.tier_breakdown) {
     const tierMeta = {
-      aggressive:   { label: '≥75%  (size $10)', color: '#22c55e' },
-      high:         { label: '60-74% (size $7)',  color: '#84cc16' },
-      moderate:     { label: '45-59% (size $4)',  color: '#f59e0b' },
-      low_moderate: { label: '30-44% (size $2)',  color: '#f97316' },
-      minimal:      { label: '<30%   (size $0.5)',color: '#ef4444' },
+      aggressive:   { label: '≥75%  → $10', color: '#22c55e' },
+      high:         { label: '60-74% → $8',  color: '#84cc16' },
+      moderate:     { label: '45-59% → $6',  color: '#f59e0b' },
+      low_moderate: { label: '30-44% → $4',  color: '#f97316' },
+      minimal:      { label: '<30%   → $3',  color: '#9ca3af' },
     };
     tiersEl.innerHTML = Object.entries(tierMeta).map(([key, meta]) => {
       const t = d.tier_breakdown[key] || {};
