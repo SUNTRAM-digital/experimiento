@@ -673,16 +673,24 @@ async def _scan_cycle():
                     cur_price = pos.get("cur_price", 0)
                     token_id  = pos.get("token_id", "")
                     # Actualizar racha UpDown si aplica (via precio posición redeemable)
+                    _ud_interval = None
                     if token_id in _updown_pending_outcomes:
                         pending = _updown_pending_outcomes.pop(token_id)
-                        interval = pending["interval"] if isinstance(pending, dict) else pending
+                        _ud_interval = pending["interval"] if isinstance(pending, dict) else pending
+                    else:
+                        # Bot reiniciado — buscar intervalo en historial de trades por token_id
+                        for _th in state.trade_history:
+                            if _th.get("token_id") == token_id:
+                                _ud_interval = _th.get("interval_minutes")
+                                break
+                    if _ud_interval:
                         won = cur_price > 0.5
-                        _update_updown_loss_streak(interval, won, None)
+                        _update_updown_loss_streak(_ud_interval, won, None)
                     if cur_price > 0.95:
                         # Ganamos — redimir para cobrar
                         _log("INFO", f"POSICIÓN GANADA PENDIENTE DE COBRO | {pos['market_title'][:50]} — ${pos['cur_value_usdc']:.2f} USDC")
                         # Patron 2: registrar resultado para win rate tracking
-                        _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
+                        _mtitle = pos.get("market_title","").lower(); _cat = "updown" if any(k in _mtitle for k in ("updown","up or down","up/down","btc")) or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
                         # Actualizar trade_history con resultado WIN + devolver stake al bucket
@@ -701,7 +709,7 @@ async def _scan_cycle():
                         # Perdimos — redimir a $0 para limpiar el portafolio
                         _log("WARN", f"POSICIÓN PERDIDA (${pos['pnl_usdc']:.2f}) | {pos['market_title'][:50]} — limpiando portafolio")
                         # Patron 2: registrar resultado para win rate tracking
-                        _cat = "updown" if "updown" in pos.get("market_title","").lower() or "btc" in pos.get("market_type","") else "weather"
+                        _mtitle = pos.get("market_title","").lower(); _cat = "updown" if any(k in _mtitle for k in ("updown","up or down","up/down","btc")) or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
                         # Actualizar trade_history con resultado LOSS
@@ -1326,6 +1334,13 @@ async def _scan_updown(interval_minutes: int):
     # No operar dos veces en el mismo ciclo de mercado
     if slug in _updown_traded_slugs:
         _log("INFO", f"UpDown {interval_minutes}m | Ya operado en este ciclo — esperando el siguiente")
+        return
+
+    # No operar si ya hay posición abierta en este mercado (protección post-restart)
+    _live_tokens = {p.get("token_id") for p in (state.poly_positions or [])}
+    if market["up_token"] in _live_tokens or market["down_token"] in _live_tokens:
+        _updown_traded_slugs.add(slug)  # marcar para no reintentar
+        _log("INFO", f"UpDown {interval_minutes}m | Posición ya abierta en {slug} — omitiendo trade duplicado")
         return
 
     # Obtener TA para el intervalo adecuado
