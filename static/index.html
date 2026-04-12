@@ -795,16 +795,16 @@
           <div style="font-size:1.3rem;font-weight:bold;color:var(--blue);font-family:monospace" id="btc-tab-price">—</div>
         </div>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
-          <span style="color:var(--muted);font-size:11px">Volatilidad 15m</span>
+          <span style="color:var(--muted);font-size:11px">Volatilidad 15m<span class="help-btn" onclick="showHelp('btc_tab_vol',event)">?</span></span>
           <div style="font-size:1.3rem;font-weight:bold;color:var(--yellow);font-family:monospace" id="btc-tab-vol">—</div>
         </div>
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
-          <span style="color:var(--muted);font-size:11px">TradingView</span>
+          <span style="color:var(--muted);font-size:11px">TradingView<span class="help-btn" onclick="showHelp('btc_tab_tv',event)">?</span></span>
           <div style="font-size:1rem;font-weight:bold;font-family:monospace" id="btc-tab-tv-rec">—</div>
           <div style="font-size:.72rem;color:var(--muted)" id="btc-tab-tv-detail"></div>
         </div>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
-          <span style="color:var(--muted);font-size:11px">CMC 1h / 24h</span>
+          <span style="color:var(--muted);font-size:11px">CMC 1h / 24h<span class="help-btn" onclick="showHelp('btc_tab_cmc',event)">?</span></span>
           <div style="font-size:.95rem;font-weight:bold;font-family:monospace" id="btc-tab-cmc">—</div>
         </div>
       </div>
@@ -813,10 +813,10 @@
       <div id="btc-ta-panel" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Indicadores TradingView</div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;font-family:monospace;font-size:.82rem">
-          <div><span style="color:var(--muted)">RSI: </span><span id="ta-rsi">—</span></div>
-          <div><span style="color:var(--muted)">EMA20: </span><span id="ta-ema20">—</span></div>
+          <div><span style="color:var(--muted)">RSI<span class="help-btn" onclick="showHelp('btc_ta_rsi',event)">?</span>: </span><span id="ta-rsi">—</span></div>
+          <div><span style="color:var(--muted)">EMA20<span class="help-btn" onclick="showHelp('btc_ta_ema',event)">?</span>: </span><span id="ta-ema20">—</span></div>
           <div><span style="color:var(--muted)">EMA50: </span><span id="ta-ema50">—</span></div>
-          <div><span style="color:var(--muted)">MACD: </span><span id="ta-macd">—</span></div>
+          <div><span style="color:var(--muted)">MACD<span class="help-btn" onclick="showHelp('btc_ta_macd',event)">?</span>: </span><span id="ta-macd">—</span></div>
           <div><span style="color:var(--muted)">Señales ↑: </span><span id="ta-buy" style="color:var(--green)">—</span></div>
           <div><span style="color:var(--muted)">Señales ↓: </span><span id="ta-sell" style="color:var(--red)">—</span></div>
           <div><span style="color:var(--muted)">Neutras: </span><span id="ta-neutral">—</span></div>
@@ -827,16 +827,16 @@
         <thead>
           <tr>
             <th>Título</th>
-            <th>Umbral</th>
-            <th>Dirección</th>
+            <th>Umbral<span class="help-btn" onclick="showHelp('btc_umbral',event)">?</span></th>
+            <th>Dirección<span class="help-btn" onclick="showHelp('btc_direction',event)">?</span></th>
             <th>BTC actual</th>
-            <th>Dist. %</th>
-            <th>Nuestra P</th>
-            <th>Mercado P</th>
-            <th>EV</th>
-            <th>TV Signal</th>
+            <th>Dist. %<span class="help-btn" onclick="showHelp('btc_dist',event)">?</span></th>
+            <th>Nuestra P<span class="help-btn" onclick="showHelp('opp_pnuestra',event)">?</span></th>
+            <th>Mercado P<span class="help-btn" onclick="showHelp('opp_pmercado',event)">?</span></th>
+            <th>EV<span class="help-btn" onclick="showHelp('opp_ev',event)">?</span></th>
+            <th>TV Signal<span class="help-btn" onclick="showHelp('btc_tab_tv',event)">?</span></th>
             <th>Cierra en</th>
-            <th>Tamaño</th>
+            <th>Tamaño<span class="help-btn" onclick="showHelp('opp_size',event)">?</span></th>
           </tr>
         </thead>
         <tbody id="tbl-btc"><tr><td colspan="11" class="empty">Sin oportunidades BTC — activa el bot con BTC habilitado</td></tr></tbody>
@@ -852,7 +852,7 @@
         <!-- 5m live card -->
         <div style="background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:14px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <span style="font-weight:bold;color:#60a5fa;font-size:.95rem">⚡ BTC Up/Down 5m</span>
+            <span style="font-weight:bold;color:#60a5fa;font-size:.95rem">⚡ BTC Up/Down 5m<span class="help-btn" onclick="showHelp('ud_market',event)">?</span></span>
             <span id="ud5-status-badge" style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:#1a4a2e;color:#3fb950">ACTIVO</span>
           </div>
           <!-- Mercado actual -->
@@ -875,10 +875,10 @@
           </div>
           <!-- TA Signal -->
           <div style="background:#111827;border-radius:6px;padding:8px 10px;margin-bottom:10px">
-            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Señal TradingView (1m)</div>
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Señal TradingView (1m)<span class="help-btn" onclick="showHelp('ud_ta_signal',event)">?</span></div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <span id="ud5-ta-rec" style="font-weight:bold;font-size:.9rem">—</span>
-              <span style="color:#6b7280;font-size:.78rem">RSI: <span id="ud5-ta-rsi" style="color:#f9fafb">—</span></span>
+              <span style="color:#6b7280;font-size:.78rem">RSI<span class="help-btn" onclick="showHelp('ud_rsi',event)">?</span>: <span id="ud5-ta-rsi" style="color:#f9fafb">—</span></span>
               <span style="color:#6b7280;font-size:.78rem">Signal: <span id="ud5-ta-signal" style="color:#f9fafb">—</span></span>
               <span style="color:#6b7280;font-size:.78rem">BTC: <span id="ud5-btc-price" style="color:#60a5fa;font-family:monospace">—</span></span>
             </div>
@@ -898,13 +898,13 @@
             <button id="btn-ud5-toggle" onclick="toggleUpdown(5)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#d1d5db;cursor:pointer">Desactivar</button>
             <button id="btn-ud5-reset" onclick="resetUpdown(5)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #374151;background:#111827;color:#6b7280;cursor:pointer" disabled>Reset pérd.</button>
           </div>
-          <div style="font-size:.72rem;color:#9ca3af;margin-top:6px">Pérdidas consecutivas: <span id="ud5-losses" style="color:#f9fafb;font-weight:bold">0</span> / <span id="ud5-max-losses">5</span></div>
+          <div style="font-size:.72rem;color:#9ca3af;margin-top:6px">Pérdidas consecutivas<span class="help-btn" onclick="showHelp('ud_consec_losses',event)">?</span>: <span id="ud5-losses" style="color:#f9fafb;font-weight:bold">0</span> / <span id="ud5-max-losses">5</span></div>
         </div>
 
         <!-- 15m live card -->
         <div style="background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:14px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <span style="font-weight:bold;color:#a78bfa;font-size:.95rem">⚡ BTC Up/Down 15m</span>
+            <span style="font-weight:bold;color:#a78bfa;font-size:.95rem">⚡ BTC Up/Down 15m<span class="help-btn" onclick="showHelp('ud_market',event)">?</span></span>
             <span id="ud15-status-badge" style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:#1a4a2e;color:#3fb950">ACTIVO</span>
           </div>
           <!-- Mercado actual -->
@@ -927,10 +927,10 @@
           </div>
           <!-- TA Signal -->
           <div style="background:#111827;border-radius:6px;padding:8px 10px;margin-bottom:10px">
-            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Señal TradingView (5m)</div>
+            <div style="font-size:.65rem;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Señal TradingView (5m)<span class="help-btn" onclick="showHelp('ud_ta_signal',event)">?</span></div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <span id="ud15-ta-rec" style="font-weight:bold;font-size:.9rem">—</span>
-              <span style="color:#6b7280;font-size:.78rem">RSI: <span id="ud15-ta-rsi" style="color:#f9fafb">—</span></span>
+              <span style="color:#6b7280;font-size:.78rem">RSI<span class="help-btn" onclick="showHelp('ud_rsi',event)">?</span>: <span id="ud15-ta-rsi" style="color:#f9fafb">—</span></span>
               <span style="color:#6b7280;font-size:.78rem">Signal: <span id="ud15-ta-signal" style="color:#f9fafb">—</span></span>
               <span style="color:#6b7280;font-size:.78rem">BTC: <span id="ud15-btc-price" style="color:#60a5fa;font-family:monospace">—</span></span>
             </div>
@@ -950,7 +950,7 @@
             <button id="btn-ud15-toggle" onclick="toggleUpdown(15)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#d1d5db;cursor:pointer">Desactivar</button>
             <button id="btn-ud15-reset" onclick="resetUpdown(15)" style="flex:1;padding:4px 0;font-size:.75rem;border-radius:5px;border:1px solid #374151;background:#111827;color:#6b7280;cursor:pointer" disabled>Reset pérd.</button>
           </div>
-          <div style="font-size:.72rem;color:#9ca3af;margin-top:6px">Pérdidas consecutivas: <span id="ud15-losses" style="color:#f9fafb;font-weight:bold">0</span> / <span id="ud15-max-losses">5</span></div>
+          <div style="font-size:.72rem;color:#9ca3af;margin-top:6px">Pérdidas consecutivas<span class="help-btn" onclick="showHelp('ud_consec_losses',event)">?</span>: <span id="ud15-losses" style="color:#f9fafb;font-weight:bold">0</span> / <span id="ud15-max-losses">5</span></div>
         </div>
       </div>
 
@@ -960,14 +960,14 @@
           <div style="font-weight:bold;color:#f9fafb;margin-bottom:10px;font-size:.85rem">Parámetros UpDown</div>
           <div style="display:flex;gap:16px;flex-wrap:wrap">
             <div style="font-size:.8rem">
-              <label style="color:#9ca3af">Max USDC / trade</label>
+              <label style="color:#9ca3af">Max USDC / trade<span class="help-btn" onclick="showHelp('max_trade',event)">?</span></label>
               <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
                 <input type="number" id="ud-max-usdc-input" value="1" min="0.5" max="100" step="0.5" style="width:70px;background:#1f2937;border:1px solid #374151;color:#f9fafb;border-radius:4px;padding:3px 6px;font-size:.8rem">
                 <span style="color:#6b7280;font-size:.75rem">USDC</span>
               </div>
             </div>
             <div style="font-size:.8rem">
-              <label style="color:#9ca3af">Máx. pérdidas consec.</label>
+              <label style="color:#9ca3af">Máx. pérdidas consec.<span class="help-btn" onclick="showHelp('ud_consec_losses',event)">?</span></label>
               <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
                 <input type="number" id="ud-max-losses-input" value="5" min="1" max="20" step="1" style="width:55px;background:#1f2937;border:1px solid #374151;color:#f9fafb;border-radius:4px;padding:3px 6px;font-size:.8rem">
                 <span style="color:#6b7280;font-size:.75rem">trades</span>
@@ -979,7 +979,7 @@
             </div>
           </div>
           <div style="margin-top:8px;font-size:.72rem;color:#818cf8">
-            Max $<span id="ud-info-maxusdc">1</span> USDC · Para tras <span id="ud-info-maxlosses">5</span> pérdidas consecutivas · Resuelve vía Chainlink BTC/USD
+            Max $<span id="ud-info-maxusdc">1</span> USDC · Para tras <span id="ud-info-maxlosses">5</span> pérdidas consecutivas · Resuelve vía Chainlink BTC/USD<span class="help-btn" onclick="showHelp('ud_market',event)">?</span>
           </div>
         </div>
       </div>
@@ -1010,12 +1010,12 @@
               <th>Lado</th>
               <th>Precio entrada</th>
               <th>Tamaño</th>
-              <th>Confianza</th>
-              <th>Momentum</th>
-              <th>TA Señal</th>
-              <th>RSI</th>
-              <th>Claude</th>
-              <th>Resultado</th>
+              <th>Confianza<span class="help-btn" onclick="showHelp('ud_confidence',event)">?</span></th>
+              <th>Momentum<span class="help-btn" onclick="showHelp('ud_momentum',event)">?</span></th>
+              <th>TA Señal<span class="help-btn" onclick="showHelp('ud_ta_signal',event)">?</span></th>
+              <th>RSI<span class="help-btn" onclick="showHelp('ud_rsi',event)">?</span></th>
+              <th>Claude<span class="help-btn" onclick="showHelp('ud_claude_col',event)">?</span></th>
+              <th>Resultado<span class="help-btn" onclick="showHelp('ud_resultado',event)">?</span></th>
             </tr>
           </thead>
           <tbody id="tbl-updown-history"><tr><td colspan="11" class="empty">Sin trades UpDown aún — el bot operará cuando encuentre edge suficiente</td></tr></tbody>
@@ -1040,13 +1040,13 @@
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
             <b style="color:var(--text)">Fuente:</b> NOAA weather.gov (sin API key) + OpenMeteo ensemble<br>
             <b style="color:var(--text)">Señal:</b> Probabilidad gaussiana sobre umbral de temperatura (incertidumbre 2.5°F/3.5°F/5°F según horizonte)<br>
-            <b style="color:var(--text)">Sizing:</b> Kelly fraccionado × presupuesto clima<br>
+            <b style="color:var(--text)">Sizing:</b> Kelly fraccionado<span class="help-btn" onclick="showHelp('kelly',event)">?</span> × presupuesto clima<br>
             <b style="color:var(--text)">Filtros:</b> EV mínimo, liquidez, spread, horas al cierre<br>
-            <b style="color:var(--text)">Lawyer's Edge (F4):</b> Parser ICAO, boundary zones, reglas de resolución por tipo de dato<br>
-            <b style="color:var(--text)">Near-zero (F5):</b> Entradas &lt;8¢ de alta asimetría detectadas<br>
-            <b style="color:var(--text)">Risk (F6):</b> Circuit breaker, cash buffer, auto-sizing por rachas<br>
+            <b style="color:var(--text)">Lawyer's Edge (F4):<span class="help-btn" onclick="showHelp('strat_lawyers_edge',event)">?</span></b> Parser ICAO, boundary zones, reglas de resolución por tipo de dato<br>
+            <b style="color:var(--text)">Near-zero (F5):<span class="help-btn" onclick="showHelp('strat_near_zero',event)">?</span></b> Entradas &lt;8¢ de alta asimetría detectadas<br>
+            <b style="color:var(--text)">Risk (F6):<span class="help-btn" onclick="showHelp('strat_circuit_breaker',event)">?</span></b> Circuit breaker, cash buffer, auto-sizing por rachas<br>
             <b style="color:var(--text)">ML (F7):</b> Warming/Cooling Model + Ensemble Calibrator NOAA/OpenMeteo<br>
-            <b style="color:var(--text)">Backtesting (F3):</b> 4 estrategias probadas históricamente (value, momentum, contrarian, combined)<br>
+            <b style="color:var(--text)">Backtesting (F3):<span class="help-btn" onclick="showHelp('strat_backtest',event)">?</span></b> 4 estrategias probadas históricamente (value, momentum, contrarian, combined)<br>
             <b style="color:var(--text)">Aprobación:</b> Claude API (acceso total: logs, params, historial)
           </div>
           <div id="strat-weather-params" style="margin-top:10px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"></div>
@@ -1060,7 +1060,7 @@
             <b style="color:var(--text)">Señal:</b> Modelo log-normal: P(BTC sobre/bajo umbral) con volatilidad histórica (klines)<br>
             <b style="color:var(--text)">Filtros:</b> EV mínimo, confirmación TA (RSI + recomendación), horas al cierre<br>
             <b style="color:var(--text)">Patrones (F2):</b> Category tracker, contrarian logger, exit monitor, P2 win rate decay<br>
-            <b style="color:var(--text)">Screener (F3):</b> Value + momentum screener, Bayesian updating, capital velocity<br>
+            <b style="color:var(--text)">Screener (F3):</b> Value + momentum screener, Bayesian updating<span class="help-btn" onclick="showHelp('strat_bayesian',event)">?</span>, capital velocity<br>
             <b style="color:var(--text)">Wallet Tracker (F5):</b> Señales de smart wallets detectadas en Polymarket<br>
             <b style="color:var(--text)">Risk (F6):</b> Heatmap de riesgo, circuit breaker por tipo de mercado<br>
             <b style="color:var(--text)">ML (F7):</b> Pesos adaptativos por fuente, ensemble calibrator<br>
@@ -1074,11 +1074,11 @@
           <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:8px">⚡ ESTRATEGIA UPDOWN BTC</div>
           <div style="font-size:.75rem;color:var(--muted);line-height:1.7">
             <b style="color:var(--text)">Fuente:</b> TradingView TA (RSI, EMA20/50, MACD, señal) + momentum ventana + CMC macro 1h<br>
-            <b style="color:var(--text)">Señal 5m:</b> TA×0.55 + momentum invertido×0.25 + mercado×0.10 + macro×0.10 (mean-reversion)<br>
-            <b style="color:var(--text)">Señal 15m:</b> TA×0.70 + momentum×0.20 + macro×0.10 (trend-following)<br>
-            <b style="color:var(--text)">Learner (F8):</b> Ajusta umbrales automáticamente por WR, precisión TA, timing, lado, rachas<br>
-            <b style="color:var(--text)">Phantom (F9):</b> Registra apuestas fantasma en CADA mercado — aprende de señales no ejecutadas<br>
-            <b style="color:var(--text)">Performance (F8):</b> Resource dashboard, learner adaptativo por intervalo<br>
+            <b style="color:var(--text)">Señal 5m:<span class="help-btn" onclick="showHelp('ud_mean_rev',event)">?</span></b> TA×0.55 + momentum invertido×0.25 + mercado×0.10 + macro×0.10 (mean-reversion)<br>
+            <b style="color:var(--text)">Señal 15m:<span class="help-btn" onclick="showHelp('ud_trend',event)">?</span></b> TA×0.70 + momentum×0.20 + macro×0.10 (trend-following)<br>
+            <b style="color:var(--text)">Learner (F8):<span class="help-btn" onclick="showHelp('strat_learner',event)">?</span></b> Ajusta umbrales automáticamente por WR, precisión TA, timing, lado, rachas<br>
+            <b style="color:var(--text)">Phantom (F9):<span class="help-btn" onclick="showHelp('phantom_bet',event)">?</span></b> Registra apuestas fantasma en CADA mercado — aprende de señales no ejecutadas<br>
+            <b style="color:var(--text)">Performance (F8):</b> Resource dashboard, learner adaptativo<span class="help-btn" onclick="showHelp('strat_learner',event)">?</span> por intervalo<br>
             <b style="color:var(--text)">Risk (F6):</b> Max consecutive losses, stop automático, presupuesto aislado<br>
             <b style="color:var(--text)">Aprobación:</b> Claude API puede cambiar dirección si detecta señales más fuertes
           </div>
@@ -1143,7 +1143,7 @@
           <div id="tx-status" style="font-size:1.1rem;font-weight:700;color:var(--green)">—</div>
         </div>
         <div class="card">
-          <div class="label">Smart Wallets Rastreados</div>
+          <div class="label">Smart Wallets Rastreados<span class="help-btn" onclick="showHelp('tx_smart_wallet',event)">?</span></div>
           <div id="tx-wallet-count" style="font-size:1.6rem;font-weight:700">—</div>
         </div>
         <div class="card">
@@ -1153,15 +1153,15 @@
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
         <div class="card">
-          <div class="label">Fills on-chain (24h)</div>
+          <div class="label">Fills on-chain (24h)<span class="help-btn" onclick="showHelp('tx_fills',event)">?</span></div>
           <div id="tx-fills-24h" style="font-size:1.4rem;font-weight:700">—</div>
         </div>
         <div class="card">
-          <div class="label">Volumen on-chain (24h)</div>
+          <div class="label">Volumen on-chain (24h)<span class="help-btn" onclick="showHelp('tx_vol',event)">?</span></div>
           <div id="tx-vol-24h" style="font-size:1.4rem;font-weight:700">—</div>
         </div>
         <div class="card">
-          <div class="label">OFI promedio (última ventana)</div>
+          <div class="label">OFI promedio (última ventana)<span class="help-btn" onclick="showHelp('tx_ofi',event)">?</span></div>
           <div id="tx-ofi-last" style="font-size:1.4rem;font-weight:700">—</div>
         </div>
       </div>
@@ -1177,10 +1177,10 @@
               <tr style="color:var(--muted);text-align:left">
                 <th style="padding:4px 8px">#</th>
                 <th style="padding:4px 8px">Wallet</th>
-                <th style="padding:4px 8px">PnL 7d</th>
+                <th style="padding:4px 8px">PnL 7d<span class="help-btn" onclick="showHelp('tx_pnl7d',event)">?</span></th>
                 <th style="padding:4px 8px">Trades</th>
-                <th style="padding:4px 8px">Score</th>
-                <th style="padding:4px 8px">Sesgo UP%</th>
+                <th style="padding:4px 8px">Score<span class="help-btn" onclick="showHelp('tx_score',event)">?</span></th>
+                <th style="padding:4px 8px">Sesgo UP%<span class="help-btn" onclick="showHelp('tx_bias_up',event)">?</span></th>
               </tr>
             </thead>
             <tbody id="tx-wallets-body">
@@ -1196,89 +1196,98 @@
       <!-- Estado del sistema -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
         <div class="card">
-          <div class="label">Sistema</div>
+          <div class="label">Sistema<span class="help-btn" onclick="showHelp('cap_sistema',event)">?</span></div>
           <div id="cap-active" style="font-size:1.1rem;font-weight:700">—</div>
         </div>
         <div class="card">
-          <div class="label">Pool de Apuestas</div>
+          <div class="label">Pool de Apuestas<span class="help-btn" onclick="showHelp('cap_pool',event)">?</span></div>
           <div id="cap-pool" style="font-size:1.6rem;font-weight:700">—</div>
         </div>
         <div class="card">
-          <div class="label">Cash Libre</div>
+          <div class="label">Cash Libre<span class="help-btn" onclick="showHelp('cap_cash_free',event)">?</span></div>
           <div id="cap-cash-free" style="font-size:1.6rem;font-weight:700;color:var(--green)">—</div>
         </div>
       </div>
 
       <!-- Buckets actuales -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Saldo de Buckets</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Saldo de Buckets<span class="help-btn" onclick="showHelp('cap_bucket',event)">?</span></div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px" id="cap-buckets">
           <div class="card" style="text-align:center">
             <div class="label">⛅ Weather</div>
             <div id="bkt-weather" style="font-size:1.4rem;font-weight:700">—</div>
             <div id="bkt-weather-pct" style="font-size:.75rem;color:var(--muted)">—</div>
-            <button onclick="reloadBucket('weather')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+            <button onclick="reloadBucket('weather')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar<span class="help-btn" onclick="event.stopPropagation();showHelp('cap_reload',event)" style="margin-left:4px">?</span></button>
           </div>
           <div class="card" style="text-align:center">
             <div class="label">₿ BTC</div>
             <div id="bkt-btc" style="font-size:1.4rem;font-weight:700">—</div>
             <div id="bkt-btc-pct" style="font-size:.75rem;color:var(--muted)">—</div>
-            <button onclick="reloadBucket('btc')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+            <button onclick="reloadBucket('btc')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar<span class="help-btn" onclick="event.stopPropagation();showHelp('cap_reload',event)" style="margin-left:4px">?</span></button>
           </div>
           <div class="card" style="text-align:center">
             <div class="label">⚡ UpDown 5m</div>
             <div id="bkt-updown5" style="font-size:1.4rem;font-weight:700">—</div>
             <div id="bkt-updown5-pct" style="font-size:.75rem;color:var(--muted)">—</div>
-            <button onclick="reloadBucket('updown_5m')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+            <button onclick="reloadBucket('updown_5m')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar<span class="help-btn" onclick="event.stopPropagation();showHelp('cap_reload',event)" style="margin-left:4px">?</span></button>
           </div>
           <div class="card" style="text-align:center">
             <div class="label">⚡ UpDown 15m</div>
             <div id="bkt-updown15" style="font-size:1.4rem;font-weight:700">—</div>
             <div id="bkt-updown15-pct" style="font-size:.75rem;color:var(--muted)">—</div>
-            <button onclick="reloadBucket('updown_15m')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar</button>
+            <button onclick="reloadBucket('updown_15m')" style="margin-top:8px;padding:4px 10px;background:#1e40af;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:.75rem">Recargar<span class="help-btn" onclick="event.stopPropagation();showHelp('cap_reload',event)" style="margin-left:4px">?</span></button>
           </div>
         </div>
       </div>
 
-      <!-- Formulario de asignación -->
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Asignar Capital</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div>
+      <!-- Formulario 1: Asignar pool USDC -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Asignar Pool de Apuestas</div>
+        <div style="display:flex;gap:12px;align-items:flex-end">
+          <div style="flex:1;max-width:240px">
             <label style="font-size:.8rem;color:var(--muted)">Pool de Apuestas (USDC)</label>
             <input id="cap-inp-pool" type="number" step="0.01" min="0" placeholder="ej. 50.00"
               style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div>
-              <label style="font-size:.8rem;color:var(--muted)">Weather %</label>
-              <input id="cap-inp-w" type="number" step="1" min="0" max="100" placeholder="20"
-                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
-            </div>
-            <div>
-              <label style="font-size:.8rem;color:var(--muted)">BTC %</label>
-              <input id="cap-inp-b" type="number" step="1" min="0" max="100" placeholder="20"
-                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
-            </div>
-            <div>
-              <label style="font-size:.8rem;color:var(--muted)">UpDown 5m %</label>
-              <input id="cap-inp-u5" type="number" step="1" min="0" max="100" placeholder="15"
-                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
-            </div>
-            <div>
-              <label style="font-size:.8rem;color:var(--muted)">UpDown 15m %</label>
-              <input id="cap-inp-u15" type="number" step="1" min="0" max="100" placeholder="45"
-                style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
-            </div>
+          <button onclick="savePool()" style="padding:8px 18px;background:#059669;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600">Asignar Pool</button>
+          <span id="cap-msg-pool" style="font-size:.8rem;color:var(--green)"></span>
+        </div>
+        <div style="margin-top:8px;font-size:.75rem;color:var(--muted)">
+          Pool=0 desactiva buckets y usa el sistema legacy (% del balance total).
+        </div>
+      </div>
+
+      <!-- Formulario 2: Porcentajes por mercado -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">Porcentajes por Mercado<span class="help-btn" onclick="showHelp('cap_pct',event)">?</span></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div>
+            <label style="font-size:.8rem;color:var(--muted)">⛅ Weather %</label>
+            <input id="cap-inp-w" type="number" step="1" min="0" max="100" placeholder="20"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+          </div>
+          <div>
+            <label style="font-size:.8rem;color:var(--muted)">₿ BTC %</label>
+            <input id="cap-inp-b" type="number" step="1" min="0" max="100" placeholder="20"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+          </div>
+          <div>
+            <label style="font-size:.8rem;color:var(--muted)">⚡ UpDown 5m %</label>
+            <input id="cap-inp-u5" type="number" step="1" min="0" max="100" placeholder="15"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
+          </div>
+          <div>
+            <label style="font-size:.8rem;color:var(--muted)">⚡ UpDown 15m %</label>
+            <input id="cap-inp-u15" type="number" step="1" min="0" max="100" placeholder="45"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);margin-top:4px">
           </div>
         </div>
         <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
-          <button onclick="assignCapital()" style="padding:8px 18px;background:#059669;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600">Asignar y Recargar Buckets</button>
-          <button onclick="assignCapital(false)" style="padding:8px 18px;background:#374151;border:none;border-radius:6px;color:#fff;cursor:pointer">Solo guardar %</button>
-          <span id="cap-msg" style="font-size:.8rem;color:var(--green)"></span>
+          <button onclick="savePcts(true)" style="padding:8px 18px;background:#059669;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600">Guardar % y Recargar Buckets</button>
+          <button onclick="savePcts(false)" style="padding:8px 18px;background:#374151;border:none;border-radius:6px;color:#fff;cursor:pointer">Solo guardar %</button>
+          <span id="cap-msg-pct" style="font-size:.8rem;color:var(--green)"></span>
         </div>
         <div style="margin-top:8px;font-size:.75rem;color:var(--muted)">
-          Pool=0 desactiva el sistema de buckets y usa el sistema legacy (% del total de cuenta).
           Los porcentajes deben sumar ≤ 100%.
         </div>
       </div>
@@ -1499,6 +1508,50 @@ const HELP = {
   pos_costo:   { t:'Capital invertido', b:'Dinero total que pusiste en esta posición = Shares × Precio de entrada. Este dinero está comprometido hasta que el mercado cierre o vendas.' },
   pos_valor:   { t:'Valor actual', b:'Cuánto valen tus shares ahora = Shares × Precio actual. Si es mayor al costo, llevas ganancia no realizada.' },
   pos_pnl:     { t:'P&L (ganancia/pérdida)', b:'Diferencia entre el valor actual y lo que pagaste. No se realiza hasta que el mercado cierra o vendes manualmente. En mercados de clima, normalmente esperas al cierre.' },
+  // Capital buckets
+  cap_sistema:  { t:'Sistema de capital activo', b:'El bot puede operar en dos modos:\n• Sistema de Buckets (activo) = asignaste un Pool fijo en USDC. Cada mercado tiene su propio "vaso" de capital que se gasta y se repone.\n• Sistema Legacy (%) = el bot usa % del balance total de tu cuenta. Más simple pero sin separación por mercado.\nSi el Pool = 0 → modo legacy automático.' },
+  cap_pool:     { t:'Pool de Apuestas', b:'Cantidad total de USDC reservada para apostar. Solo este dinero se usa para trades — el resto de tu cuenta queda "fuera de juego".\nEjemplo: tienes $200 en Polymarket, asignas Pool=$50. El bot solo apuesta con esos $50, el resto nunca se toca.' },
+  cap_cash_free:{ t:'Cash Libre', b:'Dinero en tu cuenta que NO está asignado a ningún bucket ni en posiciones abiertas.\nFórmula: Cash libre = Balance total − Suma de todos los buckets\nSi este número baja mucho, el bot podría no tener fondos para ejecutar trades.' },
+  cap_bucket:   { t:'Bucket (cubo de capital)', b:'Un bucket es la reserva de USDC asignada a UN tipo de mercado específico. Funciona como un "cajita" separada:\n• Se descuenta cuando el bot entra a un trade de ese mercado\n• Se repone (parcialmente) si el trade GANA\n• Puedes "recargar" el bucket manualmente desde el Pool\nVentaja: si UpDown pierde mucho, no afecta el dinero de Weather.' },
+  cap_reload:   { t:'Recargar bucket', b:'Restaura el bucket al valor que le corresponde según su %.\nEjemplo: Pool=$50, Weather=20% → bucket Weather se llena a $10.\nÚsalo cuando un bucket quedó vacío por pérdidas y quieres darle capital nuevo.' },
+  cap_pct:      { t:'Porcentaje de mercado', b:'Qué % del Pool total va a cada tipo de mercado.\nEjemplo con Pool=$100:\n• Weather 20% → $20 para apostar en clima\n• BTC 20% → $20 para predicciones BTC\n• UpDown 5m 15% → $15 para sube/baja 5 minutos\n• UpDown 15m 45% → $45 para sube/baja 15 minutos\nDeben sumar ≤ 100%.' },
+  // Telonex / on-chain
+  tx_smart_wallet: { t:'Smart Wallets', b:'Carteras de Polymarket identificadas por tener historial consistentemente rentable. Son traders que presumiblemente tienen información de calidad o modelos mejores que el mercado.\nEl bot observa en qué mercados apuestan y en qué dirección para usarlo como señal adicional.' },
+  tx_fills:     { t:'Fills on-chain (24h)', b:'Número de órdenes ejecutadas en la blockchain de Polygon en las últimas 24 horas. Cada "fill" es una transacción real que compró o vendió shares.\nAlto volumen de fills = mercado muy activo → señales más confiables.' },
+  tx_vol:       { t:'Volumen on-chain (24h)', b:'Valor en USDC de todas las transacciones en la blockchain en las últimas 24 horas. Diferente al volumen del libro de órdenes: este es el dinero que realmente cambió de manos on-chain.' },
+  tx_ofi:       { t:'OFI — Order Flow Imbalance', b:'Indicador que mide el desbalance entre compras y ventas en el libro de órdenes on-chain.\n• OFI > 0 = más presión compradora que vendedora\n• OFI < 0 = más presión vendedora\n• OFI cercano a 0 = equilibrio\nUn OFI alto y positivo en UP sugiere que los smart wallets están comprando UP agresivamente.' },
+  tx_pnl7d:     { t:'PnL 7 días', b:'Ganancia o pérdida neta de esa wallet en los últimos 7 días, en USDC. Wallets con PnL 7d positivo consistente son consideradas "smart". Nos interesa copiar su dirección en mercados donde tengan posición.' },
+  tx_score:     { t:'Score de wallet', b:'Puntuación compuesta (0-1) basada en win rate, PnL total, consistencia y antigüedad de la wallet.\n• 0.8+ = wallet de muy alta calidad (raramente se equivoca)\n• 0.5-0.8 = wallet moderadamente confiable\n• <0.5 = wallet con historial mezclado\nEl bot pesa más las señales de wallets con score alto.' },
+  tx_bias_up:   { t:'Sesgo UP%', b:'Qué % de las últimas apuestas de esa wallet fueron en dirección UP (precio sube).\n• 70% = wallet optimista, tiende a apostar que BTC sube\n• 30% = wallet bajista\n• 50% = sin sesgo direccional\nÚtil para detectar si el consenso de smart wallets tiene una postura direccional clara.' },
+  // UpDown markets
+  ud_market:    { t:'Mercados Up/Down BTC', b:'Mercados de Polymarket resueltos por Chainlink: "¿subirá o bajará el precio de BTC en los próximos X minutos?"\n• UP = apuestas que BTC termina MÁS ALTO que al inicio del período\n• DOWN = apuestas que BTC termina MÁS BAJO\nNo es predicción de precio absoluto — solo dirección relativa. Se resuelven automáticamente por el oráculo on-chain.' },
+  ud_ta_signal: { t:'Señal TradingView', b:'Recomendación del análisis técnico de TradingView calculada sobre BTC/USDT.\n• STRONG_BUY / BUY = indicadores apuntan a subida\n• STRONG_SELL / SELL = indicadores apuntan a bajada\n• NEUTRAL = señales mixtas\nSe calcula con RSI, EMAs, MACD, Stoch y otras osciladores. Para 5m usa velas de 1 minuto, para 15m usa velas de 5 minutos.' },
+  ud_rsi:       { t:'RSI — Relative Strength Index', b:'Indicador de momentum que mide si BTC está sobrecomprado o sobrevendido (0-100).\n• RSI > 70 = sobrecomprado → posible reversión a la baja\n• RSI < 30 = sobrevendido → posible rebote al alza\n• RSI 40-60 = zona neutral\nEl bot de 5m opera con lógica mean-reversion (opuesto al RSI extremo), el de 15m sigue tendencia.' },
+  ud_confidence:{ t:'Confianza del trade', b:'Qué tan fuerte fue la señal que generó este trade (0-1).\nCombina: fuerza de la señal TA + confirmación del modelo de precios + alineación con momentum.\n• 0.8+ = señal muy fuerte, bot apostó con mayor convicción\n• 0.5-0.7 = señal moderada\n• <0.5 = señal débil (bot pudo haber reducido tamaño)' },
+  ud_momentum:  { t:'Momentum de precio', b:'Dirección y velocidad del movimiento reciente de BTC.\n• Positivo (+) = BTC subiendo en la ventana de tiempo analizada\n• Negativo (−) = BTC bajando\nPara 5m (mean-reversion): momentum alto = bot apuesta DOWN (espera corrección)\nPara 15m (trend-following): momentum alto = bot apuesta UP (espera continuación)' },
+  ud_consec_losses: { t:'Pérdidas consecutivas', b:'Número de trades seguidos que resultaron en pérdida. El bot tiene un límite configurado: si supera ese número, se pausa automáticamente para ese intervalo.\nEvita el "tilt" — perder mucho en una racha sin detenerse a revisar si la estrategia sigue siendo válida.' },
+  ud_claude_col:{ t:'Decisión de Claude', b:'Si Claude intervino en este trade:\n• ✓ aprobado = Claude revisó la oportunidad y dio luz verde\n• 🔄 modificado = Claude cambió la dirección o el tamaño\n• — = trade automático sin revisión de Claude\n• 👻 fantasma = trade registrado pero NO ejecutado (para aprendizaje)' },
+  ud_resultado: { t:'Resultado del trade', b:'Estado final del trade UpDown:\n• WIN ✓ = BTC fue en la dirección apostada → ganamos ~$1/share\n• LOSS ✗ = BTC fue en dirección contraria → perdemos lo apostado\n• PENDING = mercado aún no cerró\n• VOID = mercado cancelado (raro, ocurre si Chainlink no reporta)\nLos UpDown son binarios: no hay salida anticipada.' },
+  ud_mean_rev:  { t:'Mean-Reversion (5m)', b:'Estrategia que apuesta a que el precio vuelve a su media. Si BTC subió rápido → apuesta DOWN esperando corrección.\nFunciona bien en períodos muy cortos (5m) donde los movimientos extremos suelen revertir.\nContrario a tendencia: si RSI está alto (sobrecomprado), apuesta a la baja.' },
+  ud_trend:     { t:'Trend-Following (15m)', b:'Estrategia que apuesta en la misma dirección del momentum actual. Si BTC está subiendo → apuesta UP esperando continuación.\nFunciona en períodos más largos (15m) donde las tendencias tienen más inercia.\nA favor de tendencia: si RSI está alto, apuesta arriba.' },
+  // BTC tab
+  btc_tab_vol:  { t:'Volatilidad histórica BTC (15m)', b:'Desviación estándar del precio de BTC calculada sobre los últimos 15 minutos de velas 1m. Se usa en el modelo log-normal para estimar la probabilidad de que el precio cruce un umbral.\n• Alta volatilidad → más incertidumbre → probabilidades más cercanas a 50%\n• Baja volatilidad → el mercado se mueve menos → probabilidades más extremas' },
+  btc_tab_tv:   { t:'Señal TradingView BTC', b:'Recomendación de análisis técnico de TradingView para BTC/USDT en timeframe de 15m. Combina osciladores y promedios móviles.\n• STRONG_BUY = muy alcista\n• BUY = algo alcista\n• NEUTRAL = sin dirección clara\n• SELL / STRONG_SELL = bajista\nSe usa como filtro de confirmación: el bot prefiere trades alineados con la señal TV.' },
+  btc_tab_cmc:  { t:'CoinMarketCap — cambio 1h / 24h', b:'Variación % del precio de BTC según CoinMarketCap en las últimas 1 hora y 24 horas.\nSe usa como contexto macro:\n• Cambio 1h = momentum reciente\n• Cambio 24h = tendencia del día\nSi ambos son muy negativos, el bot es más cauteloso con trades de predicción BTC.' },
+  btc_ta_rsi:   { t:'RSI (Relative Strength Index)', b:'Oscilador de momentum 0-100 para BTC en timeframe 15m.\n• >70 = sobrecomprado (posible techo)\n• <30 = sobrevendido (posible suelo)\n• 40-60 = zona neutral\nAl combinarlo con el modelo de precio, el bot puede ajustar la probabilidad calculada.' },
+  btc_ta_ema:   { t:'EMA — Exponential Moving Average', b:'Promedio móvil exponencial del precio de BTC.\n• EMA20 = promedio ponderado de las últimas 20 velas (corto plazo)\n• EMA50 = promedio ponderado de las últimas 50 velas (mediano plazo)\nSi precio > EMA20 > EMA50 → tendencia alcista\nSi precio < EMA20 < EMA50 → tendencia bajista' },
+  btc_ta_macd:  { t:'MACD — Moving Average Convergence/Divergence', b:'Indicador de tendencia y momentum.\n• MACD > 0 = momentum alcista (EMA rápida sobre EMA lenta)\n• MACD < 0 = momentum bajista\n• Cruce de señal = posible cambio de tendencia\nEl bot usa el valor del MACD como uno de los inputs para el score técnico.' },
+  btc_umbral:   { t:'Umbral de precio', b:'El precio exacto de BTC al que se resuelve el mercado.\nEjemplo: "¿estará BTC sobre $95,000 al cierre?" → el umbral es $95,000.\nEl bot calcula la probabilidad usando distribución log-normal: P(BTC final > umbral).' },
+  btc_direction:{ t:'Dirección (ABOVE / BELOW)', b:'La apuesta del mercado:\n• ABOVE = apostamos que BTC termina POR ENCIMA del umbral\n• BELOW = apostamos que BTC termina POR DEBAJO del umbral\nEl bot escoge la dirección que tenga edge positivo según nuestro modelo de precio.' },
+  btc_dist:     { t:'Distancia % al umbral', b:'Qué tan lejos está el precio actual de BTC del umbral del mercado, en porcentaje.\n• Dist. +5% = BTC debe subir 5% para cruzar el umbral\n• Dist. −3% = BTC ya está 3% por encima del umbral (favorable si apostamos ABOVE)\nDistancias grandes → probabilidades más extremas → menos edge pero más certeza.' },
+  // Strategies tab concepts
+  strat_backtest:  { t:'Backtesting', b:'Prueba de una estrategia contra datos históricos para ver cómo habría rendido.\nEl bot tiene 4 estrategias backtestadas:\n• Value = compra donde el mercado subestima la probabilidad real\n• Momentum = sigue la dirección de las últimas apuestas\n• Contrarian = apuesta contra el sentimiento dominante\n• Combined = combinación adaptativa de las anteriores\nWin rate y profit factor históricos están en la pestaña Estrategias.' },
+  strat_lawyers_edge: { t:"Lawyer's Edge (F4)", b:"Ventaja basada en el conocimiento exacto de las reglas de resolución de cada mercado.\nEjemplo: un mercado dice '¿será la temperatura máxima ≥80°F?' — el bot sabe:\n• Exactamente qué estación ICAO mide\n• Si hay zonas de borde (79.5-80.4°F son 'boundary zones')\n• Qué dato de NOAA se usa para resolver\nEsta precisión evita apostar en mercados donde la regla es ambigua." },
+  strat_near_zero: { t:'Near-Zero Entries', b:'Entradas en tokens que cotizan a menos de 8 centavos (≤0.08). La lógica: si nuestro modelo da 12% de probabilidad pero el mercado solo paga 4¢, el pago potencial es 25x.\nAlta asimetría: pierdes poco si fallas, ganas mucho si aciertas.\nFiltros extra: el mercado debe resolver pronto y tener algún forecast favorable.' },
+  strat_circuit_breaker: { t:'Circuit Breaker', b:'Mecanismo de protección automático que pausa el bot cuando detecta condiciones peligrosas:\n• Pérdida diaria > límite configurado\n• Demasiados trades perdedores consecutivos\n• Balance total cayó por debajo de un % mínimo\nCuando se activa, el bot no ejecuta nuevos trades hasta el siguiente día o hasta reset manual.' },
+  strat_bayesian: { t:'Actualización Bayesiana', b:'Método estadístico para actualizar probabilidades cuando llega nueva información.\nEn el bot: si NOAA predice 70% y OpenMeteo predice 65%, el calibrador bayesiano combina ambas fuentes ponderando por su precisión histórica reciente.\nSi NOAA falló mucho en la última semana, su peso baja automáticamente.' },
+  phantom_bet:  { t:'Phantom Bet (apuesta fantasma)', b:'Trade que el bot REGISTRA pero NO ejecuta realmente. Se usa para aprender:\n• En cada mercado UpDown, el bot anota lo que habría apostado aunque no tenga capital o confianza suficiente\n• Después del cierre, compara el resultado real con su predicción fantasma\n• Usa esos datos para ajustar sus umbrales y pesos sin arriesgar dinero real' },
+  strat_learner:{ t:'Learner Adaptativo', b:'Sistema que ajusta los parámetros de la estrategia UpDown automáticamente basándose en el rendimiento reciente:\n• Si el win rate del lado UP baja, sube el umbral de confianza para apostar UP\n• Si el TA falla en tendencia, reduce el peso del TA y sube el del momentum\n• Aprende de apuestas fantasmas además de trades reales\nSe actualiza después de cada resolución de mercado.' },
 };
 
 function showHelp(key, evt) {
@@ -4590,11 +4643,13 @@ const _origShowTabTx = showTab;
 showTab = function(id) {
   _origShowTabTx(id);
   if (id === 'tab-telonex') loadTelonex();
-  if (id === 'tab-capital') loadCapital();
+  if (id === 'tab-capital') { loadCapital(true); }
 };
 
 // ── Capital Buckets ────────────────────────────────────────────────────────
-async function loadCapital() {
+let _capFormLoaded = false;
+
+async function loadCapital(fillForms = false) {
   try {
     const d = await fetch('/api/capital').then(r => r.json());
     document.getElementById('cap-active').textContent   = d.active ? '✅ Activo' : '⚪ Legacy (%)';
@@ -4603,60 +4658,70 @@ async function loadCapital() {
     document.getElementById('cap-cash-free').textContent= '$' + d.cash_free.toFixed(2);
 
     const bkts = d.buckets;
-    const pool = d.betting_pool_usdc || 1;
-    document.getElementById('bkt-weather').textContent   = '$' + bkts.weather.usdc.toFixed(2);
-    document.getElementById('bkt-weather-pct').textContent = (bkts.weather.pct*100).toFixed(0) + '% del pool';
-    document.getElementById('bkt-btc').textContent       = '$' + bkts.btc.usdc.toFixed(2);
-    document.getElementById('bkt-btc-pct').textContent   = (bkts.btc.pct*100).toFixed(0) + '% del pool';
-    document.getElementById('bkt-updown5').textContent   = '$' + bkts.updown_5m.usdc.toFixed(2);
-    document.getElementById('bkt-updown5-pct').textContent= (bkts.updown_5m.pct*100).toFixed(0) + '% del pool';
-    document.getElementById('bkt-updown15').textContent  = '$' + bkts.updown_15m.usdc.toFixed(2);
-    document.getElementById('bkt-updown15-pct').textContent=(bkts.updown_15m.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-weather').textContent      = '$' + bkts.weather.usdc.toFixed(2);
+    document.getElementById('bkt-weather-pct').textContent  = (bkts.weather.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-btc').textContent          = '$' + bkts.btc.usdc.toFixed(2);
+    document.getElementById('bkt-btc-pct').textContent      = (bkts.btc.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-updown5').textContent      = '$' + bkts.updown_5m.usdc.toFixed(2);
+    document.getElementById('bkt-updown5-pct').textContent  = (bkts.updown_5m.pct*100).toFixed(0) + '% del pool';
+    document.getElementById('bkt-updown15').textContent     = '$' + bkts.updown_15m.usdc.toFixed(2);
+    document.getElementById('bkt-updown15-pct').textContent = (bkts.updown_15m.pct*100).toFixed(0) + '% del pool';
 
-    // Pre-fill form with current values
-    document.getElementById('cap-inp-pool').value = d.betting_pool_usdc || '';
-    document.getElementById('cap-inp-w').value    = Math.round(bkts.weather.pct * 100) || '';
-    document.getElementById('cap-inp-b').value    = Math.round(bkts.btc.pct * 100) || '';
-    document.getElementById('cap-inp-u5').value   = Math.round(bkts.updown_5m.pct * 100) || '';
-    document.getElementById('cap-inp-u15').value  = Math.round(bkts.updown_15m.pct * 100) || '';
+    // Only pre-fill forms when explicitly requested (tab open for first time)
+    if (fillForms) {
+      document.getElementById('cap-inp-pool').value = d.betting_pool_usdc || '';
+      document.getElementById('cap-inp-w').value    = Math.round(bkts.weather.pct * 100) || '';
+      document.getElementById('cap-inp-b').value    = Math.round(bkts.btc.pct * 100) || '';
+      document.getElementById('cap-inp-u5').value   = Math.round(bkts.updown_5m.pct * 100) || '';
+      document.getElementById('cap-inp-u15').value  = Math.round(bkts.updown_15m.pct * 100) || '';
+    }
   } catch(e) { console.error('loadCapital:', e); }
 }
 
-async function assignCapital(fillBuckets = true) {
-  const pool  = parseFloat(document.getElementById('cap-inp-pool').value) || 0;
+// Form 1: assign pool USDC only
+async function savePool() {
+  const pool = parseFloat(document.getElementById('cap-inp-pool').value);
+  const msg  = document.getElementById('cap-msg-pool');
+  if (isNaN(pool) || pool < 0) { msg.style.color='#f85149'; msg.textContent='Valor inválido'; return; }
+  try {
+    const r = await fetch('/api/capital/assign', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ pool_usdc: pool, fill_buckets: true })
+    }).then(r => r.json());
+    if (r.ok) {
+      msg.style.color = 'var(--green)';
+      msg.textContent = pool > 0 ? 'Pool asignado y buckets recargados!' : 'Sistema legacy activado';
+      loadCapital();
+    } else { msg.style.color='#f85149'; msg.textContent = r.msg || 'Error'; }
+  } catch(e) { msg.style.color='#f85149'; msg.textContent='Error de red'; }
+}
+
+// Form 2: save market percentages
+async function savePcts(fillBuckets = true) {
   const wPct  = (parseFloat(document.getElementById('cap-inp-w').value)   || 0) / 100;
   const bPct  = (parseFloat(document.getElementById('cap-inp-b').value)   || 0) / 100;
   const u5Pct = (parseFloat(document.getElementById('cap-inp-u5').value)  || 0) / 100;
   const u15Pct= (parseFloat(document.getElementById('cap-inp-u15').value) || 0) / 100;
+  const msg   = document.getElementById('cap-msg-pct');
   const total = wPct + bPct + u5Pct + u15Pct;
-  if (total > 1.001) {
-    document.getElementById('cap-msg').style.color = '#f85149';
-    document.getElementById('cap-msg').textContent = `Los % suman ${(total*100).toFixed(0)}% > 100%`;
-    return;
-  }
+  if (total > 1.001) { msg.style.color='#f85149'; msg.textContent=`Suman ${(total*100).toFixed(0)}% > 100%`; return; }
   try {
     const r = await fetch('/api/capital/assign', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        pool_usdc: pool,
         weather_pct: wPct, btc_pct: bPct,
         updown_5m_pct: u5Pct, updown_15m_pct: u15Pct,
         fill_buckets: fillBuckets,
       })
     }).then(r => r.json());
     if (r.ok) {
-      document.getElementById('cap-msg').style.color = 'var(--green)';
-      document.getElementById('cap-msg').textContent = fillBuckets ? 'Buckets asignados!' : 'Guardado!';
+      msg.style.color = 'var(--green)';
+      msg.textContent = fillBuckets ? 'Guardado y buckets recargados!' : 'Porcentajes guardados!';
       loadCapital();
-    } else {
-      document.getElementById('cap-msg').style.color = '#f85149';
-      document.getElementById('cap-msg').textContent = r.msg || 'Error';
-    }
-  } catch(e) {
-    document.getElementById('cap-msg').style.color = '#f85149';
-    document.getElementById('cap-msg').textContent = 'Error de red';
-  }
+    } else { msg.style.color='#f85149'; msg.textContent = r.msg || 'Error'; }
+  } catch(e) { msg.style.color='#f85149'; msg.textContent='Error de red'; }
 }
 
 async function reloadBucket(market) {
@@ -4667,10 +4732,10 @@ async function reloadBucket(market) {
   } catch(e) { alert('Error de red'); }
 }
 
-// Auto-refresh del tab Capital
+// Auto-refresh: only updates KPI cards + bucket balances, never touches form inputs
 setInterval(() => {
   const capTab = document.getElementById('tab-capital');
-  if (capTab && capTab.classList.contains('active')) loadCapital();
+  if (capTab && capTab.classList.contains('active')) loadCapital(false);
 }, 5000);
 </script>
 </body>
