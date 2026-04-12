@@ -369,6 +369,48 @@
       </div>
     </div>
 
+    <!-- Capital por mercado (obs #11) -->
+    <div class="panel" id="sidebar-capital-panel">
+      <h2>💰 Capital por mercado</h2>
+      <div id="sidebar-cap-rows" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;font-size:.78rem">
+        <!-- inyectado por renderStatus -->
+      </div>
+      <!-- Edición rápida de buckets -->
+      <details id="sidebar-cap-edit" style="margin-top:2px">
+        <summary style="font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none">✏️ Editar asignaciones</summary>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:.65rem;color:var(--muted);margin-bottom:2px" id="sidebar-cap-mode-label">Cargando modo...</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="width:80px;font-size:.72rem;color:#60a5fa">⛅ Weather</span>
+            <input type="number" id="sc-weather" min="0" step="0.5" value="0"
+              style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:.75rem"/>
+            <span id="sc-weather-unit" style="font-size:.65rem;color:var(--muted);width:28px">$</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="width:80px;font-size:.72rem;color:#f59e0b">₿ BTC</span>
+            <input type="number" id="sc-btc" min="0" step="0.5" value="0"
+              style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:.75rem"/>
+            <span id="sc-btc-unit" style="font-size:.65rem;color:var(--muted);width:28px">$</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="width:80px;font-size:.72rem;color:#a78bfa">⚡ UpDn 5m</span>
+            <input type="number" id="sc-ud5" min="0" step="0.5" value="0"
+              style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:.75rem"/>
+            <span id="sc-ud5-unit" style="font-size:.65rem;color:var(--muted);width:28px">$</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="width:80px;font-size:.72rem;color:#c4b5fd">⚡ UpDn 15m</span>
+            <input type="number" id="sc-ud15" min="0" step="0.5" value="0"
+              style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:.75rem"/>
+            <span id="sc-ud15-unit" style="font-size:.65rem;color:var(--muted);width:28px">$</span>
+          </div>
+          <button onclick="saveSidebarCapital()" style="background:#1a4a2e;border:1px solid var(--green);color:var(--green);border-radius:5px;padding:5px;font-size:.78rem;cursor:pointer;font-weight:600;width:100%">
+            Guardar asignaciones
+          </button>
+        </div>
+      </details>
+    </div>
+
     <!-- Meta de ganancia -->
     <div class="panel" id="goal-panel">
       <h2>🎯 Meta de ganancia</h2>
@@ -1101,7 +1143,7 @@
 
     <!-- TAB ESTRATEGIAS -->
     <div id="tab-strategies" class="tab-content">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px" id="strat-perf-cards">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px" id="strat-perf-cards">
         <!-- rendimiento cards inyectados por JS -->
       </div>
 
@@ -1879,6 +1921,9 @@ function renderStatus(d) {
   // Toggles de tipos de trade (panel izquierdo)
   _renderTradeToggles(d);
 
+  // Panel de capital en sidebar (obs #11)
+  _renderSidebarCapital(d);
+
   // Meta de ganancia
   renderGoalWidget(d.goal);
 }
@@ -1886,6 +1931,96 @@ function renderStatus(d) {
 async function fetchStatus() {
   const r = await fetch('/api/status');
   renderStatus(await r.json());
+}
+
+function _renderSidebarCapital(d) {
+  const rows = document.getElementById('sidebar-cap-rows');
+  if (!rows) return;
+  const bucketMode = d.capital_buckets_active;
+  const items = [
+    { label:'⛅ Weather', color:'#60a5fa', avail: d.available_weather ?? 0, budget: d.budget_weather ?? 0, deployed: d.deployed_weather ?? 0 },
+    { label:'₿ BTC',     color:'#f59e0b', avail: d.available_btc     ?? 0, budget: d.budget_btc     ?? 0, deployed: d.deployed_btc     ?? 0 },
+    { label:'⚡ UpDn 5m',  color:'#a78bfa', avail: (d.bucket_updown_5m_usdc ?? 0) - (d.deployed_updown ?? 0) / 2, budget: d.bucket_updown_5m_usdc ?? 0, deployed: null },
+    { label:'⚡ UpDn 15m', color:'#c4b5fd', avail: (d.bucket_updown_15m_usdc ?? 0), budget: d.bucket_updown_15m_usdc ?? 0, deployed: null },
+  ];
+  rows.innerHTML = items.map(it => {
+    const pct = it.budget > 0 ? Math.max(0, Math.min(100, (it.avail / it.budget) * 100)) : 0;
+    const availColor = it.avail > 0 ? 'var(--green)' : 'var(--red)';
+    return `<div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
+        <span style="color:${it.color};font-size:.72rem;font-weight:600">${it.label}</span>
+        <span style="color:${availColor};font-weight:700">$${it.avail.toFixed(2)}<span style="color:var(--muted);font-weight:400;font-size:.65rem"> / $${it.budget.toFixed(2)}</span></span>
+      </div>
+      <div style="background:var(--bg3);border-radius:3px;height:4px;overflow:hidden">
+        <div style="width:${pct}%;background:${it.color};height:100%;border-radius:3px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Actualizar inputs + labels
+  const modeLabel = document.getElementById('sidebar-cap-mode-label');
+  if (modeLabel) {
+    modeLabel.innerHTML = bucketMode
+      ? `Modo: <b style="color:var(--green)">Buckets ($)</b> — Pool: <b>$${(d.betting_pool_usdc ?? 0).toFixed(2)}</b>`
+      : `Modo: <b style="color:var(--yellow)">Legacy (%)</b>`;
+  }
+  if (bucketMode) {
+    _setInput('sc-weather', d.bucket_weather_usdc ?? 0);
+    _setInput('sc-btc',     d.bucket_btc_usdc     ?? 0);
+    _setInput('sc-ud5',     d.bucket_updown_5m_usdc  ?? 0);
+    _setInput('sc-ud15',    d.bucket_updown_15m_usdc ?? 0);
+    ['sc-weather-unit','sc-btc-unit','sc-ud5-unit','sc-ud15-unit'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = 'USDC';
+    });
+  } else {
+    _setInput('sc-weather', ((d.alloc_weather_pct ?? 0) * 100).toFixed(0));
+    _setInput('sc-btc',     ((d.alloc_btc_pct     ?? 0) * 100).toFixed(0));
+    _setInput('sc-ud5',     ((d.alloc_updown_pct  ?? 0) * 50).toFixed(0));  // split 50/50
+    _setInput('sc-ud15',    ((d.alloc_updown_pct  ?? 0) * 50).toFixed(0));
+    ['sc-weather-unit','sc-btc-unit','sc-ud5-unit','sc-ud15-unit'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '%';
+    });
+  }
+}
+
+function _setInput(id, val) {
+  const el = document.getElementById(id);
+  if (el && document.activeElement !== el) el.value = val;
+}
+
+async function saveSidebarCapital() {
+  const d = window._lastStatus || {};
+  const bucketMode = d.capital_buckets_active;
+  const w   = parseFloat(document.getElementById('sc-weather')?.value || 0);
+  const b   = parseFloat(document.getElementById('sc-btc')?.value || 0);
+  const u5  = parseFloat(document.getElementById('sc-ud5')?.value || 0);
+  const u15 = parseFloat(document.getElementById('sc-ud15')?.value || 0);
+
+  let params = {};
+  if (bucketMode) {
+    params = { bucket_weather_usdc: w, bucket_btc_usdc: b, bucket_updown_5m_usdc: u5, bucket_updown_15m_usdc: u15 };
+  } else {
+    const total = w + b + u5 + u15;
+    if (total <= 0) { alert('Las asignaciones deben sumar más de 0.'); return; }
+    params = {
+      alloc_weather_pct: parseFloat((w / 100).toFixed(4)),
+      alloc_btc_pct:     parseFloat((b / 100).toFixed(4)),
+      alloc_updown_pct:  parseFloat(((u5 + u15) / 100).toFixed(4)),
+    };
+  }
+  try {
+    const r = await fetch('/api/params', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(params),
+    });
+    const result = await r.json();
+    if (result.ok || r.ok) {
+      document.getElementById('sidebar-cap-edit').removeAttribute('open');
+      fetchStatus();
+    } else {
+      alert('Error guardando: ' + (result.error || JSON.stringify(result)));
+    }
+  } catch(e) { alert('Error de red: ' + e.message); }
 }
 
 function renderOpportunities(opps) {
@@ -3303,15 +3438,17 @@ setInterval(fetchStrategies, 60000);
 
 async function fetchStrategies() {
   try {
-    const [perfR, notesR, learnR] = await Promise.all([
+    const [perfR, notesR, learnR, vpsR] = await Promise.all([
       fetch('/api/strategy/performance'),
       fetch('/api/strategy/notes'),
       fetch('/api/updown/learn'),
+      fetch('/api/vps-experiment'),
     ]);
     const perf  = await perfR.json();
     const notes = await notesR.json();
     const learn = await learnR.json();
-    _renderStratPerf(perf);
+    const vps   = await vpsR.json().catch(() => null);
+    _renderStratPerf(perf, vps);
     _renderStratParams(perf);
     _renderStratDetailWeather(perf.WEATHER || {});
     _renderStratDetailBtc(perf.BTC || {});
@@ -3320,7 +3457,7 @@ async function fetchStrategies() {
   } catch(e) {}
 }
 
-function _renderStratPerf(perf) {
+function _renderStratPerf(perf, vps) {
   const el = document.getElementById('strat-perf-cards');
   if (!el) return;
   const cards = [
@@ -3328,7 +3465,7 @@ function _renderStratPerf(perf) {
     { key:'BTC',        icon:'₿',  label:'BTC Predicción', color:'#f59e0b' },
     { key:'BTC_UPDOWN', icon:'⚡', label:'UpDown',         color:'#a78bfa' },
   ];
-  el.innerHTML = cards.map(c => {
+  const realCards = cards.map(c => {
     const s = perf[c.key] || {};
     const resolved = (s.wins||0) + (s.losses||0);
     const wr = s.win_rate != null ? (s.win_rate * 100).toFixed(0) + '%' : (resolved === 0 ? 'sin datos' : '—');
@@ -3353,6 +3490,38 @@ function _renderStratPerf(perf) {
       </div>
     </div>`;
   }).join('');
+
+  // Tarjeta phantom (VPS experiment)
+  let phantomCard = '';
+  if (vps && !vps.error) {
+    const vWR = vps.vps?.win_rate_pct ?? 0;
+    const fWR = vps.fixed?.win_rate_pct ?? 0;
+    const vPnl = vps.vps?.net_pnl ?? 0;
+    const fPnl = vps.fixed?.net_pnl ?? 0;
+    const wrColor = vWR >= 55 ? 'var(--green)' : vWR >= 45 ? 'var(--yellow)' : 'var(--red)';
+    const vBal = vps.virtual_balance_vps ?? 50;
+    const initBal = vps.virtual_balance_initial ?? 50;
+    const gain = vBal - initBal;
+    const gainColor = gain >= 0 ? 'var(--green)' : 'var(--red)';
+    phantomCard = `<div class="panel" style="padding:14px;text-align:center;border:1px solid #7c3aed44">
+      <div style="font-size:1.4rem">🧪</div>
+      <div style="font-size:.8rem;color:#a78bfa;font-weight:700;margin:4px 0">Phantom VPS</div>
+      <div style="font-size:1.4rem;font-weight:700;color:${wrColor};margin:6px 0">${vWR}%</div>
+      <div style="font-size:.65rem;color:var(--muted)">WR phantom (${vps.resolved||0} trades)</div>
+      <div style="font-size:.7rem;color:${gainColor};margin-top:3px;font-weight:600">
+        Balance: $${vBal.toFixed(2)} (${gain>=0?'+':''}$${gain.toFixed(2)})
+      </div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:8px;font-size:.7rem">
+        <span style="color:#a78bfa">VPS: ${vPnl>=0?'+':''}$${vPnl.toFixed(2)}</span>
+        <span style="color:var(--muted)">Fixed: ${fPnl>=0?'+':''}$${fPnl.toFixed(2)}</span>
+      </div>
+      <div style="font-size:.65rem;color:var(--muted);margin-top:5px;border-top:1px solid var(--border);padding-top:5px">
+        ⏳ ${vps.pending||0} pendientes · Día ${vps.days_elapsed}/${vps.days_total}
+      </div>
+    </div>`;
+  }
+
+  el.innerHTML = realCards + phantomCard;
 }
 
 function _renderStratParams(perf) {
