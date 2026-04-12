@@ -379,22 +379,37 @@ def evaluate_updown_market(
     # ── PASO 3: Gate de momentum ──────────────────────────────────────────────
     # En 5m usamos mean-reversion por lo que el gate de momentum estándar no
     # aplica (ya invertimos el momentum en el combined). Solo aplicamos gate en 15m.
+    #
+    # RELAJACIÓN (recomendación asesor): si TA y momentum están en conflicto
+    # pero la confianza combinada es >25%, permitimos la entrada. El gate solo
+    # bloquea cuando la señal es débil Y el momentum va fuerte en contra.
     momentum      = sig["momentum"]
 
     if interval_min > 5:
         base_threshold = 0.20
         mom_threshold  = adaptive_params.get("momentum_gate_threshold", base_threshold)
+        # Umbral de confianza para bypassear el gate cuando hay conflicto TA/momentum
+        gate_bypass_confidence = 0.25
 
         if combined > 0 and momentum < -mom_threshold:
-            return None, (
-                f"Gate momentum: señal UP pero BTC bajó {sig['window_pct']:+.3f}% en la ventana "
-                f"(momentum={momentum:+.3f} < -{mom_threshold:.2f}) — inercia bajista en contra"
-            )
+            if abs(combined) >= gate_bypass_confidence:
+                # Confianza suficiente para entrar a pesar del conflicto — solo advertir
+                pass  # continúa sin bloquear
+            else:
+                return None, (
+                    f"Gate momentum: señal UP pero BTC bajó {sig['window_pct']:+.3f}% en la ventana "
+                    f"(momentum={momentum:+.3f} < -{mom_threshold:.2f}, conf={abs(combined)*100:.1f}%<25%) "
+                    f"— inercia bajista en contra"
+                )
         if combined < 0 and momentum > mom_threshold:
-            return None, (
-                f"Gate momentum: señal DOWN pero BTC subió {sig['window_pct']:+.3f}% en la ventana "
-                f"(momentum={momentum:+.3f} > +{mom_threshold:.2f}) — inercia alcista en contra"
-            )
+            if abs(combined) >= gate_bypass_confidence:
+                pass  # confianza >25% — permitir entrada con conflicto TA/momentum
+            else:
+                return None, (
+                    f"Gate momentum: señal DOWN pero BTC subió {sig['window_pct']:+.3f}% en la ventana "
+                    f"(momentum={momentum:+.3f} > +{mom_threshold:.2f}, conf={abs(combined)*100:.1f}%<25%) "
+                    f"— inercia alcista en contra"
+                )
 
     # ── PASO 4: Confianza y ratio riesgo/recompensa ───────────────────────────
 

@@ -4,7 +4,7 @@ Loop principal del bot: escanea mercados, evalua oportunidades, ejecuta trades.
 import asyncio
 import json
 import logging
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Callable
 from config import settings, bot_params
@@ -202,6 +202,14 @@ def remove_log_callback(cb: Callable):
 
 def get_log_history() -> list[dict]:
     return list(_log_history)
+
+
+def _parse_dt(s: str) -> datetime:
+    """Parsea un ISO timestamp a datetime UTC; retorna epoch si falla."""
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _log(level: str, msg: str):
@@ -676,6 +684,22 @@ async def _scan_cycle():
                 _log("INFO", f"Posiciones Polymarket: {len(positions)} activas | Valor: ${total_value:.2f} | P&L: ${total_pnl:+.2f}")
             else:
                 _log("INFO", "Posiciones Polymarket: sin posiciones activas")
+
+            # ── Limpiar active_positions cerradas ────────────────────────────
+            # active_positions es un log local; se acumula indefinidamente.
+            # Quitamos las que ya no aparecen en poly_positions Y tienen >2 días.
+            _live_ids  = {p.get("token_id") for p in positions if p.get("token_id")}
+            _cutoff_dt = datetime.now(timezone.utc) - timedelta(days=2)
+            _before    = len(state.active_positions)
+            state.active_positions = [
+                p for p in state.active_positions
+                if p.get("token_id") in _live_ids
+                or _parse_dt(p.get("time", "")) > _cutoff_dt
+            ]
+            _removed = _before - len(state.active_positions)
+            if _removed > 0:
+                _log("INFO", f"Limpieza: {_removed} active_positions antiguas removidas (quedan {len(state.active_positions)})")
+
             # Alertar posiciones proximas a cerrar y auto-limpiar resueltas
             for pos in positions:
                 if pos["hours_to_close"] is not None and 0 < pos["hours_to_close"] < 6:
