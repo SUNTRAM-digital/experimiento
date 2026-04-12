@@ -435,9 +435,10 @@ async def _fetch_slug_for_condition(client: httpx.AsyncClient, condition_id: str
     return ""
 
 
-async def get_polymarket_positions(wallet_address: str) -> list[dict]:
+async def get_polymarket_positions(wallet_address: str) -> list[dict] | None:
     """
     Obtiene las posiciones reales desde data-api.polymarket.com/positions.
+    Retorna [] si no hay posiciones activas, None si hubo error de red/API.
     """
     if not wallet_address:
         return []
@@ -450,11 +451,11 @@ async def get_polymarket_positions(wallet_address: str) -> list[dict]:
                 timeout=15,
             )
             if resp.status_code != 200:
-                return []
+                return None  # Error de API — conservar datos anteriores
 
             raw = resp.json()
             if not isinstance(raw, list):
-                return []
+                return None  # Respuesta inesperada — conservar datos anteriores
 
             now = datetime.now(timezone.utc)
             positions = []
@@ -542,7 +543,7 @@ async def get_polymarket_positions(wallet_address: str) -> list[dict]:
             return positions
 
     except Exception:
-        return []
+        return None  # Error de red — conservar datos anteriores
 
 
 async def get_open_orders(clob_client) -> list[dict]:

@@ -668,11 +668,14 @@ async def _scan_cycle():
     # Actualizar posiciones reales y ordenes abiertas desde Polymarket
     if settings.poly_wallet_address:
         positions = await get_polymarket_positions(settings.poly_wallet_address)
-        if positions:
+        if positions is not None:
             state.poly_positions = positions
-            total_value = sum(p["cur_value_usdc"] for p in positions)
-            total_pnl   = sum(p["pnl_usdc"] for p in positions)
-            _log("INFO", f"Posiciones Polymarket: {len(positions)} activas | Valor: ${total_value:.2f} | P&L: ${total_pnl:+.2f}")
+            if positions:
+                total_value = sum(p["cur_value_usdc"] for p in positions)
+                total_pnl   = sum(p["pnl_usdc"] for p in positions)
+                _log("INFO", f"Posiciones Polymarket: {len(positions)} activas | Valor: ${total_value:.2f} | P&L: ${total_pnl:+.2f}")
+            else:
+                _log("INFO", "Posiciones Polymarket: sin posiciones activas")
             # Alertar posiciones proximas a cerrar y auto-limpiar resueltas
             for pos in positions:
                 if pos["hours_to_close"] is not None and 0 < pos["hours_to_close"] < 6:
@@ -697,9 +700,6 @@ async def _scan_cycle():
                                     _ud_interval = _th.get("interval_minutes")
                                 # Si ya tiene resultado, _resolve_pending ya lo procesó → no tocar
                                 break
-                    if _ud_interval:
-                        won = cur_price > 0.5
-                        _update_updown_loss_streak(_ud_interval, won, None)
                     if cur_price > 0.95:
                         # Ganamos — redimir para cobrar
                         _log("INFO", f"POSICIÓN GANADA PENDIENTE DE COBRO | {pos['market_title'][:50]} — ${pos['cur_value_usdc']:.2f} USDC")
@@ -708,6 +708,8 @@ async def _scan_cycle():
                         record_trade_result(_cat, won=True, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=True)   # Fase 6: auto-sizing streak
                         # Actualizar trade_history con resultado WIN + devolver stake al bucket
+                        # IMPORTANTE: hacer esto ANTES de llamar _update_updown_loss_streak,
+                        # que también puede marcar trade_history y dejaría result != None
                         _tk = pos.get("token_id", "")
                         for _th in state.trade_history:
                             if _th.get("token_id") == _tk and _th.get("result") is None:
@@ -715,6 +717,8 @@ async def _scan_cycle():
                                 # Devolver stake original al bucket (la ganancia queda en balance)
                                 _return_stake_to_bucket(_th.get("bucket_id", ""), _th.get("cost_usdc", 0.0))
                                 break
+                        if _ud_interval:
+                            _update_updown_loss_streak(_ud_interval, True, None)
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -726,12 +730,14 @@ async def _scan_cycle():
                         _mtitle = pos.get("market_title","").lower(); _cat = "updown" if any(k in _mtitle for k in ("updown","up or down","up/down","btc")) or "btc" in pos.get("market_type","") else "weather"
                         record_trade_result(_cat, won=False, pnl_usdc=pos.get("pnl_usdc", 0))
                         risk_manager.record_trade_result(won=False)  # Fase 6: resetear streak
-                        # Actualizar trade_history con resultado LOSS
+                        # Actualizar trade_history con resultado LOSS antes del streak
                         _tk = pos.get("token_id", "")
                         for _th in state.trade_history:
                             if _th.get("token_id") == _tk and _th.get("result") is None:
                                 _th["result"] = "LOSS"
                                 break
+                        if _ud_interval:
+                            _update_updown_loss_streak(_ud_interval, False, None)
                         await asyncio.get_event_loop().run_in_executor(
                             None,
                             lambda p=pos: _redeem_position(p["token_id"], p.get("condition_id",""), p["size"], p["market_title"]),
@@ -1891,10 +1897,41 @@ async def _resolve_pending_updown_outcomes():
     Mucho más confiable que esperar el flag 'redeemable' de Polymarket,
     que tarda minutos para mercados de 5m.
     """
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+
+    # ── Resolver orphans del historial (trades sin resultado tras restart) ────
+    # updown_recent_trades persiste en state.json pero _updown_pending_outcomes
+    # es in-memory: se pierde al reiniciar. Buscamos trades con result=None
+    # cuya ventana ya cerró y los resolvemos retroactivamente.
+    for tr in state.updown_recent_trades:
+        if tr.get("result") is not None:
+            continue
+        end_ts_tr = tr.get("end_ts", 0)
+        if not end_ts_tr or now_ts < end_ts_tr + 30:
+            continue  # ventana aún abierta o sin datos
+        interval_tr = tr.get("interval", 5)
+        side_tr     = tr.get("side", "UP")
+        btc_start_tr = tr.get("btc_start") or tr.get("btc_price", 0)
+        if not btc_start_tr:
+            continue
+        btc_end_tr = await _get_btc_price_at_ts(end_ts_tr)
+        if not btc_end_tr:
+            if now_ts > end_ts_tr + 60:
+                btc_end_tr = state.btc_price or await get_btc_price()
+            if not btc_end_tr:
+                continue
+        btc_went_up_tr = btc_end_tr >= btc_start_tr
+        won_tr = (side_tr == "UP") == btc_went_up_tr
+        _log(
+            "INFO" if won_tr else "WARN",
+            f"UpDown {interval_tr}m | Resolviendo trade pendiente (orphan) → "
+            f"{'WIN ✓' if won_tr else 'LOSS ✗'} | BTC ${btc_start_tr:.0f}→${btc_end_tr:.0f} | apostamos {side_tr}",
+        )
+        _update_updown_loss_streak(interval_tr, won_tr, tr)
+
     if not _updown_pending_outcomes and not _updown_phantom_pending:
         return
 
-    now_ts = int(datetime.now(timezone.utc).timestamp())
     resolved_tokens = []
 
     for token_id, pending in list(_updown_pending_outcomes.items()):
