@@ -1921,8 +1921,8 @@ function renderStatus(d) {
   // Toggles de tipos de trade (panel izquierdo)
   _renderTradeToggles(d);
 
-  // Panel de capital en sidebar (obs #11)
-  _renderSidebarCapital(d);
+  // Panel de capital en sidebar — fetches /api/capital to stay in sync with Capital tab
+  _renderSidebarCapital();
 
   // Meta de ganancia
   renderGoalWidget(d.goal);
@@ -1933,54 +1933,61 @@ async function fetchStatus() {
   renderStatus(await r.json());
 }
 
-function _renderSidebarCapital(d) {
-  const rows = document.getElementById('sidebar-cap-rows');
-  if (!rows) return;
-  const bucketMode = d.capital_buckets_active;
-  const items = [
-    { label:'⛅ Weather', color:'#60a5fa', avail: d.available_weather ?? 0, budget: d.budget_weather ?? 0, deployed: d.deployed_weather ?? 0 },
-    { label:'₿ BTC',     color:'#f59e0b', avail: d.available_btc     ?? 0, budget: d.budget_btc     ?? 0, deployed: d.deployed_btc     ?? 0 },
-    { label:'⚡ UpDn 5m',  color:'#a78bfa', avail: (d.bucket_updown_5m_usdc ?? 0) - (d.deployed_updown ?? 0) / 2, budget: d.bucket_updown_5m_usdc ?? 0, deployed: null },
-    { label:'⚡ UpDn 15m', color:'#c4b5fd', avail: (d.bucket_updown_15m_usdc ?? 0), budget: d.bucket_updown_15m_usdc ?? 0, deployed: null },
-  ];
-  rows.innerHTML = items.map(it => {
-    const pct = it.budget > 0 ? Math.max(0, Math.min(100, (it.avail / it.budget) * 100)) : 0;
-    const availColor = it.avail > 0 ? 'var(--green)' : 'var(--red)';
-    return `<div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
-        <span style="color:${it.color};font-size:.72rem;font-weight:600">${it.label}</span>
-        <span style="color:${availColor};font-weight:700">$${it.avail.toFixed(2)}<span style="color:var(--muted);font-weight:400;font-size:.65rem"> / $${it.budget.toFixed(2)}</span></span>
-      </div>
-      <div style="background:var(--bg3);border-radius:3px;height:4px;overflow:hidden">
-        <div style="width:${pct}%;background:${it.color};height:100%;border-radius:3px;transition:width .4s"></div>
-      </div>
-    </div>`;
-  }).join('');
+async function _renderSidebarCapital() {
+  try {
+    const d = await fetch('/api/capital').then(r => r.json());
+    const rows = document.getElementById('sidebar-cap-rows');
+    if (!rows) return;
+    const bkts   = d.buckets;
+    const active = d.active;
+    const pool   = d.betting_pool_usdc;
 
-  // Actualizar inputs + labels
-  const modeLabel = document.getElementById('sidebar-cap-mode-label');
-  if (modeLabel) {
-    modeLabel.innerHTML = bucketMode
-      ? `Modo: <b style="color:var(--green)">Buckets ($)</b> — Pool: <b>$${(d.betting_pool_usdc ?? 0).toFixed(2)}</b>`
-      : `Modo: <b style="color:var(--yellow)">Legacy (%)</b>`;
-  }
-  if (bucketMode) {
-    _setInput('sc-weather', d.bucket_weather_usdc ?? 0);
-    _setInput('sc-btc',     d.bucket_btc_usdc     ?? 0);
-    _setInput('sc-ud5',     d.bucket_updown_5m_usdc  ?? 0);
-    _setInput('sc-ud15',    d.bucket_updown_15m_usdc ?? 0);
-    ['sc-weather-unit','sc-btc-unit','sc-ud5-unit','sc-ud15-unit'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.textContent = 'USDC';
-    });
-  } else {
-    _setInput('sc-weather', ((d.alloc_weather_pct ?? 0) * 100).toFixed(0));
-    _setInput('sc-btc',     ((d.alloc_btc_pct     ?? 0) * 100).toFixed(0));
-    _setInput('sc-ud5',     ((d.alloc_updown_pct  ?? 0) * 50).toFixed(0));  // split 50/50
-    _setInput('sc-ud15',    ((d.alloc_updown_pct  ?? 0) * 50).toFixed(0));
+    const items = [
+      { label:'⛅ Weather',   color:'#60a5fa', bkt: bkts.weather },
+      { label:'₿ BTC',       color:'#f59e0b', bkt: bkts.btc },
+      { label:'⚡ UpDn 5m',  color:'#a78bfa', bkt: bkts.updown_5m },
+      { label:'⚡ UpDn 15m', color:'#c4b5fd', bkt: bkts.updown_15m },
+    ];
+
+    rows.innerHTML =
+      `<div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-bottom:4px">
+         <span>Pool: <b style="color:var(--text)">$${pool.toFixed(2)}</b></span>
+         <span>Libre: <b style="color:var(--green)">$${d.cash_free.toFixed(2)}</b></span>
+       </div>` +
+      items.map(it => {
+        const usdc    = it.bkt.usdc;
+        const pctNum  = it.bkt.pct;
+        const barPct  = active && pool > 0
+          ? Math.max(0, Math.min(100, (usdc / pool) * 100))
+          : Math.max(0, Math.min(100, pctNum * 100));
+        return `<div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
+            <span style="color:${it.color};font-size:.72rem;font-weight:600">${it.label}</span>
+            <span style="font-weight:700">$${usdc.toFixed(2)}<span style="color:var(--muted);font-weight:400;font-size:.65rem"> (${(pctNum*100).toFixed(0)}%)</span></span>
+          </div>
+          <div style="background:var(--bg3);border-radius:3px;height:4px;overflow:hidden">
+            <div style="width:${barPct}%;background:${it.color};height:100%;border-radius:3px;transition:width .4s"></div>
+          </div>
+        </div>`;
+      }).join('');
+
+    // Mode label
+    const modeLabel = document.getElementById('sidebar-cap-mode-label');
+    if (modeLabel) {
+      modeLabel.innerHTML = active
+        ? `Modo: <b style="color:var(--green)">Buckets ($)</b> — Pool: <b>$${pool.toFixed(2)}</b>`
+        : `Modo: <b style="color:var(--yellow)">Legacy (%)</b>`;
+    }
+
+    // Pre-fill inputs (always % so edit mirrors capital section's Form 2)
+    _setInput('sc-weather', Math.round(bkts.weather.pct   * 100));
+    _setInput('sc-btc',     Math.round(bkts.btc.pct       * 100));
+    _setInput('sc-ud5',     Math.round(bkts.updown_5m.pct * 100));
+    _setInput('sc-ud15',    Math.round(bkts.updown_15m.pct* 100));
     ['sc-weather-unit','sc-btc-unit','sc-ud5-unit','sc-ud15-unit'].forEach(id => {
       const el = document.getElementById(id); if (el) el.textContent = '%';
     });
-  }
+  } catch(e) { console.error('_renderSidebarCapital:', e); }
 }
 
 function _setInput(id, val) {
@@ -1989,36 +1996,25 @@ function _setInput(id, val) {
 }
 
 async function saveSidebarCapital() {
-  const d = window._lastStatus || {};
-  const bucketMode = d.capital_buckets_active;
-  const w   = parseFloat(document.getElementById('sc-weather')?.value || 0);
-  const b   = parseFloat(document.getElementById('sc-btc')?.value || 0);
-  const u5  = parseFloat(document.getElementById('sc-ud5')?.value || 0);
-  const u15 = parseFloat(document.getElementById('sc-ud15')?.value || 0);
-
-  let params = {};
-  if (bucketMode) {
-    params = { bucket_weather_usdc: w, bucket_btc_usdc: b, bucket_updown_5m_usdc: u5, bucket_updown_15m_usdc: u15 };
-  } else {
-    const total = w + b + u5 + u15;
-    if (total <= 0) { alert('Las asignaciones deben sumar más de 0.'); return; }
-    params = {
-      alloc_weather_pct: parseFloat((w / 100).toFixed(4)),
-      alloc_btc_pct:     parseFloat((b / 100).toFixed(4)),
-      alloc_updown_pct:  parseFloat(((u5 + u15) / 100).toFixed(4)),
-    };
-  }
+  const wPct  = (parseFloat(document.getElementById('sc-weather')?.value || 0)) / 100;
+  const bPct  = (parseFloat(document.getElementById('sc-btc')?.value     || 0)) / 100;
+  const u5Pct = (parseFloat(document.getElementById('sc-ud5')?.value     || 0)) / 100;
+  const u15Pct= (parseFloat(document.getElementById('sc-ud15')?.value    || 0)) / 100;
+  const total = wPct + bPct + u5Pct + u15Pct;
+  if (total > 1.001) { alert(`Las asignaciones suman ${(total*100).toFixed(0)}% > 100%`); return; }
   try {
-    const r = await fetch('/api/params', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(params),
+    const r = await fetch('/api/capital/assign', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ weather_pct: wPct, btc_pct: bPct, updown_5m_pct: u5Pct, updown_15m_pct: u15Pct, fill_buckets: true }),
     });
     const result = await r.json();
-    if (result.ok || r.ok) {
+    if (result.ok) {
       document.getElementById('sidebar-cap-edit').removeAttribute('open');
-      fetchStatus();
+      _renderSidebarCapital();   // sync sidebar
+      loadCapital();             // sync capital tab
     } else {
-      alert('Error guardando: ' + (result.error || JSON.stringify(result)));
+      alert('Error guardando: ' + (result.msg || JSON.stringify(result)));
     }
   } catch(e) { alert('Error de red: ' + e.message); }
 }

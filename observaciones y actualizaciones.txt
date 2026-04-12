@@ -13,3 +13,4 @@
 (hecho) 12. cuando reinicio la ventan del navegador el chat de claude se abre uno nuevo automaticamente, quiero que se quede en el ultimo chat que estaba abierto o que se abra el historial, no uno nuevo siempre que se refresca el navegador
 13. Realiza test a todo el proyecto, revisa que este funcionando bien y cuando termines subelo a github
 (hecho) 14. Quiero que los trades de phantom tambien se analicen y se encuentre como un trade de 40% o mas pierde y uno de 3% gana. hay algo que nos hace falta en los algoritmos y este analisis debe mantenerse activo solamente para phantom por ahora
+(hecho) 14. en el panel de la izquierda veo que esta capital por mercado y los valores no corresponden  los valores en la seccion capital, en el panel solo debe reflejarse los datos de capital, no ser un panel aislado
