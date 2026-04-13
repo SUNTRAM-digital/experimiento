@@ -646,10 +646,10 @@
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
+      <div class="tab" onclick="showTab('tab-bots')">🤖 Bots</div>
       <div class="tab" onclick="showTab('tab-telonex')">🔗 Telonex</div>
       <div class="tab" onclick="showTab('tab-capital')">💰 Capital</div>
       <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
-      <div class="tab" onclick="showTab('tab-bots')">🤖 Bots</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -1721,7 +1721,7 @@
       </style>
 
       <div class="bots-arena-title">Arena de Bots</div>
-      <div class="bots-arena-sub">El estado visual refleja el rendimiento real — actualización automática cada 30s</div>
+      <div class="bots-arena-sub">Estado basado en WR total · flecha en antena = tendencia reciente · actualización automática cada 30s</div>
 
       <div class="bots-grid" id="bots-grid">
         <!-- Cards se generan por JS -->
@@ -1729,11 +1729,13 @@
       </div>
 
       <div class="bots-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Imparable (WR >65%)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Seguro (WR 55-65%)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#8b949e"></div> Estable (WR 45-55%)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div> Dudoso (WR 35-45%)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Perdido (WR <35%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Imparable (total >65%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Seguro (total 55-65%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b949e"></div> Estable (total 45-55%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div> Dudoso (total 35-45%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Perdido (total &lt;35%)</div>
+        <div class="legend-item"><span style="color:#3fb950;font-weight:700">▲</span> reciente subiendo</div>
+        <div class="legend-item"><span style="color:#f85149;font-weight:700">▼</span> reciente bajando</div>
       </div>
 
       <button class="bots-refresh-btn" onclick="loadBots()">↻ Actualizar ahora</button>
@@ -5906,15 +5908,25 @@ showTab = function(id) {
 let _botsTimer = null;
 
 // Determine state string from WR (0-1) and consecutive losses
-function _botState(wr, consLosses, hasData) {
+// State determined by TOTAL win rate (reliable long-term signal)
+function _botState(totalWr, consLosses, hasData) {
   if (!hasData) return 'neutral';
   if (consLosses >= 4) return 'struggling';
-  if (consLosses >= 2 && wr < 0.50) return 'nervous';
-  if (wr > 0.65)  return 'thriving';
-  if (wr > 0.55)  return 'confident';
-  if (wr > 0.45)  return 'neutral';
-  if (wr > 0.35)  return 'nervous';
+  if (consLosses >= 2 && totalWr < 0.50) return 'nervous';
+  if (totalWr > 0.65)  return 'thriving';
+  if (totalWr > 0.55)  return 'confident';
+  if (totalWr > 0.45)  return 'neutral';
+  if (totalWr > 0.35)  return 'nervous';
   return 'struggling';
+}
+
+// Trend of recent WR vs total WR  (+1 improving, 0 stable, -1 declining)
+function _botTrend(totalWr, recentWr) {
+  if (totalWr === null || recentWr === null) return 0;
+  const diff = recentWr - totalWr;
+  if (diff >  0.08) return  1;
+  if (diff < -0.08) return -1;
+  return 0;
 }
 
 const _BOT_LABELS = {
@@ -5925,16 +5937,18 @@ const _BOT_LABELS = {
   struggling: '↓ Perdido',
 };
 
+// Mood phrases indexed by [state][trend+1]  (trend: -1=0, 0=1, +1=2)
 const _BOT_MOODS = {
-  thriving:   ['"¡Nadie me para!"', '"En racha perfecta."', '"Cada señal, oro."'],
-  confident:  ['"Voy bien, sin prisa."', '"El edge está ahí."', '"Confío en el proceso."'],
-  neutral:    ['"Aprendiendo…"', '"El mercado habla."', '"Ecuanimidad total."'],
-  nervous:    ['"Algo no cuadra…"', '"Recalibrando…"', '"¿Qué me estoy perdiendo?"'],
-  struggling: ['"Esto duele…"', '"Hay que revisar algo."', '"A veces el mercado gana."'],
+  thriving:   ['"Mejorando aún más…"',   '"¡Nadie me para!"',        '"Cada señal, oro."'],
+  confident:  ['"Perdiendo el hilo…"',   '"El edge está ahí."',      '"Voy en ascenso."'],
+  neutral:    ['"Algo baja..."',          '"Aprendiendo…"',           '"Veo mejoría."'],
+  nervous:    ['"Cayendo más..."',        '"Recalibrando…"',          '"Algo mejora ya."'],
+  struggling: ['"Esto duele cada vez más."', '"Hay que revisar algo."', '"Quizás la tendencia cambia."'],
 };
 
 // Inline SVG robot avatar — expression changes with state
-function _botSVG(state, wr) {
+// wr = total win rate (shown on chest), trend = +1/0/-1
+function _botSVG(state, wr, trend) {
   // Colour palette per state
   const bodyCol = { thriving:'#1a3a1a', confident:'#0d1f33', neutral:'#1c1f24', nervous:'#2a220a', struggling:'#2a0d0d' }[state] || '#1c1f24';
   const accentCol= { thriving:'#3fb950', confident:'#58a6ff', neutral:'#8b949e', nervous:'#d29922', struggling:'#f85149' }[state] || '#8b949e';
@@ -5983,13 +5997,20 @@ function _botSVG(state, wr) {
     mouth = `<line x1="29" y1="40" x2="51" y2="40" stroke="${accentCol}" stroke-width="2" stroke-linecap="round"/>`;
   }
 
-  // WR display on chest
+  // WR total on chest screen
   const wrTxt = wr !== null ? Math.round(wr * 100) + '%' : '??';
+
+  // Trend arrow on antenna tip
+  const trendArrow = trend === 1
+    ? `<polygon points="40,0 44,6 36,6" fill="#3fb950"/>` // up arrow green
+    : trend === -1
+    ? `<polygon points="40,6 44,0 36,0" fill="#f85149"/>` // down arrow red
+    : `<circle cx="40" cy="3" r="2.5" fill="${accentCol}"/>`;
 
   return `<svg class="bot-svg" width="80" height="100" viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">
   <!-- antenna -->
-  <line x1="40" y1="2" x2="40" y2="11" stroke="${accentCol}" stroke-width="2" stroke-linecap="round"/>
-  <circle cx="40" cy="2" r="2.5" fill="${accentCol}"/>
+  <line x1="40" y1="6" x2="40" y2="11" stroke="${accentCol}" stroke-width="2" stroke-linecap="round"/>
+  ${trendArrow}
 
   <!-- head -->
   <rect x="14" y="11" width="52" height="44" rx="10" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.5"/>
@@ -6024,19 +6045,32 @@ function _botSVG(state, wr) {
 
 function _renderBotCard(cfg) {
   const { id, name, badge, wr, consLosses, totalTrades, hasData, recentWr } = cfg;
+
+  // State is based on TOTAL WR (long-term, reliable)
   const state = _botState(wr, consLosses, hasData);
-  const wr_display = recentWr !== null ? recentWr : wr;
-  const moods = _BOT_MOODS[state];
-  const mood = moods[Math.floor(Date.now() / 8000) % moods.length];
+
+  // Trend compares recent WR vs total WR
+  const trend = _botTrend(wr, recentWr);
+
+  // Mood phrase selected by state + trend direction
+  const mood = _BOT_MOODS[state][trend + 1];
 
   // Loss pills (show up to 6)
   const pillsHtml = Array.from({length: Math.min(consLosses || 0, 6)}, () =>
     `<div class="loss-pill"></div>`
   ).join('');
 
-  // WR bar width
-  const barW = wr_display !== null ? Math.round(wr_display * 100) : 0;
-  const wrPct = wr_display !== null ? Math.round(wr_display * 100) + '%' : '—';
+  // WR bar based on total WR
+  const totalWrPct = wr !== null ? Math.round(wr * 100) + '%' : '—';
+  const barW = wr !== null ? Math.round(wr * 100) : 0;
+
+  // Recent WR sub-stat with trend color
+  const recentPct = recentWr !== null ? Math.round(recentWr * 100) + '%' : null;
+  const trendColor = trend === 1 ? '#3fb950' : trend === -1 ? '#f85149' : 'var(--muted)';
+  const trendIcon  = trend === 1 ? '▲' : trend === -1 ? '▼' : '—';
+  const recentHtml = recentPct
+    ? `<span style="color:${trendColor};font-size:.65rem">${trendIcon} ${recentPct} reciente</span>`
+    : '';
 
   const sparkles = state === 'thriving'
     ? `<div class="bot-sparkle">✦</div><div class="bot-sparkle">⋆</div><div class="bot-sparkle">✦</div>`
@@ -6053,7 +6087,7 @@ function _renderBotCard(cfg) {
     ${sweat}
     <div class="bot-aura"></div>
     <div class="bot-avatar">
-      ${_botSVG(state, wr_display)}
+      ${_botSVG(state, wr, trend)}
     </div>
   </div>
 
@@ -6066,7 +6100,8 @@ function _renderBotCard(cfg) {
   </div>
 
   <div class="bot-stats-bar">
-    <span class="bot-wr-value">${wrPct}</span> WR reciente<br>
+    <span class="bot-wr-value">${totalWrPct}</span> WR total<br>
+    ${recentHtml ? recentHtml + '<br>' : ''}
     ${totalTrades ? `${totalTrades} trades` : 'sin trades aún'}
     ${consLosses > 0 ? `<br><span style="color:#f85149">${consLosses} pérdida${consLosses===1?'':'s'} seguidas</span>` : ''}
   </div>
