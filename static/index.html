@@ -649,6 +649,7 @@
       <div class="tab" onclick="showTab('tab-telonex')">🔗 Telonex</div>
       <div class="tab" onclick="showTab('tab-capital')">💰 Capital</div>
       <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
+      <div class="tab" onclick="showTab('tab-bots')">🤖 Bots</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -1420,6 +1421,322 @@
           Los porcentajes deben sumar ≤ 100%.
         </div>
       </div>
+    </div>
+
+    <!-- BOTS ARENA -->
+    <div id="tab-bots" class="tab-content">
+      <style>
+        /* ── Bots Arena ────────────────────────────────────────────── */
+        #tab-bots { overflow-y: auto; padding: 24px; }
+
+        .bots-arena-title {
+          text-align: center;
+          font-size: 1.1rem;
+          font-weight: 700;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: var(--muted);
+          margin-bottom: 6px;
+        }
+        .bots-arena-sub {
+          text-align: center;
+          font-size: .75rem;
+          color: #444d56;
+          margin-bottom: 28px;
+        }
+        .bots-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 20px;
+          max-width: 900px;
+          margin: 0 auto;
+        }
+        @media (max-width: 700px) {
+          .bots-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* ── Bot Card ───────────────────────────────────────────────── */
+        .bot-card {
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 18px 12px 14px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          position: relative;
+          overflow: hidden;
+          transition: border-color .4s;
+        }
+        .bot-card.state-thriving  { border-color: #3fb950aa; box-shadow: 0 0 20px #3fb95022; }
+        .bot-card.state-confident { border-color: #58a6ffaa; box-shadow: 0 0 14px #58a6ff11; }
+        .bot-card.state-neutral   { border-color: var(--border); }
+        .bot-card.state-nervous   { border-color: #d2992288; box-shadow: 0 0 14px #d2992211; }
+        .bot-card.state-struggling{ border-color: #f8514988; box-shadow: 0 0 14px #f8514918; }
+
+        /* ── Bot Scene (avatar wrapper) ─────────────────────────────── */
+        .bot-scene {
+          width: 100px;
+          height: 130px;
+          position: relative;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+        }
+
+        /* ── Avatar body (transforms with state) ───────────────────── */
+        .bot-avatar {
+          position: relative;
+          transform-origin: bottom center;
+          transition: transform .6s cubic-bezier(.34,1.56,.64,1), filter .5s;
+        }
+        .state-thriving  .bot-avatar { transform: scale(1.18); filter: drop-shadow(0 0 8px #3fb950cc); }
+        .state-confident .bot-avatar { transform: scale(1.06); filter: drop-shadow(0 0 5px #58a6ff88); }
+        .state-neutral   .bot-avatar { transform: scale(1.0); }
+        .state-nervous   .bot-avatar { transform: scale(0.88); filter: drop-shadow(0 0 3px #d2992266); }
+        .state-struggling.bot-avatar,
+        .state-struggling .bot-avatar { transform: scale(0.70); filter: drop-shadow(0 0 6px #f8514966) brightness(0.8); }
+
+        /* ── Aura ring ──────────────────────────────────────────────── */
+        .bot-aura {
+          position: absolute;
+          bottom: 0; left: 50%;
+          transform: translateX(-50%);
+          border-radius: 50%;
+          transition: all .6s;
+        }
+        .state-thriving  .bot-aura { width: 90px; height: 20px; background: radial-gradient(ellipse, #3fb95044 0%, transparent 70%); }
+        .state-confident .bot-aura { width: 70px; height: 14px; background: radial-gradient(ellipse, #58a6ff33 0%, transparent 70%); }
+        .state-neutral   .bot-aura { width: 50px; height: 8px;  background: radial-gradient(ellipse, #8b949e22 0%, transparent 70%); }
+        .state-nervous   .bot-aura { width: 40px; height: 6px;  background: radial-gradient(ellipse, #d2992222 0%, transparent 70%); }
+        .state-struggling.bot-aura,
+        .state-struggling .bot-aura { width: 30px; height: 4px; background: radial-gradient(ellipse, #f8514922 0%, transparent 70%); }
+
+        /* ── Robot SVG parts ─────────────────────────────────────────── */
+        .bot-svg { display: block; }
+
+        /* ── Head eyes via CSS inside SVG ───────────────────────────── */
+        .eye-pupil { transition: r .4s, cy .4s; }
+
+        /* ── Name + State label ─────────────────────────────────────── */
+        .bot-name {
+          font-size: .78rem;
+          font-weight: 700;
+          letter-spacing: .5px;
+          color: var(--text);
+          text-align: center;
+        }
+        .bot-type-badge {
+          font-size: .62rem;
+          padding: 1px 7px;
+          border-radius: 8px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: .5px;
+        }
+        .badge-real    { background: #1a3a58; color: #58a6ff; border: 1px solid #58a6ff44; }
+        .badge-phantom { background: #2a1a4a; color: #bc8cff; border: 1px solid #bc8cff44; }
+
+        .bot-state-label {
+          font-size: .72rem;
+          font-weight: 700;
+          text-align: center;
+          letter-spacing: .5px;
+        }
+        .state-thriving  .bot-state-label { color: #3fb950; }
+        .state-confident .bot-state-label { color: #58a6ff; }
+        .state-neutral   .bot-state-label { color: var(--muted); }
+        .state-nervous   .bot-state-label { color: #d29922; }
+        .state-struggling .bot-state-label { color: #f85149; }
+
+        .bot-stats-bar {
+          width: 100%;
+          font-size: .68rem;
+          color: var(--muted);
+          text-align: center;
+          line-height: 1.5;
+        }
+        .bot-wr-value {
+          font-size: 1.1rem;
+          font-weight: 800;
+          transition: color .5s;
+        }
+        .state-thriving  .bot-wr-value { color: #3fb950; }
+        .state-confident .bot-wr-value { color: #58a6ff; }
+        .state-neutral   .bot-wr-value { color: var(--muted); }
+        .state-nervous   .bot-wr-value { color: #d29922; }
+        .state-struggling .bot-wr-value { color: #f85149; }
+
+        /* Barra de progreso WR */
+        .bot-wr-bar-wrap {
+          width: 100%;
+          height: 4px;
+          background: var(--bg3);
+          border-radius: 2px;
+          overflow: hidden;
+        }
+        .bot-wr-bar {
+          height: 100%;
+          border-radius: 2px;
+          transition: width .7s, background .5s;
+        }
+        .state-thriving  .bot-wr-bar { background: #3fb950; }
+        .state-confident .bot-wr-bar { background: #58a6ff; }
+        .state-neutral   .bot-wr-bar { background: #8b949e; }
+        .state-nervous   .bot-wr-bar { background: #d29922; }
+        .state-struggling .bot-wr-bar { background: #f85149; }
+
+        /* ── Animations ─────────────────────────────────────────────── */
+        @keyframes bot-bounce {
+          0%, 100% { transform: translateY(0) scale(1.18); }
+          40%       { transform: translateY(-12px) scale(1.18); }
+          60%       { transform: translateY(-6px) scale(1.18); }
+        }
+        @keyframes bot-float {
+          0%, 100% { transform: translateY(0) scale(1.06); }
+          50%       { transform: translateY(-5px) scale(1.06); }
+        }
+        @keyframes bot-jitter {
+          0%,100% { transform: translateX(0) scale(0.88); }
+          20%      { transform: translateX(-2px) scale(0.88); }
+          40%      { transform: translateX(2px) scale(0.88); }
+          60%      { transform: translateX(-1px) scale(0.88); }
+          80%      { transform: translateX(1px) scale(0.88); }
+        }
+        @keyframes bot-tremble {
+          0%,100% { transform: translateX(0) rotate(0deg) scale(0.70); }
+          15%      { transform: translateX(-3px) rotate(-1.5deg) scale(0.70); }
+          30%      { transform: translateX(3px) rotate(1.5deg) scale(0.70); }
+          45%      { transform: translateX(-2px) rotate(-1deg) scale(0.70); }
+          60%      { transform: translateX(2px) rotate(1deg) scale(0.70); }
+          75%      { transform: translateX(-1px) rotate(-.5deg) scale(0.70); }
+        }
+        @keyframes bot-sparkle {
+          0%,100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
+          50%      { opacity: 1; transform: scale(1.1) rotate(180deg); }
+        }
+        @keyframes bot-sweat {
+          0%,80%,100% { opacity: 0; transform: translateY(0); }
+          20%          { opacity: 1; transform: translateY(6px); }
+        }
+
+        .state-thriving  .bot-avatar { animation: bot-bounce 1.2s ease-in-out infinite; }
+        .state-confident .bot-avatar { animation: bot-float 2.5s ease-in-out infinite; }
+        .state-nervous   .bot-avatar { animation: bot-jitter 0.6s ease-in-out infinite; }
+        .state-struggling .bot-avatar { animation: bot-tremble 0.4s ease-in-out infinite; }
+
+        /* Sparkle for thriving */
+        .bot-sparkle {
+          position: absolute;
+          font-size: .9rem;
+          pointer-events: none;
+          opacity: 0;
+        }
+        .state-thriving .bot-sparkle { animation: bot-sparkle 1.8s ease-in-out infinite; }
+        .bot-sparkle:nth-child(1) { top: 4px;  left: 8px;  animation-delay: 0s; }
+        .bot-sparkle:nth-child(2) { top: 0px;  right: 10px; animation-delay: .5s; }
+        .bot-sparkle:nth-child(3) { top: 20px; left: 2px;  animation-delay: 1s; }
+
+        /* Sweat drop for struggling */
+        .bot-sweat {
+          position: absolute;
+          top: 18px; right: 12px;
+          font-size: .65rem;
+          opacity: 0;
+          color: #58a6ff;
+        }
+        .state-struggling .bot-sweat { animation: bot-sweat 1.5s ease-in-out infinite; }
+        .state-nervous .bot-sweat    { animation: bot-sweat 2.5s ease-in-out infinite; opacity: 0; }
+
+        /* ── Consecutive losses pills ───────────────────────────────── */
+        .loss-pills {
+          display: flex;
+          gap: 3px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
+        .loss-pill {
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          background: #f85149;
+          opacity: .7;
+        }
+
+        /* ── Tooltip / mood message ─────────────────────────────────── */
+        .bot-mood-msg {
+          font-size: .65rem;
+          color: #555;
+          text-align: center;
+          font-style: italic;
+          min-height: 16px;
+        }
+
+        /* ── "No data" dimming ──────────────────────────────────────── */
+        .bot-card.no-data {
+          opacity: .45;
+          filter: grayscale(.7);
+        }
+        .bot-card.no-data .bot-state-label::after {
+          content: ' (sin datos)';
+          font-weight: 400;
+        }
+
+        /* ── Refresh button ─────────────────────────────────────────── */
+        .bots-refresh-btn {
+          display: block;
+          margin: 22px auto 0;
+          background: none;
+          border: 1px solid var(--border);
+          color: var(--muted);
+          padding: 5px 18px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: .72rem;
+          transition: border-color .2s, color .2s;
+        }
+        .bots-refresh-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+        /* ── Legend ─────────────────────────────────────────────────── */
+        .bots-legend {
+          display: flex;
+          gap: 14px;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin: 20px auto 0;
+          max-width: 600px;
+        }
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: .65rem;
+          color: var(--muted);
+        }
+        .legend-dot {
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+      </style>
+
+      <div class="bots-arena-title">Arena de Bots</div>
+      <div class="bots-arena-sub">El estado visual refleja el rendimiento real — actualización automática cada 30s</div>
+
+      <div class="bots-grid" id="bots-grid">
+        <!-- Cards se generan por JS -->
+        <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px;font-size:.85rem">Cargando bots...</div>
+      </div>
+
+      <div class="bots-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Imparable (WR >65%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Seguro (WR 55-65%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b949e"></div> Estable (WR 45-55%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div> Dudoso (WR 35-45%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Perdido (WR <35%)</div>
+      </div>
+
+      <button class="bots-refresh-btn" onclick="loadBots()">↻ Actualizar ahora</button>
     </div>
 
     <!-- RECURSOS / PERFORMANCE -->
@@ -5552,6 +5869,271 @@ showTab = function(id) {
     _initVpsTrades();
   }
 };
+
+// Hook showTab for Bots tab
+const _origShowTabBots = showTab;
+showTab = function(id) {
+  _origShowTabBots(id);
+  if (id === 'tab-bots') loadBots();
+};
+
+// ── Bots Arena ────────────────────────────────────────────────────────────────
+
+let _botsTimer = null;
+
+// Determine state string from WR (0-1) and consecutive losses
+function _botState(wr, consLosses, hasData) {
+  if (!hasData) return 'neutral';
+  if (consLosses >= 4) return 'struggling';
+  if (consLosses >= 2 && wr < 0.50) return 'nervous';
+  if (wr > 0.65)  return 'thriving';
+  if (wr > 0.55)  return 'confident';
+  if (wr > 0.45)  return 'neutral';
+  if (wr > 0.35)  return 'nervous';
+  return 'struggling';
+}
+
+const _BOT_LABELS = {
+  thriving:   '⚡ Imparable',
+  confident:  '✦ Seguro',
+  neutral:    '◆ Estable',
+  nervous:    '~ Dudoso',
+  struggling: '↓ Perdido',
+};
+
+const _BOT_MOODS = {
+  thriving:   ['"¡Nadie me para!"', '"En racha perfecta."', '"Cada señal, oro."'],
+  confident:  ['"Voy bien, sin prisa."', '"El edge está ahí."', '"Confío en el proceso."'],
+  neutral:    ['"Aprendiendo…"', '"El mercado habla."', '"Ecuanimidad total."'],
+  nervous:    ['"Algo no cuadra…"', '"Recalibrando…"', '"¿Qué me estoy perdiendo?"'],
+  struggling: ['"Esto duele…"', '"Hay que revisar algo."', '"A veces el mercado gana."'],
+};
+
+// Inline SVG robot avatar — expression changes with state
+function _botSVG(state, wr) {
+  // Colour palette per state
+  const bodyCol = { thriving:'#1a3a1a', confident:'#0d1f33', neutral:'#1c1f24', nervous:'#2a220a', struggling:'#2a0d0d' }[state] || '#1c1f24';
+  const accentCol= { thriving:'#3fb950', confident:'#58a6ff', neutral:'#8b949e', nervous:'#d29922', struggling:'#f85149' }[state] || '#8b949e';
+  const screenCol= { thriving:'#0d2d0d', confident:'#0a1a2a', neutral:'#181c22', nervous:'#1e1800', struggling:'#1e0808' }[state] || '#181c22';
+
+  // Eye expressions per state
+  let eyeL, eyeR;
+  if (state === 'thriving') {
+    eyeL = `<circle cx="30" cy="26" r="5.5" fill="${accentCol}" opacity=".9"/>
+             <circle cx="32" cy="24" r="2" fill="#fff" opacity=".7"/>`;
+    eyeR = `<circle cx="50" cy="26" r="5.5" fill="${accentCol}" opacity=".9"/>
+             <circle cx="52" cy="24" r="2" fill="#fff" opacity=".7"/>`;
+  } else if (state === 'confident') {
+    eyeL = `<circle cx="30" cy="26" r="4.5" fill="${accentCol}" opacity=".85"/>
+             <circle cx="31" cy="25" r="1.5" fill="#fff" opacity=".6"/>`;
+    eyeR = `<circle cx="50" cy="26" r="4.5" fill="${accentCol}" opacity=".85"/>
+             <circle cx="51" cy="25" r="1.5" fill="#fff" opacity=".6"/>`;
+  } else if (state === 'nervous') {
+    // squinting eyes
+    eyeL = `<ellipse cx="30" cy="27" rx="4" ry="3" fill="${accentCol}" opacity=".7"/>
+             <line x1="26" y1="24" x2="34" y2="24" stroke="${accentCol}" stroke-width="1.5" opacity=".5"/>`;
+    eyeR = `<ellipse cx="50" cy="27" rx="4" ry="3" fill="${accentCol}" opacity=".7"/>
+             <line x1="46" y1="24" x2="54" y2="24" stroke="${accentCol}" stroke-width="1.5" opacity=".5"/>`;
+  } else if (state === 'struggling') {
+    // X eyes
+    eyeL = `<line x1="26" y1="22" x2="34" y2="30" stroke="${accentCol}" stroke-width="2.5" stroke-linecap="round"/>
+             <line x1="34" y1="22" x2="26" y2="30" stroke="${accentCol}" stroke-width="2.5" stroke-linecap="round"/>`;
+    eyeR = `<line x1="46" y1="22" x2="54" y2="30" stroke="${accentCol}" stroke-width="2.5" stroke-linecap="round"/>
+             <line x1="54" y1="22" x2="46" y2="30" stroke="${accentCol}" stroke-width="2.5" stroke-linecap="round"/>`;
+  } else {
+    eyeL = `<circle cx="30" cy="26" r="4" fill="${accentCol}" opacity=".75"/>`;
+    eyeR = `<circle cx="50" cy="26" r="4" fill="${accentCol}" opacity=".75"/>`;
+  }
+
+  // Mouth expression per state
+  let mouth;
+  if (state === 'thriving') {
+    mouth = `<path d="M26 38 Q40 47 54 38" stroke="${accentCol}" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+  } else if (state === 'confident') {
+    mouth = `<path d="M28 38 Q40 44 52 38" stroke="${accentCol}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  } else if (state === 'nervous') {
+    mouth = `<path d="M28 40 Q34 36 40 40 Q46 44 52 40" stroke="${accentCol}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  } else if (state === 'struggling') {
+    mouth = `<path d="M26 44 Q40 36 54 44" stroke="${accentCol}" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+  } else {
+    mouth = `<line x1="29" y1="40" x2="51" y2="40" stroke="${accentCol}" stroke-width="2" stroke-linecap="round"/>`;
+  }
+
+  // WR display on chest
+  const wrTxt = wr !== null ? Math.round(wr * 100) + '%' : '??';
+
+  return `<svg class="bot-svg" width="80" height="100" viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- antenna -->
+  <line x1="40" y1="2" x2="40" y2="11" stroke="${accentCol}" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="40" cy="2" r="2.5" fill="${accentCol}"/>
+
+  <!-- head -->
+  <rect x="14" y="11" width="52" height="44" rx="10" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.5"/>
+
+  <!-- eyes -->
+  ${eyeL}
+  ${eyeR}
+
+  <!-- mouth -->
+  ${mouth}
+
+  <!-- neck -->
+  <rect x="34" y="55" width="12" height="6" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1"/>
+
+  <!-- body -->
+  <rect x="10" y="61" width="60" height="32" rx="8" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.5"/>
+
+  <!-- chest screen -->
+  <rect x="18" y="67" width="44" height="20" rx="4" fill="${screenCol}" stroke="${accentCol}" stroke-width="1" opacity=".9"/>
+  <text x="40" y="81" text-anchor="middle" font-size="10" font-weight="700" fill="${accentCol}" font-family="monospace">${wrTxt}</text>
+  <text x="40" y="86" text-anchor="middle" font-size="5.5" fill="${accentCol}" opacity=".5" font-family="monospace">WIN RATE</text>
+
+  <!-- arms -->
+  <rect x="2"  y="63" width="10" height="22" rx="5" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.2"/>
+  <rect x="68" y="63" width="10" height="22" rx="5" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.2"/>
+
+  <!-- legs -->
+  <rect x="20" y="93" width="14" height="7" rx="3" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.2"/>
+  <rect x="46" y="93" width="14" height="7" rx="3" fill="${bodyCol}" stroke="${accentCol}" stroke-width="1.2"/>
+</svg>`;
+}
+
+function _renderBotCard(cfg) {
+  const { id, name, badge, wr, consLosses, totalTrades, hasData, recentWr } = cfg;
+  const state = _botState(wr, consLosses, hasData);
+  const wr_display = recentWr !== null ? recentWr : wr;
+  const moods = _BOT_MOODS[state];
+  const mood = moods[Math.floor(Date.now() / 8000) % moods.length];
+
+  // Loss pills (show up to 6)
+  const pillsHtml = Array.from({length: Math.min(consLosses || 0, 6)}, () =>
+    `<div class="loss-pill"></div>`
+  ).join('');
+
+  // WR bar width
+  const barW = wr_display !== null ? Math.round(wr_display * 100) : 0;
+  const wrPct = wr_display !== null ? Math.round(wr_display * 100) + '%' : '—';
+
+  const sparkles = state === 'thriving'
+    ? `<div class="bot-sparkle">✦</div><div class="bot-sparkle">⋆</div><div class="bot-sparkle">✦</div>`
+    : '';
+  const sweat = (state === 'struggling' || state === 'nervous')
+    ? `<div class="bot-sweat">💧</div>`
+    : '';
+
+  const noDataClass = !hasData ? ' no-data' : '';
+
+  return `<div class="bot-card state-${state}${noDataClass}" id="bot-card-${id}">
+  <div class="bot-scene">
+    ${sparkles}
+    ${sweat}
+    <div class="bot-aura"></div>
+    <div class="bot-avatar">
+      ${_botSVG(state, wr_display)}
+    </div>
+  </div>
+
+  <div class="bot-name">${name}</div>
+  <span class="bot-type-badge ${badge === 'Real' ? 'badge-real' : 'badge-phantom'}">${badge}</span>
+  <div class="bot-state-label">${_BOT_LABELS[state]}</div>
+
+  <div class="bot-wr-bar-wrap">
+    <div class="bot-wr-bar" style="width:${barW}%"></div>
+  </div>
+
+  <div class="bot-stats-bar">
+    <span class="bot-wr-value">${wrPct}</span> WR reciente<br>
+    ${totalTrades ? `${totalTrades} trades` : 'sin trades aún'}
+    ${consLosses > 0 ? `<br><span style="color:#f85149">${consLosses} pérdida${consLosses===1?'':'s'} seguidas</span>` : ''}
+  </div>
+
+  ${pillsHtml.length ? `<div class="loss-pills">${pillsHtml}</div>` : ''}
+
+  <div class="bot-mood-msg">${mood}</div>
+</div>`;
+}
+
+async function loadBots() {
+  const grid = document.getElementById('bots-grid');
+  if (!grid) return;
+
+  let learnData = {};
+  let vpsData   = {};
+  let statusData= {};
+
+  try {
+    const [r1, r2, r3] = await Promise.all([
+      fetch('/api/updown/learn').then(r => r.json()),
+      fetch('/api/vps-experiment').then(r => r.json()),
+      fetch('/api/status').then(r => r.json()),
+    ]);
+    learnData  = r1 || {};
+    vpsData    = r2 || {};
+    statusData = r3 || {};
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--red);padding:40px">Error cargando datos de bots: ${e.message}</div>`;
+    return;
+  }
+
+  // ── UpDown 5m (real) ─────────────────────────────────────────────────────
+  const ud5 = learnData['5m'] || {};
+  const ud5adp = ud5.adaptive || {};
+  const ud5cfg = {
+    id: 'ud5m', name: 'UpDown 5m', badge: 'Real',
+    wr:           ud5.win_rate    ?? null,
+    recentWr:     ud5.recent_wr   ?? null,
+    consLosses:   ud5adp.consecutive_losses ?? 0,
+    totalTrades:  ud5.total       ?? 0,
+    hasData:      (ud5.total ?? 0) > 0,
+  };
+
+  // ── UpDown 15m (real) ────────────────────────────────────────────────────
+  const ud15 = learnData['15m'] || {};
+  const ud15adp = ud15.adaptive || {};
+  const ud15cfg = {
+    id: 'ud15m', name: 'UpDown 15m', badge: 'Real',
+    wr:           ud15.win_rate   ?? null,
+    recentWr:     ud15.recent_wr  ?? null,
+    consLosses:   ud15adp.consecutive_losses ?? 0,
+    totalTrades:  ud15.total      ?? 0,
+    hasData:      (ud15.total ?? 0) > 0,
+  };
+
+  // ── Phantom 5m ──────────────────────────────────────────────────────────
+  const ph5 = vpsData.phantom_learn_5m || {};
+  const ph5WrRaw = ph5.recent_wr_pct != null ? ph5.recent_wr_pct / 100 : null;
+  const ph5cfg = {
+    id: 'ph5m', name: 'Phantom 5m', badge: 'Phantom',
+    wr:           ph5WrRaw,
+    recentWr:     ph5WrRaw,
+    consLosses:   0,   // phantom doesn't track consecutive losses yet
+    totalTrades:  ph5.total_trades ?? 0,
+    hasData:      ph5.has_data === true,
+  };
+
+  // ── Phantom 15m ─────────────────────────────────────────────────────────
+  const ph15 = vpsData.phantom_learn_15m || {};
+  const ph15WrRaw = ph15.recent_wr_pct != null ? ph15.recent_wr_pct / 100 : null;
+  const ph15cfg = {
+    id: 'ph15m', name: 'Phantom 15m', badge: 'Phantom',
+    wr:           ph15WrRaw,
+    recentWr:     ph15WrRaw,
+    consLosses:   0,
+    totalTrades:  ph15.total_trades ?? 0,
+    hasData:      ph15.has_data === true,
+  };
+
+  grid.innerHTML = [ud5cfg, ud15cfg, ph5cfg, ph15cfg]
+    .map(_renderBotCard)
+    .join('');
+
+  // Auto-refresh every 30s while Bots tab is visible
+  clearTimeout(_botsTimer);
+  _botsTimer = setTimeout(() => {
+    const botsTab = document.getElementById('tab-bots');
+    if (botsTab && botsTab.classList.contains('active')) loadBots();
+  }, 30000);
+}
 </script>
 </body>
 </html>
