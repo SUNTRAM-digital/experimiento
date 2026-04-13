@@ -1399,6 +1399,71 @@ _updown_phantom_slugs: set[str] = set()
 # Mapeo slug → detalles de apuesta fantasma pendiente de resolución
 _updown_phantom_pending: dict[str, dict] = {}
 
+# Restaurar trades phantom pendientes que sobrevivieron un reinicio del bot
+try:
+    from vps_experiment import get_pending_for_restore as _vps_restore
+    _vps_pending_restore = _vps_restore()
+    if _vps_pending_restore:
+        _updown_phantom_pending.update(_vps_pending_restore)
+        logger.info(f"[VPS] Restaurados {len(_vps_pending_restore)} trades PENDING tras reinicio")
+except Exception as _vps_restore_err:
+    logger.warning(f"[VPS] No se pudo restaurar pending: {_vps_restore_err}")
+
+
+async def _sweep_stale_vps_pending() -> None:
+    """
+    Resuelve trades phantom PENDING con end_ts > 2h en el pasado.
+    Usa el precio BTC histórico si está disponible, si no usa el precio actual.
+    Se llama una vez al arrancar el bot para limpiar trades huérfanos de reinicios.
+    """
+    try:
+        from vps_experiment import get_stale_pending, resolve_phantom_vps as _vps_res
+    except Exception:
+        return
+
+    stale = get_stale_pending()
+    if not stale:
+        return
+
+    logger.info(f"[VPS] Sweep stale: {len(stale)} trades PENDING por resolver")
+
+    for trade in stale:
+        slug    = trade.get("slug", "")
+        end_ts  = trade.get("end_ts", 0)
+        btc_start = trade.get("btc_start_price", 0.0)
+        side    = trade.get("signal", "UP")
+
+        if not slug or not btc_start:
+            continue
+
+        # Intentar obtener precio histórico
+        btc_end = await _get_btc_price_at_ts(int(end_ts))
+
+        # Fallback: precio actual (mejor que dejar PENDING para siempre)
+        if not btc_end:
+            btc_end = state.btc_price
+        if not btc_end:
+            try:
+                btc_end = await get_btc_price()
+            except Exception:
+                pass
+
+        if not btc_end:
+            logger.warning(f"[VPS] Sweep: sin precio para slug={slug[:25]} — saltando")
+            continue
+
+        btc_went_up = btc_end >= btc_start
+        won = (side == "UP") == btc_went_up
+
+        try:
+            _vps_res(slug=slug, btc_end=btc_end, won=won)
+            logger.info(
+                f"[VPS] Sweep resolvió slug={slug[:25]} → {'WIN' if won else 'LOSS'} "
+                f"BTC {btc_start:.0f}→{btc_end:.0f} side={side}"
+            )
+        except Exception as e:
+            logger.warning(f"[VPS] Sweep error resolviendo {slug[:25]}: {e}")
+
 
 async def _scan_updown(interval_minutes: int):
     """
@@ -2383,6 +2448,9 @@ async def run_bot():
 
     # Sincronizar contadores derivados desde historial persistido
     _sync_consecutive_losses_from_history()
+
+    # Resolver trades phantom VPS que quedaron PENDING de reinicios anteriores
+    await _sweep_stale_vps_pending()
 
     while state.running:
         try:

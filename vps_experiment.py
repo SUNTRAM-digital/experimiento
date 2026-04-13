@@ -199,6 +199,60 @@ def record_phantom_vps(
     )
 
 
+def get_pending_for_restore() -> dict:
+    """
+    Retorna los trades PENDING del JSON en el formato de _updown_phantom_pending.
+    Llamar al arrancar bot.py para restaurar trades que sobrevivieron un reinicio.
+    Solo incluye trades cuyo end_ts es reciente (< 2 horas en el pasado);
+    los más viejos los maneja sweep_stale_pending().
+    """
+    data = _load()
+    now_ts = datetime.now(timezone.utc).timestamp()
+    result = {}
+    for t in data.get("trades", []):
+        if t.get("result") != "PENDING":
+            continue
+        slug = t.get("slug")
+        end_ts = t.get("end_ts", 0)
+        if not slug or not end_ts:
+            continue
+        # Solo restaurar trades recientes (end_ts < 2h atrás)
+        # Los muy viejos los resuelve sweep_stale_pending() con precio actual
+        if now_ts > end_ts + 7200:
+            continue
+        interval = 5 if t.get("market") == "updown_5m" else 15
+        result[slug] = {
+            "interval":        interval,
+            "side":            t.get("signal", "UP"),
+            "btc_start":       t.get("btc_start_price", 0.0),
+            "end_ts":          end_ts,
+            "slug":            slug,
+            "skip_reason":     t.get("ta_scores", {}).get("skip_reason", "restored_after_restart"),
+            "confidence":      t.get("confidence_pct", 0.0),
+            "combined_signal": 0.0,
+            "ta_signal":       0.0,
+            "ta_rsi":          None,
+            "window_momentum": 0.0,
+            "elapsed_minutes": 0,
+        }
+    return result
+
+
+def get_stale_pending() -> list[dict]:
+    """
+    Retorna trades PENDING cuyo end_ts fue hace más de 2 horas.
+    Llamar desde bot.py para resolverlos con precio actual como fallback.
+    """
+    data = _load()
+    now_ts = datetime.now(timezone.utc).timestamp()
+    return [
+        t for t in data.get("trades", [])
+        if t.get("result") == "PENDING"
+        and t.get("end_ts", 0)
+        and now_ts > t["end_ts"] + 7200
+    ]
+
+
 def resolve_phantom_vps(slug: str, btc_end: float, won: bool) -> None:
     """
     Resuelve un trade phantom con el resultado real.
