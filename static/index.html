@@ -3830,6 +3830,8 @@ setInterval(fetchOpenOrders, 15000);
 setInterval(fetchDashboard, 30000);
 fetchUpdownLearn();
 setInterval(fetchUpdownLearn, 30000);
+loadVpsExperiment();
+setInterval(loadVpsExperiment, 30000);
 fetchStrategies();
 setInterval(fetchStrategies, 60000);
 
@@ -5687,14 +5689,24 @@ function _renderVpsExperiment(d) {
   // Sección "Lo que aprendió el phantom"
   _renderPhantomLearn(d);
 
-  // Tabla de últimos trades
-  // La tabla ahora usa scroll infinito (_initVpsTrades / _onVpsTradesScroll)
-  // Solo actualizar el contador total aquí
-  const countEl = document.getElementById('vps-trades-count');
-  if (countEl) {
-    const total = (d.recent_trades || []).length;
-    // El total real se actualiza cuando se abre el panel de trades
-    if (total > 0) countEl.textContent = `(últimos ${total})`;
+  // Tabla de trades: refrescar la primera página si el panel está abierto
+  const det = document.getElementById('vps-trades-details');
+  if (det && det.open) {
+    // Solo resetear si estamos en la primera página (scroll al inicio o no paginado aún)
+    const scrollEl = document.getElementById('vps-trades-scroll');
+    const atTop = !scrollEl || scrollEl.scrollTop < 80;
+    if (atTop) {
+      _vpsTradesInited = false;
+      _vpsTradesPage   = 0;
+      _vpsTradesHasMore= true;
+      const tbody = document.getElementById('tbl-vps-trades');
+      if (tbody) tbody.innerHTML = '';
+      _initVpsTrades();
+    }
+  } else {
+    // Panel cerrado: solo actualizar el contador
+    const countEl = document.getElementById('vps-trades-count');
+    if (countEl && d.total_trades != null) countEl.textContent = `(${d.total_trades} total)`;
   }
 }
 
