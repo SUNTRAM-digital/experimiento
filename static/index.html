@@ -1135,17 +1135,17 @@
           <div id="vps-trades-scroll" style="margin-top:6px;max-height:320px;overflow-y:auto;border-radius:4px" onscroll="_onVpsTradesScroll(this)">
             <table style="min-width:100%;font-size:.72rem">
               <thead><tr>
-                <th style="padding:3px 6px">Hora</th>
-                <th>Mercado</th>
-                <th>Lado</th>
-                <th>Conf%</th>
-                <th>Tier</th>
-                <th>Size VPS</th>
-                <th>Fixed</th>
-                <th>Resultado</th>
-                <th>P&L VPS</th>
-                <th>P&L Fixed</th>
-                <th>Δ</th>
+                <th style="padding:3px 6px;white-space:nowrap">Hora<span class="help-btn" onclick="showHelp('col_hora',event)">?</span></th>
+                <th style="white-space:nowrap">Mercado<span class="help-btn" onclick="showHelp('col_mercado',event)">?</span></th>
+                <th style="white-space:nowrap">Lado<span class="help-btn" onclick="showHelp('col_lado',event)">?</span></th>
+                <th style="white-space:nowrap">Conf%<span class="help-btn" onclick="showHelp('col_conf',event)">?</span></th>
+                <th style="white-space:nowrap">Tier<span class="help-btn" onclick="showHelp('col_tier',event)">?</span></th>
+                <th style="white-space:nowrap">Size VPS<span class="help-btn" onclick="showHelp('col_size_vps',event)">?</span></th>
+                <th style="white-space:nowrap">Fixed<span class="help-btn" onclick="showHelp('col_fixed',event)">?</span></th>
+                <th style="white-space:nowrap">Resultado<span class="help-btn" onclick="showHelp('col_resultado',event)">?</span></th>
+                <th style="white-space:nowrap">P&L VPS<span class="help-btn" onclick="showHelp('col_pnl_vps',event)">?</span></th>
+                <th style="white-space:nowrap">P&L Fixed<span class="help-btn" onclick="showHelp('col_pnl_fixed',event)">?</span></th>
+                <th style="white-space:nowrap">Δ<span class="help-btn" onclick="showHelp('col_delta',event)">?</span></th>
               </tr></thead>
               <tbody id="tbl-vps-trades"><tr><td colspan="11" class="empty">Sin datos aún</td></tr></tbody>
             </table>
@@ -2005,6 +2005,18 @@ const HELP = {
   vps_invert_conf: { t:'Confianza invertida', b:'Cuando aparece esta advertencia, el phantom detectó que los trades de ALTA confianza pierden más que los de baja confianza (correlación negativa).\nEsto significa que el modelo de confianza está sobreajustado o que las señales "fuertes" tienen sesgo sistemático.\nMientras dure este patrón, el phantom recomienda no filtrar por confianza mínima (aceptar señales débiles también).' },
   vps_strategy:    { t:'Estrategia recomendada', b:'Basado en la correlación entre momentum y resultado en el historial phantom:\n• Mean-Reversion ↩ = cuando el precio sube rápido, apostar a que baje (el mercado corrige). Se detecta cuando momentum ALTO → resultado LOSS\n• Trend-Following → = seguir la dirección del movimiento. Se detecta cuando momentum ALTO → resultado WIN\n• Neutral = sin patrón claro de momentum\nSe requieren mínimo 15 trades para calcular esta correlación.' },
   vps_conf_corr:   { t:'Correlación confianza→resultado', b:'Correlación de Pearson entre el nivel de confianza del trade y si ganó (1) o perdió (0).\n• Valor positivo (+) = alta confianza tiende a ganar → modelo bien calibrado\n• Valor negativo (−) = alta confianza tiende a perder → modelo invertido o sobreajustado\n• Cercano a 0 = confianza no predice el resultado\nEl phantom usa este valor para ajustar si debe preferir señales de alta o baja confianza.' },
+  // Phantom trades table columns
+  col_hora:        { t:'Hora del trade', b:'Timestamp (hora local) en que se registró el trade phantom. Los trades se generan cuando el bot detecta una señal de entrada válida en el mercado UpDown 5m o 15m.' },
+  col_mercado:     { t:'Mercado', b:'El intervalo del mercado en que se ejecutó el trade phantom:\n• updown_5m = mercado de Bitcoin que resuelve en 5 minutos\n• updown_15m = mercado que resuelve en 15 minutos' },
+  col_lado:        { t:'Lado (UP / DOWN)', b:'Dirección de la apuesta phantom:\n• UP ↑ = el bot predice que el precio de Bitcoin subirá antes del cierre\n• DOWN ↓ = predice que bajará\nEsta predicción viene de los indicadores técnicos (RSI, MACD, Bollinger Bands, volumen) en el momento de la señal.' },
+  col_conf:        { t:'Confianza (%)', b:'Porcentaje de confianza del modelo en esta señal, calculado como promedio ponderado de indicadores técnicos.\n• 0-20% = señal débil (tier minimal)\n• 21-35% = tier moderate\n• 36-60% = tier high\n• >60% = tier aggressive\nUna confianza alta no siempre gana más — el análisis de patrones puede detectar correlación inversa.' },
+  col_tier:        { t:'Tier de confianza', b:'Clasificación cualitativa del nivel de confianza:\n• minimal = señal débil, apuesta mínima ($3)\n• moderate = confianza media, apuesta $4\n• high = señal fuerte, apuesta $6\n• aggressive = señal muy fuerte, apuesta $10\nEl phantom ajusta estos umbrales según el historial de éxito por tier.' },
+  col_size_vps:    { t:'Tamaño VPS (USDC)', b:'Monto apostado en la simulación VPS (Variable Position Sizing): el tamaño varía según el tier de confianza.\nEs el modelo que el bot quiere validar — ¿tiene sentido apostar más cuando hay mayor confianza?' },
+  col_fixed:       { t:'Tamaño Fixed (USDC)', b:'Monto apostado en la simulación de tamaño fijo ($3 siempre).\nEs el baseline de comparación: si el modelo VPS gana más que Fixed al final del experimento, la estrategia de tamaño variable tiene valor.' },
+  col_resultado:   { t:'Resultado del trade', b:'Desenlace del trade phantom:\n• WIN ✓ = el mercado resolvió a favor de la predicción (UP ganó si subió, DOWN ganó si bajó)\n• LOSS ✗ = el mercado resolvió en contra\n• PENDING ⏳ = el mercado aún no ha cerrado' },
+  col_pnl_vps:     { t:'P&L con tamaño VPS', b:'Ganancia o pérdida en dólares usando el tamaño variable:\n• WIN: +size × 0.98 (98¢ por dólar apostado, descontando fee Polymarket)\n• LOSS: −size (pierdes todo lo apostado)\nEs el resultado real del modelo VPS.' },
+  col_pnl_fixed:   { t:'P&L con tamaño fijo', b:'Ganancia o pérdida en dólares usando siempre $3 de apuesta:\n• WIN: +$2.94 (= $3 × 0.98)\n• LOSS: −$3.00\nComparar la suma total de esta columna vs la de P&L VPS muestra si apostar más en señales confiables vale la pena.' },
+  col_delta:       { t:'Δ Diferencia VPS − Fixed', b:'La diferencia de P&L entre el modelo VPS y el modelo Fixed en este trade específico:\n• Positivo (+) = VPS ganó más (o perdió menos) que Fixed → trade donde apostar más valió la pena\n• Negativo (−) = VPS perdió más (o ganó menos) → trade donde apostar más fue contraproducente\nLa suma de todos los Δ muestra si el modelo VPS supera al baseline.' },
   // Claude API
   claude_api:      { t:'Claude API — estado del modelo', b:'Indicador del estado de conexión con la API de Claude (Anthropic).\n• Verde ✓ = API conectada y respondiendo\n• Rojo ✗ = API sin respuesta o con error (los trades siguen siendo automáticos)\nHaz clic para forzar una verificación ahora.' },
   claude_balance:  { t:'Crédito Claude API', b:'Saldo restante en tu cuenta de Anthropic para usar la API de Claude.\nCada análisis de trade consume crédito. Cuando llegue a $0, las consultas a Claude fallarán.\n• Verde = saldo saludable (>$5)\n• Amarillo = saldo bajo ($1-$5)\n• Rojo = muy bajo (<$1)\nEl bot sigue funcionando automáticamente sin Claude, pero pierde el análisis de calidad.' },
