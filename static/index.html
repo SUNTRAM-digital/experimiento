@@ -3844,8 +3844,6 @@ setInterval(fetchOpenOrders, 15000);
 setInterval(fetchDashboard, 30000);
 fetchUpdownLearn();
 setInterval(fetchUpdownLearn, 30000);
-loadVpsExperiment();
-setInterval(loadVpsExperiment, 30000);
 fetchStrategies();
 setInterval(fetchStrategies, 60000);
 
@@ -5572,6 +5570,10 @@ async function loadVpsExperiment() {
     if (sb) sb.textContent = 'Error cargando experimento VPS.';
   }
 }
+
+// Auto-refresh VPS every 30s (defined here because loadVpsExperiment lives in this script block)
+loadVpsExperiment();
+setInterval(loadVpsExperiment, 30000);
 
 async function requestVpsDailySummary() {
   try {
