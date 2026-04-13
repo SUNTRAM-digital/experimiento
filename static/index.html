@@ -3828,8 +3828,8 @@ loadVersion();
 loadParams();
 fetchHistory();
 _restoreLastChat();
-// Verificar estado Claude API al arrancar (sin asumir nada, solo observar)
-setTimeout(checkClaudeStatus, 3000);
+// Verificar estado Claude API al arrancar — arrow fn para resolver lazy (checkClaudeStatus está en bloque 2)
+setTimeout(() => checkClaudeStatus(), 3000);
 
 // Polling solo para lo que no llega por WebSocket
 fetchPortfolioAnalysis();
