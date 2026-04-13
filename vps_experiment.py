@@ -15,6 +15,8 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+import phantom_learner as _pl
+
 logger = logging.getLogger("vps_experiment")
 
 DATA_FILE = os.path.join("data", "vps_phantom_experiment.json")
@@ -36,6 +38,13 @@ _TIERS = [
 ]
 
 VIRTUAL_BALANCE_INITIAL = 50.0   # Saldo ficticio inicial para simular el experimento
+
+# Reconstruir stats del phantom learner si no existen
+try:
+    if not os.path.exists(_pl.STATS_FILE):
+        _pl.rebuild_from_vps_file(DATA_FILE)
+except Exception:
+    pass
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -230,6 +239,13 @@ def resolve_phantom_vps(slug: str, btc_end: float, won: bool) -> None:
         f"pnl_vps={pnl_vps:+.2f} pnl_fixed={pnl_fixed:+.2f} Δ={trade['pnl_difference']:+.2f}"
     )
 
+    # Registrar en phantom learner para aprendizaje adaptativo
+    try:
+        interval = 5 if "5m" in trade.get("market", "") else 15
+        _pl.record_result(interval, trade, won)
+    except Exception as e:
+        logger.warning(f"[VPS] phantom_learner.record_result error: {e}")
+
     # Intentar generar resumen del día automáticamente
     try:
         _maybe_generate_daily_summary(data)
@@ -270,6 +286,14 @@ def get_status() -> dict:
             "fixed":    mkt_stats["fixed"],
         }
 
+    # Parámetros adaptativos del phantom learner
+    try:
+        phantom_learn_5m  = _pl.get_adaptive_params(5)
+        phantom_learn_15m = _pl.get_adaptive_params(15)
+    except Exception:
+        phantom_learn_5m  = {}
+        phantom_learn_15m = {}
+
     return {
         "status":        meta.get("status", "UNKNOWN"),
         "started":       meta.get("started"),
@@ -289,6 +313,8 @@ def get_status() -> dict:
         "market_breakdown": market_breakdown,
         "recent_trades": trades[-10:][::-1],  # últimos 10, más reciente primero
         "daily_summaries": data.get("daily_summaries", []),
+        "phantom_learn_5m":  phantom_learn_5m,
+        "phantom_learn_15m": phantom_learn_15m,
     }
 
 

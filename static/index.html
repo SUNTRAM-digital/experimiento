@@ -1110,6 +1110,9 @@
           <div id="vps-tiers" style="display:flex;flex-direction:column;gap:4px"><!-- inyectado --></div>
         </div>
 
+        <!-- Aprendizaje adaptativo del phantom -->
+        <div id="vps-phantom-learn" style="margin-bottom:10px;display:none"></div>
+
         <!-- Análisis de patrones phantom -->
         <details style="margin-top:8px" id="phantom-analysis-details">
           <summary style="font-size:.7rem;color:#f59e0b;cursor:pointer;user-select:none" onclick="loadPhantomAnalysis()">
@@ -5332,6 +5335,9 @@ function _renderVpsExperiment(d) {
     }).join('');
   }
 
+  // Sección "Lo que aprendió el phantom"
+  _renderPhantomLearn(d);
+
   // Tabla de últimos trades
   // La tabla ahora usa scroll infinito (_initVpsTrades / _onVpsTradesScroll)
   // Solo actualizar el contador total aquí
@@ -5341,6 +5347,70 @@ function _renderVpsExperiment(d) {
     // El total real se actualiza cuando se abre el panel de trades
     if (total > 0) countEl.textContent = `(últimos ${total})`;
   }
+}
+
+function _renderPhantomLearn(d) {
+  const el = document.getElementById('vps-phantom-learn');
+  if (!el) return;
+
+  const p5  = d.phantom_learn_5m  || {};
+  const p15 = d.phantom_learn_15m || {};
+
+  // Ocultar si ambos carecen de datos
+  if (!p5.has_data && !p15.has_data) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+
+  function _learnCard(p, label, color) {
+    if (!p || !p.has_data) {
+      return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px;flex:1;min-width:180px">
+        <div style="font-size:.6rem;color:${color};font-weight:700;margin-bottom:4px">${label} — APRENDIZAJE PHANTOM</div>
+        <div style="font-size:.7rem;color:var(--muted)">Datos insuficientes (${p.total_trades||0}/${8} mínimo)</div>
+      </div>`;
+    }
+    const wr = p.recent_wr_pct ?? 0;
+    const wrColor = wr >= 50 ? 'var(--green)' : wr >= 40 ? 'var(--yellow)' : 'var(--red)';
+    const sideIcon = p.preferred_side === 'UP' ? '↑' : p.preferred_side === 'DOWN' ? '↓' : '↕';
+    const sideColor = p.preferred_side === 'UP' ? 'var(--green)' : p.preferred_side === 'DOWN' ? 'var(--red)' : 'var(--muted)';
+    const blockWarn = (p.block_up || p.block_down)
+      ? `<div style="font-size:.65rem;color:var(--red);margin-top:3px">Bloquear: ${[p.block_up?'UP':'',p.block_down?'DOWN':''].filter(Boolean).join(', ')}</div>`
+      : '';
+    const insightsHtml = (p.insights || []).map(ins =>
+      `<div style="font-size:.65rem;color:var(--muted);margin-top:2px;padding-left:6px;border-left:2px solid ${color}">• ${ins}</div>`
+    ).join('');
+    return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px;flex:1;min-width:180px">
+      <div style="font-size:.6rem;color:${color};font-weight:700;margin-bottom:4px">${label} — APRENDIZAJE PHANTOM</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px">
+        <div>
+          <div style="font-size:.6rem;color:var(--muted)">WR reciente</div>
+          <div style="font-size:.85rem;color:${wrColor};font-weight:700">${wr}%</div>
+          <div style="font-size:.6rem;color:var(--muted)">${p.total_trades} trades</div>
+        </div>
+        <div>
+          <div style="font-size:.6rem;color:var(--muted)">Tier mínimo</div>
+          <div style="font-size:.8rem;color:var(--text);font-weight:600">${p.min_confidence_tier||'—'}</div>
+          <div style="font-size:.6rem;color:var(--muted)">≥${p.min_confidence_pct||0}% conf</div>
+        </div>
+        <div>
+          <div style="font-size:.6rem;color:var(--muted)">Lado preferido</div>
+          <div style="font-size:.85rem;color:${sideColor};font-weight:700">${sideIcon} ${p.preferred_side||'BOTH'}</div>
+        </div>
+      </div>
+      ${blockWarn}
+      ${insightsHtml}
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">
+      Lo que aprendió el phantom
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${_learnCard(p5,  'UpDown 5m',  '#60a5fa')}
+      ${_learnCard(p15, 'UpDown 15m', '#a78bfa')}
+    </div>`;
 }
 
 // ── Scroll infinito de trades phantom ────────────────────────────────────────
