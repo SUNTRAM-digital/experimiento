@@ -227,3 +227,84 @@ class TestRebuildFromVps:
         pl.rebuild_from_vps_file(vps)
         assert pl._stats["15"]["total"] == 3, "15m trades must go into interval '15'"
         assert pl._stats["5"]["total"]  == 0, "5m bucket must stay empty"
+
+
+# ── Pattern insights (_get_pattern_insights) ───────────────────────────────────
+
+class TestPatternInsights:
+    """Tests for _get_pattern_insights integration."""
+
+    def _mock_analysis(self, monkeypatch, corr_conf=0.0, corr_mom=0.0,
+                       wr_up=50, wr_down=50, n_up=10, n_down=10,
+                       n_trades=20):
+        """Patch phantom_analysis.analyze_phantom_trades with controlled return."""
+        import sys
+        import types
+        mock_mod = types.ModuleType("phantom_analysis")
+        mock_mod.analyze_phantom_trades = lambda interval=None: {
+            "ok": True,
+            "trades_analyzed": n_trades,
+            "correlations": {
+                "confidence_vs_result": corr_conf,
+                "momentum_vs_result":   corr_mom,
+                "ta_combined_vs_result": 0.0,
+            },
+            "wr_by_side": {"UP": wr_up, "DOWN": wr_down, "n_up": n_up, "n_down": n_down},
+        }
+        monkeypatch.setitem(sys.modules, "phantom_analysis", mock_mod)
+
+    def test_negative_corr_sets_invert_confidence(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_conf=-0.25, n_trades=20)
+        result = pl._get_pattern_insights(15, total_trades=20)
+        assert result["invert_confidence"] is True
+        assert any("INVERTIDA" in i or "invertida" in i.lower() for i in result["pattern_insights"])
+
+    def test_weak_neg_corr_does_not_invert(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_conf=-0.08, n_trades=20)
+        result = pl._get_pattern_insights(15, total_trades=20)
+        assert result["invert_confidence"] is False
+
+    def test_mean_reversion_hint(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_mom=-0.25, n_trades=20)
+        result = pl._get_pattern_insights(15, total_trades=20)
+        assert result["strategy_hint"] == "mean_reversion"
+
+    def test_trend_following_hint(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_mom=0.20, n_trades=20)
+        result = pl._get_pattern_insights(15, total_trades=20)
+        assert result["strategy_hint"] == "trend_following"
+
+    def test_neutral_when_low_mom_corr(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_mom=0.05, n_trades=20)
+        result = pl._get_pattern_insights(15, total_trades=20)
+        assert result["strategy_hint"] == "neutral"
+
+    def test_returns_defaults_below_min_trades(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_conf=-0.5, corr_mom=-0.5, n_trades=20)
+        result = pl._get_pattern_insights(15, total_trades=10)  # below _MIN_CORR_TRADES=15
+        assert result["invert_confidence"] is False
+        assert result["strategy_hint"] == "neutral"
+
+    def test_analysis_side_detected(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, wr_up=65, wr_down=42, n_up=12, n_down=10, n_trades=22)
+        result = pl._get_pattern_insights(15, total_trades=22)
+        assert result["analysis_side"] == "UP"
+
+    def test_get_adaptive_params_includes_pattern_fields(self, tmp_path, monkeypatch):
+        pl = _fresh_module(str(tmp_path))
+        self._mock_analysis(monkeypatch, corr_conf=-0.20, corr_mom=-0.22, n_trades=20)
+        _fill_trades(pl, 15, win_count=10, loss_count=8)  # 18 trades ≥ _MIN_SAMPLES
+        p = pl.get_adaptive_params(15)
+        assert "invert_confidence" in p
+        assert "strategy_hint" in p
+        assert "conf_corr" in p
+        # With corr_conf=-0.20 and 18 total trades >= 15, should be inverted
+        assert p["invert_confidence"] is True
+        assert p["strategy_hint"] == "mean_reversion"

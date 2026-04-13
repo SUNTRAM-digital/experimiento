@@ -1685,6 +1685,9 @@ const HELP = {
   vps_phantom_learn: { t:'Lo que aprendió el phantom', b:'El phantom learner analiza sus propios trades anteriores y recomienda ajustes de estrategia:\n• Tier mínimo = confianza mínima sugerida para operar (si los tiers bajos pierden mucho)\n• Lado preferido = UP o DOWN según cuál ha ganado más históricamente\n• WR reciente = win rate de los últimos 25 trades (ventana móvil)\n• Bloquear = si un lado pierde sistemáticamente, se sugiere no operar en esa dirección\nEstas recomendaciones son informativas — no cambian trades reales automáticamente aún.' },
   vps_learn_tier:  { t:'Tier mínimo recomendado', b:'El phantom learner analiza cuáles tiers de confianza han sido rentables y recomienda el mínimo viable.\nEjemplo: si los trades "minimal" y "low_moderate" pierden sistemáticamente, recomienda operar solo desde "moderate" (≥35% de confianza).\nSe calcula con un mínimo de 8 trades por tier para ser estadísticamente válido.' },
   vps_learn_side:  { t:'Lado preferido', b:'Dirección (UP/DOWN/BOTH) que ha tenido mejor win rate en el historial phantom.\n• UP = los trades de BTC subiendo han ganado más\n• DOWN = los trades de BTC bajando han ganado más\n• BOTH = sin diferencia significativa entre lados\nSe calcula con mínimo 12 trades por lado. Si la diferencia es muy grande (>15pp), se recomienda enfocarse en el lado ganador.' },
+  vps_invert_conf: { t:'Confianza invertida', b:'Cuando aparece esta advertencia, el phantom detectó que los trades de ALTA confianza pierden más que los de baja confianza (correlación negativa).\nEsto significa que el modelo de confianza está sobreajustado o que las señales "fuertes" tienen sesgo sistemático.\nMientras dure este patrón, el phantom recomienda no filtrar por confianza mínima (aceptar señales débiles también).' },
+  vps_strategy:    { t:'Estrategia recomendada', b:'Basado en la correlación entre momentum y resultado en el historial phantom:\n• Mean-Reversion ↩ = cuando el precio sube rápido, apostar a que baje (el mercado corrige). Se detecta cuando momentum ALTO → resultado LOSS\n• Trend-Following → = seguir la dirección del movimiento. Se detecta cuando momentum ALTO → resultado WIN\n• Neutral = sin patrón claro de momentum\nSe requieren mínimo 15 trades para calcular esta correlación.' },
+  vps_conf_corr:   { t:'Correlación confianza→resultado', b:'Correlación de Pearson entre el nivel de confianza del trade y si ganó (1) o perdió (0).\n• Valor positivo (+) = alta confianza tiende a ganar → modelo bien calibrado\n• Valor negativo (−) = alta confianza tiende a perder → modelo invertido o sobreajustado\n• Cercano a 0 = confianza no predice el resultado\nEl phantom usa este valor para ajustar si debe preferir señales de alta o baja confianza.' },
   // Claude API
   claude_api:      { t:'Claude API — estado del modelo', b:'Indicador del estado de conexión con la API de Claude (Anthropic).\n• Verde ✓ = API conectada y respondiendo\n• Rojo ✗ = API sin respuesta o con error (los trades siguen siendo automáticos)\nHaz clic para forzar una verificación ahora.' },
   claude_balance:  { t:'Crédito Claude API', b:'Saldo restante en tu cuenta de Anthropic para usar la API de Claude.\nCada análisis de trade consume crédito. Cuando llegue a $0, las consultas a Claude fallarán.\n• Verde = saldo saludable (>$5)\n• Amarillo = saldo bajo ($1-$5)\n• Rojo = muy bajo (<$1)\nEl bot sigue funcionando automáticamente sin Claude, pero pierde el análisis de calidad.' },
@@ -5406,6 +5409,19 @@ function _renderPhantomLearn(d) {
     const blockWarn = (p.block_up || p.block_down)
       ? `<div style="font-size:.65rem;color:var(--red);margin-top:3px">Bloquear: ${[p.block_up?'UP':'',p.block_down?'DOWN':''].filter(Boolean).join(', ')}</div>`
       : '';
+    const invertWarn = p.invert_confidence
+      ? `<div style="font-size:.65rem;color:var(--red);margin-top:3px;font-weight:700">⚠ Confianza INVERTIDA — baja conf gana más${H('vps_invert_conf')}</div>`
+      : '';
+    const stratHint = p.strategy_hint && p.strategy_hint !== 'neutral'
+      ? `<div style="font-size:.65rem;margin-top:3px">
+           Estrategia${H('vps_strategy')}: <b style="color:${p.strategy_hint==='mean_reversion'?'#f59e0b':'#60a5fa'}">
+             ${p.strategy_hint === 'mean_reversion' ? 'Mean-Reversion ↩' : 'Trend-Following →'}
+           </b>
+         </div>`
+      : '';
+    const confCorrHtml = p.conf_corr != null
+      ? `<div style="font-size:.6rem;color:var(--muted)">Corr conf→res${H('vps_conf_corr')}: <b style="color:${p.conf_corr < -0.05 ? 'var(--red)' : p.conf_corr > 0.10 ? 'var(--green)' : 'var(--muted)'}">${p.conf_corr > 0 ? '+' : ''}${p.conf_corr.toFixed(3)}</b></div>`
+      : '';
     const insightsHtml = (p.insights || []).map(ins =>
       `<div style="font-size:.65rem;color:var(--muted);margin-top:2px;padding-left:6px;border-left:2px solid ${color}">• ${ins}</div>`
     ).join('');
@@ -5428,6 +5444,9 @@ function _renderPhantomLearn(d) {
         </div>
       </div>
       ${blockWarn}
+      ${invertWarn}
+      ${stratHint}
+      ${confCorrHtml}
       ${insightsHtml}
     </div>`;
   }

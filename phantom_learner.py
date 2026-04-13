@@ -18,6 +18,7 @@ STATS_FILE = os.path.join("data", "phantom_learner_stats.json")
 _MIN_SAMPLES      = 8    # mínimo para calcular win rate confiable
 _MIN_SIDE_SAMPLES = 12   # mínimo para bloquear un lado
 _RECENT_WINDOW    = 25   # ventana de trades recientes para tendencia
+_MIN_CORR_TRADES  = 15   # mínimo para confiar en correlaciones de análisis
 
 
 def _bkt() -> dict:
@@ -145,6 +146,92 @@ def record_result(interval_minutes: int, trade: dict, won: bool) -> None:
     )
 
 
+# ── Análisis de patrones (correlaciones) ─────────────────────────────────────
+
+def _get_pattern_insights(interval_minutes: int, total_trades: int) -> dict:
+    """
+    Llama a phantom_analysis para extraer correlaciones y convertirlas en
+    recomendaciones de estrategia concretas.
+
+    Returns dict with:
+        invert_confidence – True si alta confianza correlaciona con pérdida
+        strategy_hint     – "mean_reversion" | "trend_following" | "neutral"
+        conf_corr         – valor de correlación confianza→resultado (float | None)
+        analysis_side     – "UP" | "DOWN" | None  (desde análisis de patrones)
+        pattern_insights  – lista de strings con hallazgos
+    """
+    result = {
+        "invert_confidence": False,
+        "strategy_hint":     "neutral",
+        "conf_corr":         None,
+        "analysis_side":     None,
+        "pattern_insights":  [],
+    }
+
+    if total_trades < _MIN_CORR_TRADES:
+        return result
+
+    try:
+        from phantom_analysis import analyze_phantom_trades
+        analysis = analyze_phantom_trades(interval_minutes)
+    except Exception as e:
+        logger.debug(f"[PhantomLearner] No se pudo cargar phantom_analysis: {e}")
+        return result
+
+    if not analysis.get("ok") or analysis.get("trades_analyzed", 0) < _MIN_CORR_TRADES:
+        return result
+
+    corr_conf = analysis["correlations"].get("confidence_vs_result")
+    corr_mom  = analysis["correlations"].get("momentum_vs_result")
+    result["conf_corr"] = corr_conf
+
+    # ── Correlación confianza→resultado ──────────────────────────────────────
+    if corr_conf is not None:
+        if corr_conf < -0.15:
+            result["invert_confidence"] = True
+            result["pattern_insights"].append(
+                f"Confianza INVERTIDA ({corr_conf:+.3f}): alta confianza → pérdida. "
+                f"Preferir señales de baja confianza mientras dure el patrón"
+            )
+        elif corr_conf < -0.05:
+            result["pattern_insights"].append(
+                f"Confianza no predictiva ({corr_conf:+.3f}): alta conf no mejora resultados"
+            )
+        elif corr_conf > 0.10:
+            result["pattern_insights"].append(
+                f"Confianza calibrada ({corr_conf:+.3f}): alta conf correlaciona con ganancia"
+            )
+
+    # ── Correlación momentum→resultado (estrategia) ─────────────────────────
+    if corr_mom is not None and abs(corr_mom) > 0.12:
+        if corr_mom < 0:
+            result["strategy_hint"] = "mean_reversion"
+            result["pattern_insights"].append(
+                f"Momentum opuesto gana ({corr_mom:+.3f}) → estrategia mean-reversion es mejor"
+            )
+        else:
+            result["strategy_hint"] = "trend_following"
+            result["pattern_insights"].append(
+                f"Momentum a favor gana ({corr_mom:+.3f}) → estrategia trend-following es mejor"
+            )
+
+    # ── Lado preferido desde análisis (con todos los trades del intervalo) ───
+    wr_by_side = analysis.get("wr_by_side", {})
+    n_up   = wr_by_side.get("n_up",   0)
+    n_down = wr_by_side.get("n_down", 0)
+    if n_up >= 5 and n_down >= 5:
+        wr_up_pct   = wr_by_side.get("UP",   0)
+        wr_down_pct = wr_by_side.get("DOWN", 0)
+        if abs(wr_up_pct - wr_down_pct) >= 10:
+            result["analysis_side"] = "UP" if wr_up_pct > wr_down_pct else "DOWN"
+            result["pattern_insights"].append(
+                f"Análisis de patrones: {result['analysis_side']} rinde mejor "
+                f"(UP {wr_up_pct}% / DOWN {wr_down_pct}%)"
+            )
+
+    return result
+
+
 # ── Win rate helpers ──────────────────────────────────────────────────────────
 
 def _wr(bkt: dict, min_n: int = _MIN_SAMPLES) -> Optional[float]:
@@ -185,6 +272,10 @@ def get_adaptive_params(interval_minutes: int) -> dict:
         "block_down":          False,
         "insights":            [],
         "has_data":            total >= _MIN_SAMPLES,
+        # Nuevos campos de análisis de patrones
+        "invert_confidence":   False,
+        "strategy_hint":       "neutral",  # "mean_reversion" | "trend_following" | "neutral"
+        "conf_corr":           None,
     }
 
     recent = s["recent"]
@@ -270,6 +361,26 @@ def get_adaptive_params(interval_minutes: int) -> dict:
         insights.append(
             f"Mejor rango de confianza: {best_conf_range}% → WR {best_conf_wr:.0%}"
         )
+
+    # ── Análisis de patrones (correlaciones desde phantom_analysis) ──────────
+    pattern = _get_pattern_insights(interval_minutes, total)
+    result["invert_confidence"] = pattern["invert_confidence"]
+    result["strategy_hint"]     = pattern["strategy_hint"]
+    result["conf_corr"]         = pattern["conf_corr"]
+
+    # Si la confianza está invertida, neutralizar el filtro por tier
+    # (el filtro normal excluye baja confianza, pero aquí baja conf gana más)
+    if pattern["invert_confidence"] and result["min_confidence_tier"] != "minimal":
+        result["min_confidence_tier"] = "minimal"
+        result["min_confidence_pct"]  = 0
+        insights.append("Tier mínimo resetado a 'minimal' por confianza invertida")
+
+    # Si el análisis de patrones sugiere un lado distinto al learner y el learner
+    # no tiene suficientes datos por lado, aceptar la recomendación del análisis
+    if pattern["analysis_side"] and result["preferred_side"] == "BOTH":
+        result["preferred_side"] = pattern["analysis_side"]
+
+    insights.extend(pattern["pattern_insights"])
 
     result["insights"] = insights
     return result
