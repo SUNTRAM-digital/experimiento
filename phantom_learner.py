@@ -298,7 +298,7 @@ def rebuild_from_vps_file(vps_file: str = os.path.join("data", "vps_phantom_expe
     for t in data.get("trades", []):
         if t.get("result") not in ("WIN", "LOSS"):
             continue
-        interval = 5 if "5m" in t.get("market", "") else 15
+        interval = 5 if t.get("market", "") == "updown_5m" else 15
         won      = t["result"] == "WIN"
         record_result(interval, t, won)
         count += 1

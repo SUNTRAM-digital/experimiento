@@ -215,3 +215,15 @@ class TestRebuildFromVps:
         pl.rebuild_from_vps_file(vps)
         assert pl._stats["5"]["total"] == 2
         assert pl._stats["5"]["wins"]  == 1
+
+    def test_rebuild_15m_not_classified_as_5m(self, tmp_path):
+        """Regression: '5m' is a substring of '15m' so naive 'in' check misclassifies 15m trades."""
+        pl = _fresh_module(str(tmp_path))
+        vps = self._make_vps_file(tmp_path, [
+            {"market": "updown_15m", "result": "WIN",  "signal": "UP", "confidence_pct": 55, "confidence_tier": "high"},
+            {"market": "updown_15m", "result": "LOSS", "signal": "UP", "confidence_pct": 55, "confidence_tier": "high"},
+            {"market": "updown_15m", "result": "WIN",  "signal": "UP", "confidence_pct": 55, "confidence_tier": "high"},
+        ])
+        pl.rebuild_from_vps_file(vps)
+        assert pl._stats["15"]["total"] == 3, "15m trades must go into interval '15'"
+        assert pl._stats["5"]["total"]  == 0, "5m bucket must stay empty"

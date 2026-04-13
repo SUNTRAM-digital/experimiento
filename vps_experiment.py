@@ -241,7 +241,7 @@ def resolve_phantom_vps(slug: str, btc_end: float, won: bool) -> None:
 
     # Registrar en phantom learner para aprendizaje adaptativo
     try:
-        interval = 5 if "5m" in trade.get("market", "") else 15
+        interval = 5 if trade.get("market", "") == "updown_5m" else 15
         _pl.record_result(interval, trade, won)
     except Exception as e:
         logger.warning(f"[VPS] phantom_learner.record_result error: {e}")
