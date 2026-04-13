@@ -444,16 +444,19 @@ async def get_polymarket_positions(wallet_address: str) -> list[dict] | None:
         return []
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
+            async with client.stream(
+                "GET",
                 f"{DATA_API_BASE}/positions",
                 params={"user": wallet_address},
                 headers=HEADERS,
                 timeout=15,
-            )
-            if resp.status_code != 200:
-                return None  # Error de API — conservar datos anteriores
-
-            raw = resp.json()
+            ) as resp:
+                if resp.status_code != 200:
+                    return None  # Error de API — conservar datos anteriores
+                chunks: list[bytes] = []
+                async for chunk in resp.aiter_bytes(chunk_size=8192):
+                    chunks.append(chunk)
+            raw = json.loads(b"".join(chunks))
             if not isinstance(raw, list):
                 return None  # Respuesta inesperada — conservar datos anteriores
 
