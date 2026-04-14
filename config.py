@@ -74,7 +74,8 @@ class BotParams:
         # --- Sistema de capital Phantom (Fase 10) ---
         # Cuando phantom_real_enabled=True el bot puede usar dinero real en trades phantom
         self.phantom_real_enabled: bool = False
-        self.phantom_pool_usdc: float = 0.0          # capital propio asignado al phantom
+        self.phantom_cash_libre_usdc: float = 0.0    # reserva libre phantom (total_asignado - pool; crece con ganancias)
+        self.phantom_pool_usdc: float = 0.0          # pool activo de apuestas (se reduce al perder)
         self.phantom_bucket_5m_pct: float = 0.30     # % del pool para trades 5m
         self.phantom_bucket_15m_pct: float = 0.70    # % del pool para trades 15m
         self.phantom_bucket_5m_usdc: float = 0.0     # saldo actual bucket phantom 5m
@@ -126,6 +127,7 @@ class BotParams:
             "bucket_updown_5m_usdc": self.bucket_updown_5m_usdc,
             "bucket_updown_15m_usdc": self.bucket_updown_15m_usdc,
             "phantom_real_enabled": self.phantom_real_enabled,
+            "phantom_cash_libre_usdc": self.phantom_cash_libre_usdc,
             "phantom_pool_usdc": self.phantom_pool_usdc,
             "phantom_bucket_5m_pct": self.phantom_bucket_5m_pct,
             "phantom_bucket_15m_pct": self.phantom_bucket_15m_pct,

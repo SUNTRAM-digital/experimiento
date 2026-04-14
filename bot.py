@@ -2336,11 +2336,24 @@ async def _resolve_pending_updown_outcomes():
         except Exception as e:
             _log("WARN", f"UpDown phantom learner error: {e}")
 
-        # ── Phantom REAL: devolver stake al bucket si ganó ───────────────────
+        # ── Phantom REAL: devolver stake al bucket; ganancia → cash libre ───────
         _ph_bucket_attr = pending.get("phantom_bucket_attr")
         _ph_real_size   = pending.get("phantom_real_size", 0.0)
-        if _ph_bucket_attr and _ph_real_size > 0 and ph_won:
-            _refund_phantom_bucket(_ph_bucket_attr, round(_ph_real_size * 1.98, 4))
+        if _ph_bucket_attr and _ph_real_size > 0:
+            if ph_won:
+                # Stake devuelto al bucket; ganancia (0.98×stake) va a cash libre phantom
+                _refund_phantom_bucket(_ph_bucket_attr, _ph_real_size)
+                _ph_profit = round(_ph_real_size * 0.98, 4)
+                try:
+                    bot_params.phantom_cash_libre_usdc = round(
+                        getattr(bot_params, "phantom_cash_libre_usdc", 0.0) + _ph_profit, 4
+                    )
+                    bot_params.save()
+                    _log("INFO", f"[PHANTOM-REAL] WIN — stake ${_ph_real_size} → bucket | ganancia ${_ph_profit} → cash libre phantom")
+                except Exception as _pce:
+                    _log("WARN", f"[PHANTOM-REAL] Error actualizando cash libre: {_pce}")
+            else:
+                _log("INFO", f"[PHANTOM-REAL] LOSS — ${_ph_real_size} perdidos del bucket (cash libre sin cambio)")
 
         # ── Experimento VPS-Confianza: resolver trade ────────────────────────
         try:

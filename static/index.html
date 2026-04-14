@@ -1340,13 +1340,15 @@
 
         <!-- Cards de capital -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
-            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Pool Phantom</div>
-            <div id="ph-pool" style="font-size:1.2rem;font-weight:bold;color:var(--blue);font-family:monospace">$0.00</div>
-          </div>
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
-            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Cash Libre</div>
+          <div style="background:var(--bg2);border:1px solid #059669;border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:#34d399;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Cash Libre Phantom</div>
             <div id="ph-cash" style="font-size:1.2rem;font-weight:bold;color:var(--green);font-family:monospace">$0.00</div>
+            <div style="font-size:.65rem;color:var(--muted);margin-top:2px">Reserva — crece con ganancias</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid #1d4ed8;border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Pool Activo</div>
+            <div id="ph-pool" style="font-size:1.2rem;font-weight:bold;color:var(--blue);font-family:monospace">$0.00</div>
+            <div id="ph-pool-max" style="font-size:.65rem;color:var(--muted);margin-top:2px">de $0.00 configurado</div>
           </div>
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
             <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Bucket 5m</div>
@@ -1374,9 +1376,16 @@
           <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Configurar Capital Phantom</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
             <div>
-              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Pool total (USDC)</div>
+              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Cash libre total (USDC)</div>
+              <input id="ph-input-total" type="number" min="0" step="1" value="0"
+                style="width:100px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem"
+                title="Presupuesto total dedicado al phantom. Al ganar, la ganancia se acumula aquí.">
+            </div>
+            <div>
+              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Pool apuestas (USDC)</div>
               <input id="ph-input-pool" type="number" min="0" step="1" value="0"
-                style="width:90px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem">
+                style="width:90px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem"
+                title="Capital activo para apostar. Debe ser ≤ Cash libre total. Al perder se reduce; al ganar la apuesta regresa aquí.">
             </div>
             <div>
               <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">% 5m</div>
@@ -1393,8 +1402,9 @@
               Guardar
             </button>
             <button onclick="reloadPhantomBuckets()"
-              style="padding:7px 14px;background:#1e40af;border:none;border-radius:5px;color:#fff;cursor:pointer;font-size:.8rem">
-              Recargar Buckets
+              style="padding:7px 14px;background:#1e40af;border:none;border-radius:5px;color:#fff;cursor:pointer;font-size:.8rem"
+              title="Reinicia los buckets al valor configurado (úsalo si el pool llegó a 0 y quieres continuar)">
+              Recargar Pool
             </button>
           </div>
         </div>
@@ -6360,8 +6370,14 @@ async function loadPhantom() {
     }
 
     // Capital cards
-    document.getElementById('ph-pool').textContent = '$' + (s.phantom_pool_usdc||0).toFixed(2);
-    document.getElementById('ph-cash').textContent = '$' + (s.cash_free||0).toFixed(2);
+    document.getElementById('ph-cash').textContent = '$' + (s.phantom_cash_libre_usdc||0).toFixed(2);
+    const poolActivo = s.phantom_pool_usdc || 0;
+    const poolMax    = s.phantom_pool_max_usdc || 0;
+    const poolEl = document.getElementById('ph-pool');
+    poolEl.textContent = '$' + poolActivo.toFixed(2);
+    poolEl.style.color = poolActivo <= 0 ? '#f87171' : 'var(--blue)';
+    const poolMaxEl = document.getElementById('ph-pool-max');
+    if (poolMaxEl) poolMaxEl.textContent = 'de $' + poolMax.toFixed(2) + ' configurado';
     document.getElementById('ph-b5m').textContent  = '$' + (s.phantom_bucket_5m_usdc||0).toFixed(2);
     document.getElementById('ph-b15m').textContent = '$' + (s.phantom_bucket_15m_usdc||0).toFixed(2);
     document.getElementById('ph-b5m-pct').textContent  = Math.round((s.phantom_bucket_5m_pct||0)*100) + '%';
@@ -6376,9 +6392,11 @@ async function loadPhantom() {
     document.getElementById('ph-trades-n').textContent = (s.total_trades||0) + ' trades';
 
     // Config inputs
-    document.getElementById('ph-input-pool').value = s.phantom_pool_usdc || 0;
-    document.getElementById('ph-input-p5m').value  = Math.round((s.phantom_bucket_5m_pct  != null ? s.phantom_bucket_5m_pct  : 0.3)*100);
-    document.getElementById('ph-input-p15m').value = Math.round((s.phantom_bucket_15m_pct != null ? s.phantom_bucket_15m_pct : 0.7)*100);
+    const totalAsignado = (s.phantom_cash_libre_usdc || 0) + (s.phantom_pool_max_usdc || 0);
+    document.getElementById('ph-input-total').value = totalAsignado;
+    document.getElementById('ph-input-pool').value  = s.phantom_pool_max_usdc != null ? s.phantom_pool_max_usdc : 0;
+    document.getElementById('ph-input-p5m').value   = Math.round((s.phantom_bucket_5m_pct  != null ? s.phantom_bucket_5m_pct  : 0.3)*100);
+    document.getElementById('ph-input-p15m').value  = Math.round((s.phantom_bucket_15m_pct != null ? s.phantom_bucket_15m_pct : 0.7)*100);
 
     // Learner strategies
     const l5  = s.learner_5m  || {};
@@ -6466,15 +6484,17 @@ async function togglePhantomReal() {
 }
 
 async function savePhantomCapital() {
-  const pool = parseFloat(document.getElementById('ph-input-pool').value || '0');
-  const p5m  = parseFloat(document.getElementById('ph-input-p5m').value  || '30') / 100;
-  const p15m = parseFloat(document.getElementById('ph-input-p15m').value || '70') / 100;
+  const total = parseFloat(document.getElementById('ph-input-total').value || '0');
+  const pool  = parseFloat(document.getElementById('ph-input-pool').value  || '0');
+  const p5m   = parseFloat(document.getElementById('ph-input-p5m').value   || '30') / 100;
+  const p15m  = parseFloat(document.getElementById('ph-input-p15m').value  || '70') / 100;
+  if (pool > total + 0.001) { alert(`Pool ($${pool}) no puede ser mayor que el Cash libre total ($${total})`); return; }
   if (p5m + p15m > 1.001) { alert(`Porcentajes suman ${Math.round((p5m+p15m)*100)}% — deben ser ≤ 100%`); return; }
   try {
     const r = await fetch('/api/phantom/capital', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({pool_usdc: pool, pct_5m: p5m, pct_15m: p15m})
+      body: JSON.stringify({total_usdc: total, pool_usdc: pool, pct_5m: p5m, pct_15m: p15m})
     }).then(r => r.json());
     if (r.ok) loadPhantom();
     else alert('Error: ' + (r.error||'desconocido'));

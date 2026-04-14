@@ -2049,11 +2049,11 @@ async def phantom_status():
         from updown_learner import get_summary as _ud_summary
 
         # Capital phantom
-        pool        = bot_params.phantom_pool_usdc
-        b5m         = bot_params.phantom_bucket_5m_usdc
-        b15m        = bot_params.phantom_bucket_15m_usdc
-        in_bets     = round(pool - b5m - b15m, 4)  # aproximación
-        cash_free   = round(b5m + b15m, 4)
+        cash_libre  = bot_params.phantom_cash_libre_usdc   # reserva libre (no en juego)
+        b5m         = bot_params.phantom_bucket_5m_usdc    # pool activo 5m
+        b15m        = bot_params.phantom_bucket_15m_usdc   # pool activo 15m
+        pool        = round(b5m + b15m, 4)                 # pool total activo
+        in_bets     = round(bot_params.phantom_pool_usdc - pool, 4)  # en apuestas abiertas
 
         # Métricas del experimento VPS
         vps_file = os.path.join("data", "vps_phantom_experiment.json")
@@ -2074,13 +2074,14 @@ async def phantom_status():
         win_rate = round(wins / total_trades * 100, 1) if total_trades else 0.0
 
         return {
-            "phantom_real_enabled":  bot_params.phantom_real_enabled,
-            "phantom_pool_usdc":     pool,
-            "phantom_bucket_5m_pct":  bot_params.phantom_bucket_5m_pct,
-            "phantom_bucket_15m_pct": bot_params.phantom_bucket_15m_pct,
+            "phantom_real_enabled":    bot_params.phantom_real_enabled,
+            "phantom_cash_libre_usdc": cash_libre,
+            "phantom_pool_usdc":       pool,
+            "phantom_pool_max_usdc":   bot_params.phantom_pool_usdc,
+            "phantom_bucket_5m_pct":   bot_params.phantom_bucket_5m_pct,
+            "phantom_bucket_15m_pct":  bot_params.phantom_bucket_15m_pct,
             "phantom_bucket_5m_usdc":  b5m,
             "phantom_bucket_15m_usdc": b15m,
-            "cash_free":   cash_free,
             "in_bets":     max(0.0, in_bets),
             "total_trades":  total_trades,
             "wins":          wins,
@@ -2110,19 +2111,39 @@ async def phantom_toggle(body: dict):
 
 @app.post("/api/phantom/capital")
 async def phantom_capital(body: dict):
-    """Configura capital phantom y porcentajes de buckets. body: {pool_usdc, pct_5m, pct_15m}"""
+    """
+    Configura capital phantom.
+    body: {total_usdc, pool_usdc, pct_5m, pct_15m}
+      total_usdc = presupuesto total asignado al phantom (cash_libre + pool)
+      pool_usdc  = el pool activo de apuestas (subset de total)
+    Al guardar: cash_libre = total - pool; buckets = pool × pct
+    """
     try:
         from bot import bot_params
-        pool  = float(body.get("pool_usdc", bot_params.phantom_pool_usdc))
+        total = float(body.get("total_usdc", bot_params.phantom_cash_libre_usdc + bot_params.phantom_pool_usdc))
+        pool  = float(body.get("pool_usdc",  bot_params.phantom_pool_usdc))
         p5m   = float(body.get("pct_5m",  bot_params.phantom_bucket_5m_pct))
         p15m  = float(body.get("pct_15m", bot_params.phantom_bucket_15m_pct))
+        if pool > total + 0.001:
+            return {"ok": False, "error": f"Pool (${pool}) no puede ser mayor que el presupuesto total (${total})"}
         if p5m + p15m > 1.01:
             return {"ok": False, "error": "pct_5m + pct_15m no puede superar 100%"}
-        bot_params.phantom_pool_usdc      = round(pool, 4)
-        bot_params.phantom_bucket_5m_pct  = round(p5m,  4)
-        bot_params.phantom_bucket_15m_pct = round(p15m, 4)
+        bot_params.phantom_cash_libre_usdc = round(total - pool, 4)
+        bot_params.phantom_pool_usdc       = round(pool, 4)
+        bot_params.phantom_bucket_5m_pct   = round(p5m,  4)
+        bot_params.phantom_bucket_15m_pct  = round(p15m, 4)
+        # Recargar buckets al configurar
+        bot_params.phantom_bucket_5m_usdc  = round(pool * p5m,  4)
+        bot_params.phantom_bucket_15m_usdc = round(pool * p15m, 4)
         bot_params.save()
-        return {"ok": True, "pool_usdc": pool, "pct_5m": p5m, "pct_15m": p15m}
+        return {
+            "ok": True,
+            "cash_libre": bot_params.phantom_cash_libre_usdc,
+            "pool_usdc":  pool,
+            "pct_5m": p5m, "pct_15m": p15m,
+            "bucket_5m": bot_params.phantom_bucket_5m_usdc,
+            "bucket_15m": bot_params.phantom_bucket_15m_usdc,
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
