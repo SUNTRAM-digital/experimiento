@@ -2318,13 +2318,13 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     _ws_clients.append(ws)
 
-    # Estado completo inicial
-    await ws.send_json({"type": "status",       "data": _build_status()})
-    await ws.send_json({"type": "positions",     "data": bot.state.poly_positions})
-    await ws.send_json({"type": "open_orders",   "data": bot.state.open_orders})
-    await ws.send_json({"type": "opportunities", "data": bot.state.opportunities})
-
     try:
+        # Estado completo inicial
+        await ws.send_json({"type": "status",       "data": _build_status()})
+        await ws.send_json({"type": "positions",     "data": bot.state.poly_positions})
+        await ws.send_json({"type": "open_orders",   "data": bot.state.open_orders})
+        await ws.send_json({"type": "opportunities", "data": bot.state.opportunities})
+
         while True:
             data = await asyncio.wait_for(ws.receive_text(), timeout=30)
             if data == "ping":
