@@ -1885,6 +1885,18 @@
       </div>
 
       <button class="bots-refresh-btn" onclick="loadBots()">↻ Actualizar ahora</button>
+
+      <!-- Brain Panel -->
+      <div id="bot-brain-panel" style="display:none;margin-top:20px;background:#0d1117;border:1px solid #30363d;border-radius:12px;padding:16px;position:relative">
+        <button onclick="document.getElementById('bot-brain-panel').style.display='none';_brainStop()"
+          style="position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:1.1rem;cursor:pointer;z-index:10">✕</button>
+        <div id="bot-brain-title" style="font-size:.8rem;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px"></div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+          <canvas id="bot-brain-canvas" width="640" height="340"
+            style="border-radius:8px;flex-shrink:0;max-width:100%"></canvas>
+          <div id="bot-brain-stats" style="flex:1;min-width:180px;font-size:.75rem;color:#c9d1d9"></div>
+        </div>
+      </div>
     </div>
 
     <!-- RECURSOS / PERFORMANCE -->
@@ -6230,7 +6242,7 @@ function _renderBotCard(cfg) {
 
   const noDataClass = !hasData ? ' no-data' : '';
 
-  return `<div class="bot-card state-${state}${noDataClass}" id="bot-card-${id}">
+  return `<div class="bot-card state-${state}${noDataClass}" id="bot-card-${id}" onclick="showBotBrain('${id}')" style="cursor:pointer" title="Clic para ver el cerebro del bot">
   <div class="bot-scene">
     ${sparkles}
     ${sweat}
@@ -6341,6 +6353,253 @@ async function loadBots() {
     const botsTab = document.getElementById('tab-bots');
     if (botsTab && botsTab.classList.contains('active')) loadBots();
   }, 30000);
+}
+
+// ── BOT BRAIN VISUALIZATION ──────────────────────────────────────────────────
+
+let _brainRAF = null;
+let _brainPulses = [];
+let _brainLastData = null;
+let _brainLastId = null;
+
+function _brainStop() {
+  if (_brainRAF) { cancelAnimationFrame(_brainRAF); _brainRAF = null; }
+}
+
+function _wrColor(wr, a=1) {
+  if (wr == null) return `rgba(107,114,128,${a})`;
+  if (wr >= 0.65) return `rgba(63,185,80,${a})`;
+  if (wr >= 0.52) return `rgba(88,166,255,${a})`;
+  if (wr >= 0.42) return `rgba(227,179,65,${a})`;
+  return `rgba(248,81,73,${a})`;
+}
+
+function _wrLabel(wr) {
+  if (wr == null) return '?';
+  return (wr*100).toFixed(1) + '%';
+}
+
+async function showBotBrain(botId) {
+  const panel = document.getElementById('bot-brain-panel');
+  const titleEl = document.getElementById('bot-brain-title');
+  // Toggle off if same bot clicked
+  if (_brainLastId === botId && panel.style.display !== 'none') {
+    panel.style.display = 'none'; _brainStop(); _brainLastId = null; return;
+  }
+  _brainLastId = botId;
+  _brainStop();
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Fetch data
+  let d = {};
+  const isPhantom = botId.startsWith('ph');
+  const interval  = botId.includes('5m') ? '5m' : '15m';
+  try {
+    const r = await fetch('/api/updown/learn').then(r => r.json());
+    const raw = r[interval] || {};
+    d = isPhantom ? (raw.phantom || {}) : raw;
+    d._adaptive = raw.adaptive || {};
+    d._interval = interval;
+  } catch(e) {}
+
+  const names = { ud5m:'UpDown 5m (Real)', ud15m:'UpDown 15m (Real)', ph5m:'Phantom 5m', ph15m:'Phantom 15m' };
+  titleEl.textContent = `🧠 Cerebro del Bot · ${names[botId] || botId} · ${_wrLabel(d.win_rate)} WR total`;
+
+  _renderBrainStats(d);
+  _brainLastData = d;
+  _brainPulses = [];
+
+  const canvas = document.getElementById('bot-brain-canvas');
+  _drawBrain(canvas, d);
+}
+
+function _renderBrainStats(d) {
+  const adapt = d._adaptive || {};
+  const interval = d._interval || '15m';
+  const el = document.getElementById('bot-brain-stats');
+  const row = (label, val, color) =>
+    `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #21262d">
+      <span style="color:#8b949e">${label}</span>
+      <span style="color:${color||'#c9d1d9'};font-weight:600">${val}</span>
+    </div>`;
+  const wr = (v) => v != null ? `<span style="color:${_wrColor(v)}">${_wrLabel(v)}</span>` : '<span style="color:#6b7280">—</span>';
+
+  el.innerHTML = `
+    <div style="font-weight:700;color:#c9d1d9;margin-bottom:8px;font-size:.78rem">ESTADÍSTICAS</div>
+    ${row('WR Total', wr(d.win_rate))}
+    ${row('WR Reciente', wr(d.recent_wr))}
+    ${row('Trades totales', (d.total||d.total_trades||0))}
+    <div style="font-weight:700;color:#c9d1d9;margin:8px 0 4px;font-size:.78rem">POR SEÑAL</div>
+    ${row('Señal débil', wr(d.by_signal?.weak))}
+    ${row('Señal media', wr(d.by_signal?.med))}
+    ${row('Señal fuerte', wr(d.by_signal?.strong))}
+    <div style="font-weight:700;color:#c9d1d9;margin:8px 0 4px;font-size:.78rem">POR TIMING</div>
+    ${row('Temprano', wr(d.by_elapsed?.early))}
+    ${row('Medio', wr(d.by_elapsed?.mid))}
+    ${row('Tardío', wr(d.by_elapsed?.late))}
+    <div style="font-weight:700;color:#c9d1d9;margin:8px 0 4px;font-size:.78rem">POR LADO</div>
+    ${row('UP ▲', wr(d.by_side?.UP))}
+    ${row('DOWN ▼', wr(d.by_side?.DOWN))}
+    <div style="font-weight:700;color:#c9d1d9;margin:8px 0 4px;font-size:.78rem">ADAPTACIÓN</div>
+    ${row('Min confianza', adapt.min_signal != null ? (adapt.min_signal*100).toFixed(0)+'%' : '—')}
+    ${row('Gate momentum', adapt.momentum_gate_strict ? '<span style="color:#f85149">ESTRICTO</span>' : '<span style="color:#3fb950">normal</span>')}
+    ${row('Min elapsed', adapt.min_elapsed_min != null ? adapt.min_elapsed_min+'min' : '—')}
+  `;
+}
+
+function _drawBrain(canvas, d) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const adapt = d._adaptive || {};
+
+  // Node definitions (x,y as 0-1 fractions)
+  const NS = [
+    // Inputs
+    { id:'ta',    x:.08, y:.18, lbl:'TA',     sub: _wrLabel(d.ta_accuracy||null),   wr: d.ta_accuracy||null,    r:22 },
+    { id:'rsi',   x:.08, y:.40, lbl:'RSI',    sub:'nivel',                          wr: null,                   r:18 },
+    { id:'mom',   x:.08, y:.60, lbl:'Mom',    sub:'dirección',                      wr: null,                   r:18 },
+    { id:'btc',   x:.08, y:.80, lbl:'BTC%',   sub:'ventana',                        wr: null,                   r:18 },
+    // Gates
+    { id:'conf',  x:.33, y:.22, lbl:'Confianza', sub: adapt.min_signal != null ? '≥'+(adapt.min_signal*100).toFixed(0)+'%' : '',
+                                                  wr: d.by_signal?.med||null,        r:26 },
+    { id:'tgate', x:.33, y:.55, lbl:'Timing',  sub: adapt.min_elapsed_min ? '>'+adapt.min_elapsed_min+'m' : 'libre',
+                                                  wr: d.by_elapsed?.late||null,      r:22 },
+    { id:'mgate', x:.33, y:.82, lbl:'MomGate', sub: adapt.momentum_gate_strict ? 'ESTRICTO':'normal',
+                                                  wr: adapt.momentum_gate_strict ? 0.82 : 0.50, r:22 },
+    // Signal
+    { id:'up',    x:.60, y:.28, lbl:'UP ▲',   sub: _wrLabel(d.by_side?.UP||null),   wr: d.by_side?.UP||null,   r:24 },
+    { id:'dn',    x:.60, y:.68, lbl:'DOWN ▼', sub: _wrLabel(d.by_side?.DOWN||null), wr: d.by_side?.DOWN||null, r:24 },
+    // Output
+    { id:'tout',  x:.88, y:.20, lbl:'TRADE',   sub:'ejecutar',                      wr: d.win_rate||null,       r:26 },
+    { id:'skip',  x:.88, y:.68, lbl:'SKIP',    sub:'filtrado',                      wr: null,                   r:20 },
+  ];
+
+  const EDGES = [
+    { f:'ta',   t:'conf',  w:.7 }, { f:'rsi',  t:'conf',  w:.5 },
+    { f:'mom',  t:'mgate', w:.8 }, { f:'mom',  t:'conf',  w: adapt.momentum_weight||0.15 },
+    { f:'btc',  t:'conf',  w:.6 }, { f:'btc',  t:'up',    w:.4 }, { f:'btc', t:'dn', w:.4 },
+    { f:'conf', t:'up',    w:.8 }, { f:'conf', t:'dn',    w:.8 },
+    { f:'ta',   t:'tgate', w:.5 },
+    { f:'tgate',t:'up',    w:.7 }, { f:'tgate',t:'dn',    w:.7 },
+    { f:'mgate',t:'up',    w: adapt.momentum_gate_strict?.9:.4, gated:adapt.momentum_gate_strict },
+    { f:'mgate',t:'dn',    w: adapt.momentum_gate_strict?.9:.4, gated:adapt.momentum_gate_strict },
+    { f:'up',   t:'tout',  w:.9 }, { f:'dn',   t:'tout',  w:.9 },
+    { f:'up',   t:'skip',  w:.3 }, { f:'dn',   t:'skip',  w:.3 },
+  ];
+
+  const byId = Object.fromEntries(NS.map(n => [n.id, n]));
+  const px = (n) => ({ x: n.x*W, y: n.y*H });
+
+  function drawEdge(e, t) {
+    const A = byId[e.f], B = byId[e.t];
+    if (!A||!B) return;
+    const a = px(A), b = px(B);
+    const alpha = 0.18 + e.w * 0.22;
+    const col = e.gated ? `rgba(248,81,73,${alpha})` : `rgba(88,166,255,${alpha})`;
+    ctx.beginPath();
+    const cx = (a.x+b.x)/2, cy = (a.y+b.y)/2 - 15;
+    ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(cx, cy, b.x, b.y);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1 + e.w * 2.5;
+    ctx.stroke();
+  }
+
+  function drawNode(n, t) {
+    const {x:cx, y:cy} = px(n);
+    const c = _wrColor(n.wr);
+    const pulse = 0.85 + 0.15 * Math.sin(t*0.002 + n.x*8 + n.y*5);
+
+    // Glow
+    const g = ctx.createRadialGradient(cx,cy,0,cx,cy,n.r*2.5);
+    g.addColorStop(0, _wrColor(n.wr, 0.25*pulse));
+    g.addColorStop(1, _wrColor(n.wr, 0));
+    ctx.beginPath(); ctx.arc(cx,cy,n.r*2.5,0,Math.PI*2);
+    ctx.fillStyle = g; ctx.fill();
+
+    // Ring
+    ctx.beginPath(); ctx.arc(cx,cy,n.r,0,Math.PI*2);
+    ctx.fillStyle = '#161b22';
+    ctx.fill();
+    ctx.strokeStyle = _wrColor(n.wr, 0.9);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = `bold ${n.r > 22 ? 11 : 10}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(n.lbl, cx, cy + 4);
+
+    // Sub-label below node
+    if (n.sub) {
+      ctx.fillStyle = _wrColor(n.wr, 0.9);
+      ctx.font = '9px monospace';
+      ctx.fillText(n.sub, cx, cy + n.r + 11);
+    }
+  }
+
+  function drawPulse(p) {
+    const A = byId[p.edge.f], B = byId[p.edge.t];
+    if (!A||!B) return;
+    const a = px(A), b = px(B);
+    const cx = (a.x+b.x)/2, cy = (a.y+b.y)/2 - 15;
+    // Position along quadratic curve
+    const q = p.t;
+    const px2 = (1-q)*(1-q)*a.x + 2*(1-q)*q*cx + q*q*b.x;
+    const py2 = (1-q)*(1-q)*a.y + 2*(1-q)*q*cy + q*q*b.y;
+    ctx.beginPath();
+    ctx.arc(px2, py2, 4, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  let t = 0;
+  function frame(ts) {
+    t = ts;
+    ctx.clearRect(0,0,W,H);
+
+    // BG
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0,0,W,H);
+
+    // Grid dots
+    ctx.fillStyle = '#161b22';
+    for(let gx=20;gx<W;gx+=30) for(let gy=20;gy<H;gy+=30) {
+      ctx.beginPath(); ctx.arc(gx,gy,1,0,Math.PI*2); ctx.fill();
+    }
+
+    // Layer labels
+    ctx.fillStyle = '#30363d';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    [['ENTRADAS',.08],['FILTROS',.33],['SEÑAL',.60],['SALIDA',.88]].forEach(([lbl,xr])=>{
+      ctx.fillText(lbl, xr*W, H-6);
+    });
+
+    EDGES.forEach(e => drawEdge(e, t));
+
+    // Pulses
+    _brainPulses = _brainPulses.filter(p => p.t < 1);
+    _brainPulses.forEach(p => { p.t += p.speed; drawPulse(p); });
+
+    // Spawn new pulses
+    if (Math.random() < 0.06) {
+      const e = EDGES[Math.floor(Math.random()*EDGES.length)];
+      const toNode = byId[e.t];
+      const col = e.gated ? '#f85149' : _wrColor(toNode?.wr);
+      _brainPulses.push({ edge: e, t: 0, speed: 0.012 + Math.random()*0.014, color: col });
+    }
+
+    NS.forEach(n => drawNode(n, t));
+    _brainRAF = requestAnimationFrame(frame);
+  }
+
+  _brainRAF = requestAnimationFrame(frame);
 }
 
 // ── PHANTOM TAB ─────────────────────────────────────────────────────────────
