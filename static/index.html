@@ -6466,10 +6466,10 @@ async function togglePhantomReal() {
 }
 
 async function savePhantomCapital() {
-  const pool = parseFloat(document.getElementById('ph-input-pool').value) || 0;
-  const p5m  = (parseFloat(document.getElementById('ph-input-p5m').value)  || 30) / 100;
-  const p15m = (parseFloat(document.getElementById('ph-input-p15m').value) || 70) / 100;
-  if (p5m + p15m > 1.01) { alert('Los porcentajes suman más de 100%'); return; }
+  const pool = parseFloat(document.getElementById('ph-input-pool').value || '0');
+  const p5m  = parseFloat(document.getElementById('ph-input-p5m').value  || '30') / 100;
+  const p15m = parseFloat(document.getElementById('ph-input-p15m').value || '70') / 100;
+  if (p5m + p15m > 1.001) { alert(`Porcentajes suman ${Math.round((p5m+p15m)*100)}% — deben ser ≤ 100%`); return; }
   try {
     const r = await fetch('/api/phantom/capital', {
       method: 'POST',
