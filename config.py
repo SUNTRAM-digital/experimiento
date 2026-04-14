@@ -71,6 +71,14 @@ class BotParams:
         self.bucket_btc_usdc: float = 0.0
         self.bucket_updown_5m_usdc: float = 0.0
         self.bucket_updown_15m_usdc: float = 0.0
+        # --- Sistema de capital Phantom (Fase 10) ---
+        # Cuando phantom_real_enabled=True el bot puede usar dinero real en trades phantom
+        self.phantom_real_enabled: bool = False
+        self.phantom_pool_usdc: float = 0.0          # capital propio asignado al phantom
+        self.phantom_bucket_5m_pct: float = 0.30     # % del pool para trades 5m
+        self.phantom_bucket_15m_pct: float = 0.70    # % del pool para trades 15m
+        self.phantom_bucket_5m_usdc: float = 0.0     # saldo actual bucket phantom 5m
+        self.phantom_bucket_15m_usdc: float = 0.0    # saldo actual bucket phantom 15m
         # Cargar valores guardados previamente (sobreescriben los defaults)
         self._load()
 
@@ -117,6 +125,12 @@ class BotParams:
             "bucket_btc_usdc": self.bucket_btc_usdc,
             "bucket_updown_5m_usdc": self.bucket_updown_5m_usdc,
             "bucket_updown_15m_usdc": self.bucket_updown_15m_usdc,
+            "phantom_real_enabled": self.phantom_real_enabled,
+            "phantom_pool_usdc": self.phantom_pool_usdc,
+            "phantom_bucket_5m_pct": self.phantom_bucket_5m_pct,
+            "phantom_bucket_15m_pct": self.phantom_bucket_15m_pct,
+            "phantom_bucket_5m_usdc": self.phantom_bucket_5m_usdc,
+            "phantom_bucket_15m_usdc": self.phantom_bucket_15m_usdc,
         }
 
     def _load(self):

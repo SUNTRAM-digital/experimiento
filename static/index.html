@@ -645,6 +645,7 @@
       <div class="tab" onclick="showTab('tab-logs')">Logs</div>
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
+      <div class="tab" onclick="showTab('tab-phantom')">🎭 Phantom</div>
       <div class="tab" onclick="showTab('tab-capital')">💰 Capital</div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
       <div class="tab" onclick="showTab('tab-bots')">🤖 Bots</div>
@@ -1318,6 +1319,141 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- PHANTOM TAB -->
+    <div id="tab-phantom" class="tab-content">
+      <div style="max-width:900px;margin:0 auto">
+
+        <!-- Toggle principal -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:16px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:1rem;font-weight:700;color:var(--text);margin-bottom:4px">🎭 Modo Phantom</div>
+            <div id="phantom-mode-desc" style="font-size:.8rem;color:var(--muted)">Solo dinero ficticio — el bot aprende sin gastar</div>
+          </div>
+          <button id="phantom-toggle-btn" onclick="togglePhantomReal()"
+            style="padding:10px 22px;border-radius:8px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.88rem;cursor:pointer;transition:all .2s">
+            ● FICTICIO
+          </button>
+        </div>
+
+        <!-- Cards de capital -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Pool Phantom</div>
+            <div id="ph-pool" style="font-size:1.2rem;font-weight:bold;color:var(--blue);font-family:monospace">$0.00</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Cash Libre</div>
+            <div id="ph-cash" style="font-size:1.2rem;font-weight:bold;color:var(--green);font-family:monospace">$0.00</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Bucket 5m</div>
+            <div id="ph-b5m" style="font-size:1.2rem;font-weight:bold;color:#a78bfa;font-family:monospace">$0.00</div>
+            <div id="ph-b5m-pct" style="font-size:.7rem;color:var(--muted);margin-top:2px">0%</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Bucket 15m</div>
+            <div id="ph-b15m" style="font-size:1.2rem;font-weight:bold;color:#60a5fa;font-family:monospace">$0.00</div>
+            <div id="ph-b15m-pct" style="font-size:.7rem;color:var(--muted);margin-top:2px">0%</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">P&amp;L Ficticio</div>
+            <div id="ph-pnl-vps" style="font-size:1.2rem;font-weight:bold;font-family:monospace">$0.00</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Win Rate</div>
+            <div id="ph-wr" style="font-size:1.2rem;font-weight:bold;font-family:monospace">0%</div>
+            <div id="ph-trades-n" style="font-size:.7rem;color:var(--muted);margin-top:2px">0 trades</div>
+          </div>
+        </div>
+
+        <!-- Configuración de capital -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Configurar Capital Phantom</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Pool total (USDC)</div>
+              <input id="ph-input-pool" type="number" min="0" step="1" value="0"
+                style="width:90px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem">
+            </div>
+            <div>
+              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">% 5m</div>
+              <input id="ph-input-p5m" type="number" min="0" max="100" step="5" value="30"
+                style="width:70px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem">
+            </div>
+            <div>
+              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">% 15m</div>
+              <input id="ph-input-p15m" type="number" min="0" max="100" step="5" value="70"
+                style="width:70px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem">
+            </div>
+            <button onclick="savePhantomCapital()"
+              style="padding:7px 14px;background:#059669;border:none;border-radius:5px;color:#fff;cursor:pointer;font-size:.8rem;font-weight:600">
+              Guardar
+            </button>
+            <button onclick="reloadPhantomBuckets()"
+              style="padding:7px 14px;background:#1e40af;border:none;border-radius:5px;color:#fff;cursor:pointer;font-size:.8rem">
+              Recargar Buckets
+            </button>
+          </div>
+        </div>
+
+        <!-- Métricas del learner -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Learner 5m — Estrategia</div>
+            <div id="ph-strat-5m" style="font-size:.8rem;color:var(--text)">—</div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Learner 15m — Estrategia</div>
+            <div id="ph-strat-15m" style="font-size:.8rem;color:var(--text)">—</div>
+          </div>
+        </div>
+
+        <!-- Log en tiempo real (solo phantom) -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Log Phantom en tiempo real</span>
+            <button onclick="document.getElementById('ph-log').innerHTML=''"
+              style="font-size:.72rem;padding:3px 8px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer">
+              Limpiar
+            </button>
+          </div>
+          <div id="ph-log" style="font-family:monospace;font-size:.75rem;color:var(--text);max-height:180px;overflow-y:auto;line-height:1.6">
+            <span style="color:var(--muted)">Esperando actividad phantom…</span>
+          </div>
+        </div>
+
+        <!-- Tabla de operaciones phantom -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px">
+            Registros de operaciones phantom
+            <span id="ph-table-count" style="color:var(--muted);font-size:.72rem;margin-left:8px"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+              <thead>
+                <tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">
+                  <th style="padding:6px 8px">#</th>
+                  <th style="padding:6px 8px">Hora</th>
+                  <th style="padding:6px 8px">Mercado</th>
+                  <th style="padding:6px 8px">Lado</th>
+                  <th style="padding:6px 8px">Conf%</th>
+                  <th style="padding:6px 8px">Tier</th>
+                  <th style="padding:6px 8px">Dinero</th>
+                  <th style="padding:6px 8px">Resultado</th>
+                  <th style="padding:6px 8px">PnL</th>
+                </tr>
+              </thead>
+              <tbody id="ph-table-body">
+                <tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">Cargando…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="ph-table-pager" style="display:flex;gap:8px;justify-content:center;margin-top:10px"></div>
+        </div>
+
       </div>
     </div>
 
@@ -2094,7 +2230,7 @@ function connectWS() {
   ws.onopen = () => loadHistoricalLogs();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    if (msg.type === 'log')          appendLog(msg.data);
+    if (msg.type === 'log')          { appendLog(msg.data); if (msg.data && msg.data.msg && msg.data.msg.includes('[PHANTOM]')) _appendPhantomLog(msg.data.msg); }
     if (msg.type === 'status')       renderStatus(msg.data);
     if (msg.type === 'positions')    renderPositions(msg.data);
     if (msg.type === 'open_orders')  renderOpenOrders(msg.data);
@@ -5902,7 +6038,8 @@ showTab = function(id) {
 const _origShowTabBots = showTab;
 showTab = function(id) {
   _origShowTabBots(id);
-  if (id === 'tab-bots') loadBots();
+  if (id === 'tab-bots')    loadBots();
+  if (id === 'tab-phantom') loadPhantom();
 };
 
 // ── Bots Arena ────────────────────────────────────────────────────────────────
@@ -6195,6 +6332,184 @@ async function loadBots() {
     if (botsTab && botsTab.classList.contains('active')) loadBots();
   }, 30000);
 }
+
+// ── PHANTOM TAB ─────────────────────────────────────────────────────────────
+
+let _phPage = 0;
+const _phPageSize = 50;
+let _phTimer = null;
+
+async function loadPhantom() {
+  try {
+    const s = await fetch('/api/phantom/status').then(r => r.json());
+    if (s.error) return;
+
+    // Toggle button
+    const btn = document.getElementById('phantom-toggle-btn');
+    const desc = document.getElementById('phantom-mode-desc');
+    if (s.phantom_real_enabled) {
+      btn.textContent = '● REAL+FICTICIO';
+      btn.style.cssText = 'padding:10px 22px;border-radius:8px;border:2px solid #f59e0b;background:#451a03;color:#fbbf24;font-weight:700;font-size:.88rem;cursor:pointer;transition:all .2s';
+      desc.textContent = '⚠️ Modo activo — el bot puede gastar USDC reales en trades phantom';
+      desc.style.color = '#fbbf24';
+    } else {
+      btn.textContent = '● FICTICIO';
+      btn.style.cssText = 'padding:10px 22px;border-radius:8px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.88rem;cursor:pointer;transition:all .2s';
+      desc.textContent = 'Solo dinero ficticio — el bot aprende sin gastar';
+      desc.style.color = 'var(--muted)';
+    }
+
+    // Capital cards
+    document.getElementById('ph-pool').textContent = '$' + (s.phantom_pool_usdc||0).toFixed(2);
+    document.getElementById('ph-cash').textContent = '$' + (s.cash_free||0).toFixed(2);
+    document.getElementById('ph-b5m').textContent  = '$' + (s.phantom_bucket_5m_usdc||0).toFixed(2);
+    document.getElementById('ph-b15m').textContent = '$' + (s.phantom_bucket_15m_usdc||0).toFixed(2);
+    document.getElementById('ph-b5m-pct').textContent  = Math.round((s.phantom_bucket_5m_pct||0)*100) + '%';
+    document.getElementById('ph-b15m-pct').textContent = Math.round((s.phantom_bucket_15m_pct||0)*100) + '%';
+
+    const pnl = s.total_pnl_vps || 0;
+    const pnlEl = document.getElementById('ph-pnl-vps');
+    pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+    pnlEl.style.color = pnl >= 0 ? 'var(--green)' : '#f87171';
+
+    document.getElementById('ph-wr').textContent = (s.win_rate_pct||0).toFixed(1) + '%';
+    document.getElementById('ph-trades-n').textContent = (s.total_trades||0) + ' trades';
+
+    // Config inputs
+    document.getElementById('ph-input-pool').value = s.phantom_pool_usdc || 0;
+    document.getElementById('ph-input-p5m').value  = Math.round((s.phantom_bucket_5m_pct||0.3)*100);
+    document.getElementById('ph-input-p15m').value = Math.round((s.phantom_bucket_15m_pct||0.7)*100);
+
+    // Learner strategies
+    const l5  = s.learner_5m  || {};
+    const l15 = s.learner_15m || {};
+    document.getElementById('ph-strat-5m').textContent  = l5.adaptive_reason  || l5.reason || '—';
+    document.getElementById('ph-strat-15m').textContent = l15.adaptive_reason || l15.reason || '—';
+
+  } catch(e) { console.warn('[Phantom] status error', e); }
+
+  // Load trades table
+  await loadPhantomTrades(_phPage);
+
+  // Auto-refresh
+  clearTimeout(_phTimer);
+  _phTimer = setTimeout(() => {
+    if (document.getElementById('tab-phantom').classList.contains('active')) loadPhantom();
+  }, 30000);
+}
+
+async function loadPhantomTrades(page = 0) {
+  _phPage = page;
+  try {
+    const r = await fetch(`/api/vps-experiment/trades?page=${page}&limit=${_phPageSize}`).then(r => r.json());
+    const trades = r.trades || [];
+    const total  = r.total  || 0;
+
+    document.getElementById('ph-table-count').textContent = `(${total} total)`;
+
+    const tbody = document.getElementById('ph-table-body');
+    if (!trades.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">Sin operaciones registradas</td></tr>';
+    } else {
+      tbody.innerHTML = trades.map(t => {
+        const res = t.result || 'PENDING';
+        const resColor = res === 'WIN' ? 'var(--green)' : res === 'LOSS' ? '#f87171' : '#f59e0b';
+        const pnl = t.pnl_vps != null ? ((t.pnl_vps >= 0 ? '+' : '') + '$' + t.pnl_vps.toFixed(2)) : '—';
+        const pnlColor = (t.pnl_vps||0) >= 0 ? 'var(--green)' : '#f87171';
+        const moneyBadge = t.used_real_money
+          ? '<span style="background:#451a03;color:#fbbf24;border-radius:4px;padding:1px 5px;font-size:.7rem">REAL</span>'
+          : '<span style="background:#1f2937;color:#9ca3af;border-radius:4px;padding:1px 5px;font-size:.7rem">FICTICIO</span>';
+        const ts = t.timestamp ? t.timestamp.replace('T',' ').slice(0,16) : '—';
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:5px 8px;color:var(--muted)">${t.trade_id}</td>
+          <td style="padding:5px 8px;font-family:monospace;font-size:.72rem">${ts}</td>
+          <td style="padding:5px 8px">${t.market||'—'}</td>
+          <td style="padding:5px 8px;font-weight:600;color:${t.signal==='UP'?'var(--green)':'#f87171'}">${t.signal||'—'}</td>
+          <td style="padding:5px 8px">${(t.confidence_pct||0).toFixed(0)}%</td>
+          <td style="padding:5px 8px;color:var(--muted)">${t.confidence_tier||'—'}</td>
+          <td style="padding:5px 8px">${moneyBadge}</td>
+          <td style="padding:5px 8px;font-weight:600;color:${resColor}">${res}</td>
+          <td style="padding:5px 8px;font-family:monospace;color:${pnlColor}">${pnl}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Pager
+    const pager = document.getElementById('ph-table-pager');
+    const pages = Math.ceil(total / _phPageSize);
+    pager.innerHTML = Array.from({length: pages}, (_, i) =>
+      `<button onclick="loadPhantomTrades(${i})"
+        style="padding:3px 8px;border-radius:4px;border:1px solid var(--border);
+               background:${i===page?'#1e40af':'var(--bg)'};color:${i===page?'#fff':'var(--muted)'};
+               cursor:pointer;font-size:.75rem">${i+1}</button>`
+    ).join('');
+  } catch(e) { console.warn('[Phantom] trades error', e); }
+}
+
+async function togglePhantomReal() {
+  const btn = document.getElementById('phantom-toggle-btn');
+  const isReal = btn.textContent.includes('REAL');
+  const newState = !isReal;
+  if (newState) {
+    const ok = confirm('⚠️ Esto permitirá al bot gastar USDC REALES en trades phantom.\n\nAsegúrate de haber asignado un pool de capital.\n\n¿Confirmas activar el modo REAL?');
+    if (!ok) return;
+  }
+  try {
+    const r = await fetch('/api/phantom/toggle', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: newState})
+    }).then(r => r.json());
+    if (r.ok) loadPhantom();
+    else alert('Error: ' + (r.error||'desconocido'));
+  } catch(e) { alert('Error de red: ' + e); }
+}
+
+async function savePhantomCapital() {
+  const pool = parseFloat(document.getElementById('ph-input-pool').value) || 0;
+  const p5m  = (parseFloat(document.getElementById('ph-input-p5m').value)  || 30) / 100;
+  const p15m = (parseFloat(document.getElementById('ph-input-p15m').value) || 70) / 100;
+  if (p5m + p15m > 1.01) { alert('Los porcentajes suman más de 100%'); return; }
+  try {
+    const r = await fetch('/api/phantom/capital', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pool_usdc: pool, pct_5m: p5m, pct_15m: p15m})
+    }).then(r => r.json());
+    if (r.ok) loadPhantom();
+    else alert('Error: ' + (r.error||'desconocido'));
+  } catch(e) { alert('Error de red: ' + e); }
+}
+
+async function reloadPhantomBuckets() {
+  try {
+    const r = await fetch('/api/phantom/reload-buckets', {method: 'POST'}).then(r => r.json());
+    if (r.ok) { loadPhantom(); }
+    else alert('Error: ' + (r.error||'desconocido'));
+  } catch(e) { alert('Error de red: ' + e); }
+}
+
+// Alimentar el log phantom desde el WebSocket de logs global
+function _appendPhantomLog(msg) {
+  const el = document.getElementById('ph-log');
+  if (!el) return;
+  // Limpiar placeholder
+  if (el.querySelector('span[style*="muted"]')) el.innerHTML = '';
+  const time = new Date().toLocaleTimeString('es-MX', {hour12:false});
+  const color = msg.includes('HUBIERA GANADO') ? 'var(--green)' : msg.includes('HUBIERA PERDIDO') ? '#f87171' : '#a78bfa';
+  const div = document.createElement('div');
+  div.style.color = color;
+  div.textContent = `${time}  ${msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+// Inicializar phantom cuando se carga el tab
+loadPhantom();
+setInterval(() => {
+  if (document.getElementById('tab-phantom') && document.getElementById('tab-phantom').classList.contains('active'))
+    loadPhantom();
+}, 30000);
 </script>
 </body>
 </html>

@@ -1396,6 +1396,26 @@ _updown_pending_outcomes: dict[str, dict] = {}
 # Rastrea qué slugs ya tienen apuesta fantasma registrada
 _updown_phantom_slugs: set[str] = set()
 
+
+def _deduct_phantom_bucket(attr: str, amount: float) -> None:
+    """Descuenta `amount` del bucket phantom indicado (attr = 'phantom_bucket_5m_usdc' o '..._15m_usdc')."""
+    try:
+        current = getattr(bot_params, attr, 0.0)
+        setattr(bot_params, attr, round(max(0.0, current - amount), 4))
+        bot_params.save()
+    except Exception as e:
+        logger.warning(f"[PHANTOM] Error descontando bucket {attr}: {e}")
+
+
+def _refund_phantom_bucket(attr: str, amount: float) -> None:
+    """Devuelve `amount` al bucket phantom al ganar (payout 0.98×stake)."""
+    try:
+        current = getattr(bot_params, attr, 0.0)
+        setattr(bot_params, attr, round(current + amount, 4))
+        bot_params.save()
+    except Exception as e:
+        logger.warning(f"[PHANTOM] Error recargando bucket {attr}: {e}")
+
 # Mapeo slug → detalles de apuesta fantasma pendiente de resolución
 _updown_phantom_pending: dict[str, dict] = {}
 
@@ -1641,7 +1661,56 @@ async def _scan_updown(interval_minutes: int):
                 f"confianza {phantom_conf:.0f}% | combined={_sig['combined']:+.3f} | "
                 f"motivo_skip={_ph_reason}",
             )
-            # ── Experimento VPS-Confianza (solo phantom, sin dinero real) ────
+            # ── Phantom REAL: ejecutar trade con dinero real cuando está habilitado ──
+            _ph_used_real = False
+            if bot_params.phantom_real_enabled and not opp:
+                # Solo ejecutar phantom real si NO hubo trade real ya en este mercado
+                _ph_bucket_attr = (
+                    "phantom_bucket_5m_usdc" if interval_minutes <= 5 else "phantom_bucket_15m_usdc"
+                )
+                _ph_avail = getattr(bot_params, _ph_bucket_attr, 0.0)
+                _ph_size  = min(bot_params.updown_max_usdc, _ph_avail)
+                if _ph_size >= 1.0:
+                    _ph_entry_price = (
+                        market.get("up_price",  0.50) if phantom_dir == "UP"
+                        else market.get("down_price", 0.50)
+                    )
+                    _ph_token = (
+                        market.get("up_token")  if phantom_dir == "UP"
+                        else market.get("down_token")
+                    )
+                    if _ph_token and _ph_entry_price > 0:
+                        _ph_opp = {
+                            "token_id":       _ph_token,
+                            "entry_price":    _ph_entry_price,
+                            "size_usdc":      _ph_size,
+                            "shares":         round(_ph_size / _ph_entry_price, 2),
+                            "side":           phantom_dir,
+                            "asset":          "BTC_UPDOWN",
+                            "interval_minutes": interval_minutes,
+                            "confidence":     phantom_conf,
+                            "market_title":   market.get("title", ""),
+                            "slug":           slug,
+                        }
+                        try:
+                            _ph_success = await asyncio.get_event_loop().run_in_executor(
+                                None, _execute_trade, _ph_opp
+                            )
+                            if _ph_success:
+                                _deduct_phantom_bucket(_ph_bucket_attr, _ph_size)
+                                _ph_used_real = True
+                                _log(
+                                    "INFO",
+                                    f"UpDown {interval_minutes}m | [PHANTOM-REAL] ✦ {phantom_dir} "
+                                    f"${_ph_size:.2f} @ {_ph_entry_price:.3f} ejecutado",
+                                )
+                                # Guardar referencia al bucket para devolver stake en resolución
+                                _updown_phantom_pending[slug]["phantom_bucket_attr"] = _ph_bucket_attr
+                                _updown_phantom_pending[slug]["phantom_real_size"]   = _ph_size
+                        except Exception as _ph_exec_err:
+                            _log("WARN", f"[PHANTOM-REAL] Error ejecutando trade: {_ph_exec_err}")
+
+            # ── Experimento VPS-Confianza ─────────────────────────────────────
             try:
                 from vps_experiment import record_phantom_vps as _vps_rec
                 _vps_rec(
@@ -1663,6 +1732,7 @@ async def _scan_updown(interval_minutes: int):
                         "macro":     _sig.get("macro", 0),
                     },
                     entry_price=opp["entry_price"] if opp else 0.50,
+                    used_real_money=_ph_used_real,
                 )
             except Exception as _vps_err:
                 _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
@@ -2263,6 +2333,12 @@ async def _resolve_pending_updown_outcomes():
             _rph(interval, pending, ph_won)
         except Exception as e:
             _log("WARN", f"UpDown phantom learner error: {e}")
+
+        # ── Phantom REAL: devolver stake al bucket si ganó ───────────────────
+        _ph_bucket_attr = pending.get("phantom_bucket_attr")
+        _ph_real_size   = pending.get("phantom_real_size", 0.0)
+        if _ph_bucket_attr and _ph_real_size > 0 and ph_won:
+            _refund_phantom_bucket(_ph_bucket_attr, round(_ph_real_size * 1.98, 4))
 
         # ── Experimento VPS-Confianza: resolver trade ────────────────────────
         try:

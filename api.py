@@ -2038,6 +2038,113 @@ async def reload_bucket(market: str):
     return {"ok": True, "market": market, "bucket_usdc": target}
 
 
+# ── Phantom Tab: status, toggle, capital ──────────────────────────────────
+
+@app.get("/api/phantom/status")
+async def phantom_status():
+    """Estado completo del tab Phantom: capital, buckets, métricas, learner."""
+    try:
+        from bot import bot_params
+        import json as _json
+        from updown_learner import get_summary as _ud_summary
+
+        # Capital phantom
+        pool        = bot_params.phantom_pool_usdc
+        b5m         = bot_params.phantom_bucket_5m_usdc
+        b15m        = bot_params.phantom_bucket_15m_usdc
+        in_bets     = round(pool - b5m - b15m, 4)  # aproximación
+        cash_free   = round(b5m + b15m, 4)
+
+        # Métricas del experimento VPS
+        vps_file = os.path.join("data", "vps_phantom_experiment.json")
+        total_trades = wins = 0
+        total_pnl_vps = total_pnl_real = 0.0
+        if os.path.exists(vps_file):
+            with open(vps_file, "r", encoding="utf-8") as f:
+                vps_data = _json.load(f)
+            resolved = [t for t in vps_data.get("trades", []) if t.get("result") in ("WIN", "LOSS")]
+            total_trades = len(resolved)
+            wins         = sum(1 for t in resolved if t.get("result") == "WIN")
+            total_pnl_vps  = round(sum(t.get("pnl_vps",   0) or 0 for t in resolved), 2)
+            total_pnl_real = round(sum(
+                (t.get("pnl_vps", 0) or 0)
+                for t in resolved if t.get("used_real_money")
+            ), 2)
+
+        win_rate = round(wins / total_trades * 100, 1) if total_trades else 0.0
+
+        return {
+            "phantom_real_enabled":  bot_params.phantom_real_enabled,
+            "phantom_pool_usdc":     pool,
+            "phantom_bucket_5m_pct":  bot_params.phantom_bucket_5m_pct,
+            "phantom_bucket_15m_pct": bot_params.phantom_bucket_15m_pct,
+            "phantom_bucket_5m_usdc":  b5m,
+            "phantom_bucket_15m_usdc": b15m,
+            "cash_free":   cash_free,
+            "in_bets":     max(0.0, in_bets),
+            "total_trades":  total_trades,
+            "wins":          wins,
+            "win_rate_pct":  win_rate,
+            "total_pnl_vps": total_pnl_vps,
+            "total_pnl_real": total_pnl_real,
+            "learner_5m":    _ud_summary(5),
+            "learner_15m":   _ud_summary(15),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/phantom/toggle")
+async def phantom_toggle(body: dict):
+    """Activa o desactiva el modo phantom real. body: {enabled: bool}"""
+    try:
+        from bot import bot_params
+        enabled = bool(body.get("enabled", False))
+        bot_params.phantom_real_enabled = enabled
+        bot_params.save()
+        mode = "REAL+FICTICIO" if enabled else "SOLO FICTICIO"
+        return {"ok": True, "phantom_real_enabled": enabled, "mode": mode}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/phantom/capital")
+async def phantom_capital(body: dict):
+    """Configura capital phantom y porcentajes de buckets. body: {pool_usdc, pct_5m, pct_15m}"""
+    try:
+        from bot import bot_params
+        pool  = float(body.get("pool_usdc", bot_params.phantom_pool_usdc))
+        p5m   = float(body.get("pct_5m",  bot_params.phantom_bucket_5m_pct))
+        p15m  = float(body.get("pct_15m", bot_params.phantom_bucket_15m_pct))
+        if p5m + p15m > 1.01:
+            return {"ok": False, "error": "pct_5m + pct_15m no puede superar 100%"}
+        bot_params.phantom_pool_usdc      = round(pool, 4)
+        bot_params.phantom_bucket_5m_pct  = round(p5m,  4)
+        bot_params.phantom_bucket_15m_pct = round(p15m, 4)
+        bot_params.save()
+        return {"ok": True, "pool_usdc": pool, "pct_5m": p5m, "pct_15m": p15m}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/phantom/reload-buckets")
+async def phantom_reload_buckets():
+    """Recarga los buckets phantom a partir del pool asignado y los porcentajes."""
+    try:
+        from bot import bot_params
+        pool = bot_params.phantom_pool_usdc
+        bot_params.phantom_bucket_5m_usdc  = round(pool * bot_params.phantom_bucket_5m_pct,  4)
+        bot_params.phantom_bucket_15m_usdc = round(pool * bot_params.phantom_bucket_15m_pct, 4)
+        bot_params.save()
+        return {
+            "ok": True,
+            "phantom_bucket_5m_usdc":  bot_params.phantom_bucket_5m_usdc,
+            "phantom_bucket_15m_usdc": bot_params.phantom_bucket_15m_usdc,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── Experimento VPS-Confianza ──────────────────────────────────────────────
 
 @app.get("/api/vps-experiment")

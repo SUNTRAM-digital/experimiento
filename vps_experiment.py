@@ -139,6 +139,7 @@ def record_phantom_vps(
     end_ts: int,
     ta_scores: Optional[dict] = None,
     entry_price: float = 0.50,
+    used_real_money: bool = False,
 ) -> None:
     """
     Registra un trade phantom en el experimento VPS.
@@ -188,6 +189,7 @@ def record_phantom_vps(
         "pnl_vps":             None,
         "pnl_fixed":           None,
         "pnl_difference":      None,
+        "used_real_money":     used_real_money,
     }
 
     data["trades"].append(trade)
