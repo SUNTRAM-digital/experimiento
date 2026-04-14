@@ -162,8 +162,13 @@ def record_result(interval_minutes: int, trade: dict, won: bool):
         s["by_rsi"][rsi_key]["w" if won else "l"] += 1
 
     # ── Por timing ───────────────────────────────────────────────────────────
+    # Umbrales proporcionales al intervalo: para 15m el rango problemático es
+    # 3.5–5 min (justo sobre el floor), que con umbrales fijos caía en "late"
+    # y nunca activaba la corrección del learner.
     elapsed = trade.get("elapsed_minutes") or 0.0
-    el_key = "early" if elapsed < 1.5 else ("mid" if elapsed < 3.0 else "late")
+    _el_early = 5.0 if interval_minutes >= 15 else 1.5
+    _el_mid   = 10.0 if interval_minutes >= 15 else 3.0
+    el_key = "early" if elapsed < _el_early else ("mid" if elapsed < _el_mid else "late")
     s["by_elapsed"][el_key]["w" if won else "l"] += 1
 
     # ── Por lado ─────────────────────────────────────────────────────────────
@@ -254,7 +259,9 @@ def record_phantom_result(interval_minutes: int, trade: dict, won: bool):
 
     # ── Por timing ───────────────────────────────────────────────────────────
     elapsed = trade.get("elapsed_minutes") or 0.0
-    el_key = "early" if elapsed < 1.5 else ("mid" if elapsed < 3.0 else "late")
+    _el_early = 5.0 if interval_minutes >= 15 else 1.5
+    _el_mid   = 10.0 if interval_minutes >= 15 else 3.0
+    el_key = "early" if elapsed < _el_early else ("mid" if elapsed < _el_mid else "late")
     p["by_elapsed"][el_key]["w" if won else "l"] += 1
 
     # ── Por motivo de no-entrada ─────────────────────────────────────────────

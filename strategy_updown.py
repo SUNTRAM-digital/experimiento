@@ -45,10 +45,10 @@ _MAX_ENTRY_PRICE = 0.89
 # ── Tiempo mínimo de entrada (floor fijo, independiente del learner) ──────────
 # Para que el precio BTC muestre dirección antes de apostar.
 # 5m: esperar 1.5min (30% de la ventana)
-# 15m: esperar 3.5min (23% de la ventana)
+# 15m: esperar 5.0min (33% de la ventana) — datos con 377 obs muestran WR=33% para <5min
 # El learner puede subir este umbral pero nunca lo reduce debajo del floor.
 _MIN_ELAPSED_5M  = 1.5   # minutos
-_MIN_ELAPSED_15M = 3.5   # minutos
+_MIN_ELAPSED_15M = 5.0   # minutos
 
 # ── Pesos de cada componente ──────────────────────────────────────────────────
 # Basado en knowledge base (v83 bot externo + IR = IC × √N):
@@ -388,26 +388,31 @@ def evaluate_updown_market(
     if interval_min > 5:
         base_threshold = 0.20
         mom_threshold  = adaptive_params.get("momentum_gate_threshold", base_threshold)
+        # Modo estricto: el learner lo activa cuando conflicto TA/momentum pierde ≥15pp
+        # En modo estricto se elimina el bypass — cualquier conflicto bloquea el trade.
+        gate_strict = adaptive_params.get("momentum_gate_strict", False)
         # Umbral de confianza para bypassear el gate cuando hay conflicto TA/momentum
+        # (solo aplica cuando gate_strict=False)
         gate_bypass_confidence = 0.25
 
         if combined > 0 and momentum < -mom_threshold:
-            if abs(combined) >= gate_bypass_confidence:
-                # Confianza suficiente para entrar a pesar del conflicto — solo advertir
-                pass  # continúa sin bloquear
+            if not gate_strict and abs(combined) >= gate_bypass_confidence:
+                pass  # confianza suficiente y modo normal — continúa sin bloquear
             else:
+                strict_note = " [gate estricto activo]" if gate_strict else f", conf={abs(combined)*100:.1f}%<25%"
                 return None, (
                     f"Gate momentum: señal UP pero BTC bajó {sig['window_pct']:+.3f}% en la ventana "
-                    f"(momentum={momentum:+.3f} < -{mom_threshold:.2f}, conf={abs(combined)*100:.1f}%<25%) "
+                    f"(momentum={momentum:+.3f} < -{mom_threshold:.2f}{strict_note}) "
                     f"— inercia bajista en contra"
                 )
         if combined < 0 and momentum > mom_threshold:
-            if abs(combined) >= gate_bypass_confidence:
-                pass  # confianza >25% — permitir entrada con conflicto TA/momentum
+            if not gate_strict and abs(combined) >= gate_bypass_confidence:
+                pass  # confianza >25% y modo normal — permitir entrada
             else:
+                strict_note = " [gate estricto activo]" if gate_strict else f", conf={abs(combined)*100:.1f}%<25%"
                 return None, (
                     f"Gate momentum: señal DOWN pero BTC subió {sig['window_pct']:+.3f}% en la ventana "
-                    f"(momentum={momentum:+.3f} > +{mom_threshold:.2f}, conf={abs(combined)*100:.1f}%<25%) "
+                    f"(momentum={momentum:+.3f} > +{mom_threshold:.2f}{strict_note}) "
                     f"— inercia alcista en contra"
                 )
 
