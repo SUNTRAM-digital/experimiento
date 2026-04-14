@@ -1376,16 +1376,16 @@
           <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Configurar Capital Phantom</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
             <div>
-              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Cash libre total (USDC)</div>
-              <input id="ph-input-total" type="number" min="0" step="1" value="0"
-                style="width:100px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem"
-                title="Presupuesto total dedicado al phantom. Al ganar, la ganancia se acumula aquí.">
+              <div style="font-size:.72rem;color:#34d399;margin-bottom:4px">Cash libre (USDC)</div>
+              <input id="ph-input-cash" type="number" min="0" step="1" value="0"
+                style="width:100px;padding:6px 8px;background:var(--bg);border:1px solid #059669;border-radius:5px;color:var(--text);font-size:.82rem"
+                title="Reserva libre del phantom. Crece con las ganancias. No se toca al perder apuestas.">
             </div>
             <div>
-              <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Pool apuestas (USDC)</div>
+              <div style="font-size:.72rem;color:#60a5fa;margin-bottom:4px">Pool apuestas (USDC)</div>
               <input id="ph-input-pool" type="number" min="0" step="1" value="0"
-                style="width:90px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.82rem"
-                title="Capital activo para apostar. Debe ser ≤ Cash libre total. Al perder se reduce; al ganar la apuesta regresa aquí.">
+                style="width:90px;padding:6px 8px;background:var(--bg);border:1px solid #1d4ed8;border-radius:5px;color:var(--text);font-size:.82rem"
+                title="Capital activo para apostar. Al perder se reduce; al ganar la apuesta regresa aquí.">
             </div>
             <div>
               <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">% 5m</div>
@@ -6391,12 +6391,11 @@ async function loadPhantom() {
     document.getElementById('ph-wr').textContent = (s.win_rate_pct||0).toFixed(1) + '%';
     document.getElementById('ph-trades-n').textContent = (s.total_trades||0) + ' trades';
 
-    // Config inputs
-    const totalAsignado = (s.phantom_cash_libre_usdc || 0) + (s.phantom_pool_max_usdc || 0);
-    document.getElementById('ph-input-total').value = totalAsignado;
-    document.getElementById('ph-input-pool').value  = s.phantom_pool_max_usdc != null ? s.phantom_pool_max_usdc : 0;
-    document.getElementById('ph-input-p5m').value   = Math.round((s.phantom_bucket_5m_pct  != null ? s.phantom_bucket_5m_pct  : 0.3)*100);
-    document.getElementById('ph-input-p15m').value  = Math.round((s.phantom_bucket_15m_pct != null ? s.phantom_bucket_15m_pct : 0.7)*100);
+    // Config inputs — cada campo refleja su valor directamente
+    document.getElementById('ph-input-cash').value = s.phantom_cash_libre_usdc != null ? s.phantom_cash_libre_usdc : 0;
+    document.getElementById('ph-input-pool').value = s.phantom_pool_max_usdc   != null ? s.phantom_pool_max_usdc   : 0;
+    document.getElementById('ph-input-p5m').value  = Math.round((s.phantom_bucket_5m_pct  != null ? s.phantom_bucket_5m_pct  : 0.3)*100);
+    document.getElementById('ph-input-p15m').value = Math.round((s.phantom_bucket_15m_pct != null ? s.phantom_bucket_15m_pct : 0.7)*100);
 
     // Learner strategies
     const l5  = s.learner_5m  || {};
@@ -6484,17 +6483,16 @@ async function togglePhantomReal() {
 }
 
 async function savePhantomCapital() {
-  const total = parseFloat(document.getElementById('ph-input-total').value || '0');
-  const pool  = parseFloat(document.getElementById('ph-input-pool').value  || '0');
-  const p5m   = parseFloat(document.getElementById('ph-input-p5m').value   || '30') / 100;
-  const p15m  = parseFloat(document.getElementById('ph-input-p15m').value  || '70') / 100;
-  if (pool > total + 0.001) { alert(`Pool ($${pool}) no puede ser mayor que el Cash libre total ($${total})`); return; }
+  const cashLibre = parseFloat(document.getElementById('ph-input-cash').value || '0');
+  const pool      = parseFloat(document.getElementById('ph-input-pool').value  || '0');
+  const p5m       = parseFloat(document.getElementById('ph-input-p5m').value   || '30') / 100;
+  const p15m      = parseFloat(document.getElementById('ph-input-p15m').value  || '70') / 100;
   if (p5m + p15m > 1.001) { alert(`Porcentajes suman ${Math.round((p5m+p15m)*100)}% — deben ser ≤ 100%`); return; }
   try {
     const r = await fetch('/api/phantom/capital', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({total_usdc: total, pool_usdc: pool, pct_5m: p5m, pct_15m: p15m})
+      body: JSON.stringify({cash_libre_usdc: cashLibre, pool_usdc: pool, pct_5m: p5m, pct_15m: p15m})
     }).then(r => r.json());
     if (r.ok) loadPhantom();
     else alert('Error: ' + (r.error||'desconocido'));

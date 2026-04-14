@@ -2113,32 +2113,29 @@ async def phantom_toggle(body: dict):
 async def phantom_capital(body: dict):
     """
     Configura capital phantom.
-    body: {total_usdc, pool_usdc, pct_5m, pct_15m}
-      total_usdc = presupuesto total asignado al phantom (cash_libre + pool)
-      pool_usdc  = el pool activo de apuestas (subset de total)
-    Al guardar: cash_libre = total - pool; buckets = pool × pct
+    body: {cash_libre_usdc, pool_usdc, pct_5m, pct_15m}
+      cash_libre_usdc = reserva libre phantom (lo que queda fuera del pool activo)
+      pool_usdc       = pool activo de apuestas
+    Ambos se guardan directamente — el total es solo la suma de los dos.
     """
     try:
         from bot import bot_params
-        total = float(body.get("total_usdc", bot_params.phantom_cash_libre_usdc + bot_params.phantom_pool_usdc))
-        pool  = float(body.get("pool_usdc",  bot_params.phantom_pool_usdc))
-        p5m   = float(body.get("pct_5m",  bot_params.phantom_bucket_5m_pct))
-        p15m  = float(body.get("pct_15m", bot_params.phantom_bucket_15m_pct))
-        if pool > total + 0.001:
-            return {"ok": False, "error": f"Pool (${pool}) no puede ser mayor que el presupuesto total (${total})"}
+        cash_libre = float(body.get("cash_libre_usdc", bot_params.phantom_cash_libre_usdc))
+        pool       = float(body.get("pool_usdc",       bot_params.phantom_pool_usdc))
+        p5m        = float(body.get("pct_5m",  bot_params.phantom_bucket_5m_pct))
+        p15m       = float(body.get("pct_15m", bot_params.phantom_bucket_15m_pct))
         if p5m + p15m > 1.01:
             return {"ok": False, "error": "pct_5m + pct_15m no puede superar 100%"}
-        bot_params.phantom_cash_libre_usdc = round(total - pool, 4)
+        bot_params.phantom_cash_libre_usdc = round(cash_libre, 4)
         bot_params.phantom_pool_usdc       = round(pool, 4)
         bot_params.phantom_bucket_5m_pct   = round(p5m,  4)
         bot_params.phantom_bucket_15m_pct  = round(p15m, 4)
-        # Recargar buckets al configurar
         bot_params.phantom_bucket_5m_usdc  = round(pool * p5m,  4)
         bot_params.phantom_bucket_15m_usdc = round(pool * p15m, 4)
         bot_params.save()
         return {
             "ok": True,
-            "cash_libre": bot_params.phantom_cash_libre_usdc,
+            "cash_libre": cash_libre,
             "pool_usdc":  pool,
             "pct_5m": p5m, "pct_15m": p15m,
             "bucket_5m": bot_params.phantom_bucket_5m_usdc,
