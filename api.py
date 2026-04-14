@@ -1745,6 +1745,8 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             "btc_max_position_usdc", "updown_5m_enabled", "updown_15m_enabled",
             "updown_max_usdc", "updown_max_consecutive_losses",
             "alloc_weather_pct", "alloc_btc_pct", "alloc_updown_pct",
+            "updown_15m_min_confidence", "updown_5m_min_confidence",
+            "updown_15m_momentum_gate",  "updown_5m_momentum_gate",
         }
         invalid = [k for k in params if k not in valid_keys]
         if invalid:

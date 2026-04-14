@@ -45,6 +45,11 @@ class BotParams:
         self.updown_15m_enabled: bool = os.getenv("UPDOWN_15M_ENABLED", "true").lower() == "true"
         self.updown_max_usdc: float = float(os.getenv("UPDOWN_MAX_USDC", 1.0))
         self.updown_max_consecutive_losses: int = int(os.getenv("UPDOWN_MAX_CONSECUTIVE_LOSSES", 5))
+        # Umbrales configurables por el asesor (0 = usar el valor adaptativo del learner)
+        self.updown_15m_min_confidence: float = 0.20   # confianza mínima para entrar en 15m
+        self.updown_5m_min_confidence:  float = 0.20   # confianza mínima para entrar en 5m
+        self.updown_15m_momentum_gate:  float = 0.20   # umbral momentum gate para 15m
+        self.updown_5m_momentum_gate:   float = 0.20   # umbral momentum gate para 5m
         # --- Telonex (Fase 11) ---
         self.telonex_enabled: bool = os.getenv("TELONEX_ENABLED", "true").lower() == "true"
         self.telonex_smart_wallet_weight: float = float(os.getenv("TELONEX_SMART_WALLET_WEIGHT", 0.10))
@@ -107,6 +112,10 @@ class BotParams:
             "updown_15m_enabled": self.updown_15m_enabled,
             "updown_max_usdc": self.updown_max_usdc,
             "updown_max_consecutive_losses": self.updown_max_consecutive_losses,
+            "updown_15m_min_confidence": self.updown_15m_min_confidence,
+            "updown_5m_min_confidence":  self.updown_5m_min_confidence,
+            "updown_15m_momentum_gate":  self.updown_15m_momentum_gate,
+            "updown_5m_momentum_gate":   self.updown_5m_momentum_gate,
             "telonex_enabled":               self.telonex_enabled,
             "telonex_smart_wallet_weight":   self.telonex_smart_wallet_weight,
             "telonex_real_ofi_weight":       self.telonex_real_ofi_weight,

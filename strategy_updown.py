@@ -313,9 +313,11 @@ def evaluate_updown_market(
         except Exception:
             adaptive_params = {}
 
-    min_confidence = max(adaptive_params.get("min_signal", _MIN_CONFIDENCE), _MIN_CONFIDENCE)
-    invert_signal  = adaptive_params.get("invert_signal", False)
-    max_elapsed    = adaptive_params.get("max_elapsed_min")
+    # Floor de confianza mínima — puede ser overrideado por bot_params via adaptive_params
+    _min_conf_floor = adaptive_params.get("min_signal_floor", _MIN_CONFIDENCE)
+    min_confidence  = max(adaptive_params.get("min_signal", _min_conf_floor), _min_conf_floor)
+    invert_signal   = adaptive_params.get("invert_signal", False)
+    max_elapsed     = adaptive_params.get("max_elapsed_min")
 
     elapsed          = market.get("elapsed_minutes", 0.0)
     interval_minutes = market.get("interval_minutes", 15)
@@ -386,7 +388,7 @@ def evaluate_updown_market(
     momentum      = sig["momentum"]
 
     if interval_min > 5:
-        base_threshold = 0.20
+        base_threshold = adaptive_params.get("momentum_gate_base", 0.20)
         mom_threshold  = adaptive_params.get("momentum_gate_threshold", base_threshold)
         # Modo estricto: el learner lo activa cuando conflicto TA/momentum pierde ≥15pp
         # En modo estricto se elimina el bypass — cualquier conflicto bloquea el trade.

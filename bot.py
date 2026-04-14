@@ -1562,6 +1562,15 @@ async def _scan_updown(interval_minutes: int):
         except Exception as _tx_err:
             _log("WARN", f"UpDown {interval_minutes}m | Telonex error: {_tx_err}")
 
+    # Obtener adaptive_params del learner e inyectar overrides de bot_params
+    try:
+        from updown_learner import get_adaptive_params as _get_ap
+        _ap = _get_ap(interval_minutes)
+    except Exception:
+        _ap = {}
+    _ap["min_signal_floor"]    = bot_params.updown_15m_min_confidence if not is_5m else bot_params.updown_5m_min_confidence
+    _ap["momentum_gate_base"]  = bot_params.updown_15m_momentum_gate  if not is_5m else bot_params.updown_5m_momentum_gate
+
     opp, skip_reason = evaluate_updown_market(
         market=market,
         ta_data=ta_data,
@@ -1569,6 +1578,7 @@ async def _scan_updown(interval_minutes: int):
         btc_price_window_start=btc_price_start,
         cmc_data=cmc_data,
         telonex_signals=telonex_signals,
+        adaptive_params=_ap,
     )
 
     # Guardar oportunidad evaluada (aunque no se opere)
