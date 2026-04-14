@@ -1500,8 +1500,7 @@ async def _scan_updown(interval_minutes: int):
         stopped = state.updown_15m_stopped
 
     if stopped:
-        _log("WARN", f"UpDown {interval_minutes}m | DETENIDO por {losses} pérdidas consecutivas")
-        return
+        _log("WARN", f"UpDown {interval_minutes}m | DETENIDO por {losses} pérdidas consecutivas — solo phantom activo")
 
     market = await fetch_updown_market(interval_minutes)
     if not market:
@@ -1750,6 +1749,9 @@ async def _scan_updown(interval_minutes: int):
             "INFO",
             f"UpDown {interval_minutes}m | [PHANTOM] ⟳ ya registrado para este slug — esperando resolución",
         )
+
+    if stopped:
+        return  # circuit breaker: phantom ya registrado arriba, no ejecutar trade real
 
     if not opp:
         _log("INFO", f"UpDown {interval_minutes}m | [REAL] ✗ Sin entrada — {skip_reason}")
