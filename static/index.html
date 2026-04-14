@@ -6377,8 +6377,8 @@ async function loadPhantom() {
 
     // Config inputs
     document.getElementById('ph-input-pool').value = s.phantom_pool_usdc || 0;
-    document.getElementById('ph-input-p5m').value  = Math.round((s.phantom_bucket_5m_pct||0.3)*100);
-    document.getElementById('ph-input-p15m').value = Math.round((s.phantom_bucket_15m_pct||0.7)*100);
+    document.getElementById('ph-input-p5m').value  = Math.round((s.phantom_bucket_5m_pct  != null ? s.phantom_bucket_5m_pct  : 0.3)*100);
+    document.getElementById('ph-input-p15m').value = Math.round((s.phantom_bucket_15m_pct != null ? s.phantom_bucket_15m_pct : 0.7)*100);
 
     // Learner strategies
     const l5  = s.learner_5m  || {};
