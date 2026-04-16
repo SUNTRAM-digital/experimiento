@@ -437,6 +437,27 @@ def build_btc_direction_signal(
     if btc_price_window_start and btc_price_window_start > 0 and btc_price:
         window_pct = round((btc_price - btc_price_window_start) / btc_price_window_start * 100, 4)
 
+    # Calidad de señal TA: qué fracción de indicadores son direccionales (no neutrales)
+    # buy=10, sell=3, neutral=14 → consensus = 13/27 = 0.48 (moderado)
+    # buy=2,  sell=1, neutral=24 → consensus = 3/27  = 0.11 (muy bajo, señal ruidosa)
+    ta_buy     = int(ta_data.get("buy",     0) or 0)
+    ta_sell    = int(ta_data.get("sell",    0) or 0)
+    ta_neutral = int(ta_data.get("neutral", 0) or 0)
+    ta_total   = ta_buy + ta_sell + ta_neutral
+    ta_consensus = round((ta_buy + ta_sell) / ta_total, 3) if ta_total > 0 else 0.5
+
+    # Penalizar confianza cuando TA es muy ruidosa (pocas señales direccionales)
+    # Solo aplica cuando NO hay desplazamiento claro (displacement < lo_threshold)
+    window_abs = abs(window_pct)
+    _lo = 0.10  # umbral bajo de desplazamiento
+    if ta_consensus < 0.25 and window_abs < _lo:
+        # TA casi toda neutral y BTC sin movimiento claro → señal puro ruido
+        combined *= 0.50   # reducir señal al 50%
+        combined = max(-1.0, min(1.0, combined))
+    elif ta_consensus < 0.35 and window_abs < _lo:
+        combined *= 0.75
+        combined = max(-1.0, min(1.0, combined))
+
     return {
         "combined":          round(combined, 4),
         "ta":                round(ta_composite, 4),
@@ -470,6 +491,7 @@ def build_btc_direction_signal(
         "bb_lower":          bb_lower,
         "macd":              macd,
         "window_pct":        window_pct,
+        "ta_consensus":      ta_consensus,   # fracción de indicadores direccionales
         "confidence":        round(abs(combined) * 100, 1),
         "direction":         "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL"),
     }

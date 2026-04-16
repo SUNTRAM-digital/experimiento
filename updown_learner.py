@@ -15,8 +15,10 @@ logger = logging.getLogger("weatherbot")
 
 STATS_FILE = Path(__file__).parent / "data" / "updown_stats.json"
 
-_RECENT_WINDOW = 30   # trades recientes para win-rate dinámico
-_MIN_SAMPLES   = 5    # mínimo de muestras para ajustar un parámetro
+_RECENT_WINDOW    = 30   # trades recientes para win-rate dinámico
+_MIN_SAMPLES      = 10   # mínimo de muestras para ajustar un parámetro (subido de 5)
+_MIN_INVERT_SAMP  = 25   # muestras mínimas para activar invert_signal (necesita historia sólida)
+_INVERT_THRESHOLD = 0.30 # dir_acc debe estar POR DEBAJO de este valor para invertir (era 0.35)
 
 
 # ── Estructura de estadísticas ────────────────────────────────────────────────
@@ -354,14 +356,21 @@ def get_adaptive_params(interval_minutes: int) -> dict:
             reasons.append(f"WR reciente alto {wr_r:.0%} → más permisivo")
 
     # ── Calibración dirección TA ─────────────────────────────────────────────
-    if s["dir_total"] >= _MIN_SAMPLES:
+    # invert_signal requiere historia sólida (_MIN_INVERT_SAMP) para evitar
+    # que 5-10 trades malos inviertan el bot y causen comportamiento alternante
+    if s["dir_total"] >= _MIN_INVERT_SAMP:
         dir_acc = s["dir_correct"] / s["dir_total"]
-        if dir_acc < 0.35:
+        if dir_acc < _INVERT_THRESHOLD:
             p["invert_signal"] = True
-            reasons.append(f"TA apunta al lado incorrecto {dir_acc:.0%} → invertir")
-        elif dir_acc < 0.42:
+            reasons.append(f"TA sistemáticamente incorrecto {dir_acc:.0%} con {s['dir_total']} muestras → invertir")
+        elif dir_acc < 0.40:
             p["momentum_weight"] = max(0.06, p["momentum_weight"] - 0.06)
             reasons.append(f"TA poco fiable {dir_acc:.0%} → reducir peso TA")
+    elif s["dir_total"] >= _MIN_SAMPLES:
+        dir_acc = s["dir_correct"] / s["dir_total"]
+        if dir_acc < 0.40:
+            p["momentum_weight"] = max(0.06, p["momentum_weight"] - 0.06)
+            reasons.append(f"TA poco fiable {dir_acc:.0%} (muestra pequeña {s['dir_total']}) → reducir peso TA")
 
     # ── Timing: entradas tempranas pierden más ──────────────────────────────
     # min_elapsed proporcional al intervalo para no entrar en el primer 20% de la ventana
