@@ -4160,6 +4160,11 @@ fetchUpdownLearn();
 setInterval(fetchUpdownLearn, 30000);
 fetchStrategies();
 setInterval(fetchStrategies, 60000);
+// Bots arena auto-refresh (item 38 fix)
+setInterval(() => {
+  const botsTab = document.getElementById('tab-bots');
+  if (botsTab && botsTab.classList.contains('active')) loadBots();
+}, 30000);
 
 // ── ESTRATEGIAS ──────────────────────────────────────────────────────────────
 
