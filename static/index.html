@@ -1999,6 +1999,20 @@
             style="border-radius:8px;flex-shrink:0;max-width:100%"></canvas>
           <div id="bot-brain-stats" style="flex:1;min-width:180px;font-size:.75rem;color:#c9d1d9"></div>
         </div>
+        <!-- Live signal section -->
+        <div style="margin-top:14px;border-top:1px solid #21262d;padding-top:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#8b949e">Señal en Vivo</span>
+            <button id="brain-refresh-btn" onclick="_brainRefreshLive()"
+              style="font-size:.7rem;padding:3px 10px;background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:5px;cursor:pointer">
+              Actualizar
+            </button>
+            <span id="brain-live-ts" style="font-size:.65rem;color:#484f58;margin-left:auto"></span>
+          </div>
+          <div id="bot-brain-live" style="font-size:.75rem;color:#c9d1d9">
+            <span style="color:#484f58">Cargando señal en vivo...</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -6580,9 +6594,112 @@ let _brainRAF = null;
 let _brainPulses = [];
 let _brainLastData = null;
 let _brainLastId = null;
+let _brainInterval = '15m';
 
 function _brainStop() {
   if (_brainRAF) { cancelAnimationFrame(_brainRAF); _brainRAF = null; }
+}
+
+async function _brainRefreshLive() {
+  const btn = document.getElementById('brain-refresh-btn');
+  const liveEl = document.getElementById('bot-brain-live');
+  const tsEl = document.getElementById('brain-live-ts');
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  liveEl.innerHTML = '<span style="color:#484f58">Analizando mercado...</span>';
+  try {
+    const interval = _brainInterval === '5m' ? 5 : 15;
+    const r = await fetch('/api/updown/dry-run', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ interval_minutes: interval })
+    }).then(r => r.json());
+    _renderBrainLive(r);
+    if (tsEl) tsEl.textContent = r.timestamp || '';
+  } catch(e) {
+    liveEl.innerHTML = `<span style="color:#f85149">Error: ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualizar'; }
+  }
+}
+
+function _renderBrainLive(r) {
+  const el = document.getElementById('bot-brain-live');
+  if (!el) return;
+  if (!r.ok) {
+    el.innerHTML = `<div style="color:#e3b341;padding:8px;background:#161b22;border-radius:6px">${r.reason || 'Sin mercado activo'}</div>`;
+    return;
+  }
+  const btc = r.btc || {};
+  const sig = r.signal || {};
+  const ta  = r.ta || {};
+  const dec = r.decision || {};
+  const mkt = r.market || {};
+
+  const movePct = btc.move_pct != null ? btc.move_pct.toFixed(3) : '—';
+  const moveColor = btc.move_pct > 0 ? '#3fb950' : (btc.move_pct < 0 ? '#f85149' : '#8b949e');
+  const moveArrow = btc.move_pct > 0 ? '▲' : (btc.move_pct < 0 ? '▼' : '–');
+
+  const sideColor = dec.side === 'UP' ? '#3fb950' : (dec.side === 'DOWN' ? '#f85149' : '#8b949e');
+  const confVal = dec.confidence != null ? dec.confidence.toFixed(1) + '%' : '—';
+  const confColor = dec.confidence > 60 ? '#3fb950' : (dec.confidence > 35 ? '#e3b341' : '#f85149');
+
+  const mode5m = sig['5m_mode'] || '';
+  const modeLabel = mode5m ? `<span style="color:#8b949e;font-size:.68rem">${mode5m}</span>` : '';
+
+  const bar = (val, max, color) => {
+    const pct = Math.min(100, Math.abs(val / max) * 100);
+    return `<div style="height:5px;background:#21262d;border-radius:3px;overflow:hidden;margin-top:3px">
+      <div style="height:100%;width:${pct.toFixed(1)}%;background:${color};border-radius:3px"></div>
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+      <!-- BTC Move -->
+      <div style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px">
+        <div style="color:#484f58;font-size:.65rem;margin-bottom:4px">MOVIMIENTO BTC</div>
+        <div style="font-size:1.1rem;font-weight:700;color:${moveColor}">${moveArrow} ${movePct}%</div>
+        <div style="font-size:.65rem;color:#484f58;margin-top:3px">
+          Inicio: $${btc.price_start ? btc.price_start.toLocaleString('en-US', {maximumFractionDigits:0}) : '—'}
+          → Ahora: $${btc.price_now ? btc.price_now.toLocaleString('en-US', {maximumFractionDigits:0}) : '—'}
+        </div>
+        ${modeLabel ? `<div style="margin-top:5px">${modeLabel}</div>` : ''}
+      </div>
+      <!-- Señal combinada -->
+      <div style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px">
+        <div style="color:#484f58;font-size:.65rem;margin-bottom:4px">SEÑAL COMBINADA</div>
+        <div style="font-size:1.1rem;font-weight:700;color:${sideColor}">${dec.side || (sig.direction || '—')}</div>
+        <div style="font-size:.65rem;color:#484f58;margin-top:2px">Confianza: <span style="color:${confColor}">${confVal}</span></div>
+        ${bar(sig.combined || 0, 1, sideColor)}
+      </div>
+      <!-- TA -->
+      <div style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px">
+        <div style="color:#484f58;font-size:.65rem;margin-bottom:4px">ANÁLISIS TÉCNICO</div>
+        <div style="font-size:.75rem;font-weight:600;color:#c9d1d9">${ta.recommendation || '—'}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;font-size:.65rem">
+          <span style="color:#3fb950">BUY ${ta.buy || 0}</span>
+          <span style="color:#8b949e">NEU ${ta.neutral || 0}</span>
+          <span style="color:#f85149">SELL ${ta.sell || 0}</span>
+        </div>
+        <div style="font-size:.65rem;color:#484f58;margin-top:3px">RSI: <span style="color:${(sig.rsi||50)<35?'#3fb950':(sig.rsi||50)>65?'#f85149':'#8b949e'}">${sig.rsi != null ? sig.rsi.toFixed(1) : ta.rsi != null ? ta.rsi.toFixed(1) : '—'}</span></div>
+      </div>
+      <!-- Mercado -->
+      <div style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px">
+        <div style="color:#484f58;font-size:.65rem;margin-bottom:4px">MERCADO ACTIVO</div>
+        <div style="font-size:.7rem;font-weight:600;color:#c9d1d9">${mkt.slug ? mkt.slug.replace(/-/g,' ').toUpperCase() : '—'}</div>
+        <div style="font-size:.65rem;color:#484f58;margin-top:3px">Elapsed: ${mkt.elapsed_minutes != null ? mkt.elapsed_minutes.toFixed(1)+'m' : '—'}</div>
+        <div style="font-size:.65rem;color:#484f58">Cierra en: ${mkt.minutes_to_close != null ? mkt.minutes_to_close.toFixed(1)+'m' : '—'}</div>
+        <div style="font-size:.65rem;color:#484f58">UP/DN: ${mkt.up_price != null ? (mkt.up_price*100).toFixed(1)+'¢ / '+(mkt.down_price*100).toFixed(1)+'¢' : '—'}</div>
+      </div>
+      <!-- Decisión -->
+      <div style="background:${dec.would_trade?'#0d2818':'#1c0e0e'};border:1px solid ${dec.would_trade?'#238636':'#6e2020'};border-radius:8px;padding:10px">
+        <div style="color:#484f58;font-size:.65rem;margin-bottom:4px">DECISIÓN</div>
+        <div style="font-size:.85rem;font-weight:700;color:${dec.would_trade?'#3fb950':'#f85149'}">${dec.would_trade ? 'TRADE' : 'SKIP'}</div>
+        <div style="font-size:.65rem;color:#8b949e;margin-top:3px">${dec.reason || '—'}</div>
+        ${dec.would_trade ? `<div style="font-size:.65rem;color:#484f58;margin-top:3px">Entry: ${dec.entry_price != null ? (dec.entry_price*100).toFixed(1)+'¢' : '—'} · $${dec.size_usdc != null ? dec.size_usdc.toFixed(2) : '—'}</div>` : ''}
+      </div>
+    </div>
+  `;
 }
 
 function _wrColor(wr, a=1) {
@@ -6614,6 +6731,7 @@ async function showBotBrain(botId) {
   let d = {};
   const isPhantom = botId.startsWith('ph');
   const interval  = botId.includes('5m') ? '5m' : '15m';
+  _brainInterval  = interval;
   try {
     const r = await fetch('/api/updown/learn').then(r => r.json());
     const raw = r[interval] || {};
@@ -6631,6 +6749,9 @@ async function showBotBrain(botId) {
 
   const canvas = document.getElementById('bot-brain-canvas');
   _drawBrain(canvas, d);
+
+  // Fetch live signal automatically
+  _brainRefreshLive();
 }
 
 function _renderBrainStats(d) {
