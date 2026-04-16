@@ -386,6 +386,26 @@ def get_adaptive_params(interval_minutes: int) -> dict:
     return result
 
 
+# ── Win rate total por intervalo ─────────────────────────────────────────────
+
+_AUTORULE_MIN_SAMPLES = 10   # mínimo de trades para que la auto-regla se active
+
+
+def get_total_win_rate(interval_minutes: int) -> Optional[float]:
+    """
+    Retorna el win rate total (wins/total) para el intervalo dado.
+    Retorna None si hay menos de _AUTORULE_MIN_SAMPLES trades.
+    """
+    key = str(interval_minutes)
+    if key not in _stats:
+        _load()
+    s = _stats.get(key, _default_interval_stats())
+    total = s["total"]
+    if total < _AUTORULE_MIN_SAMPLES:
+        return None
+    return s["wins"] / total
+
+
 # ── Reconstruir desde historial existente ────────────────────────────────────
 
 def rebuild_from_vps_file(vps_file: str = os.path.join("data", "vps_phantom_experiment.json")) -> int:

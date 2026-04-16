@@ -1,126 +1,234 @@
 """
-Estrategia para mercados BTC Up/Down (5m y 15m).
+Estrategia para mercados BTC Up/Down (5m y 15m) — Motor profesional v2.
 
 FLUJO DE DECISIÓN:
-  1. FILTROS DE MERCADO (condiciones mínimas para operar)
-     - Precio de compra < 0.90  (si cuesta ≥ $0.90, el riesgo/recompensa es pésimo)
-     - Ambos lados tienen precio entre 0.05 y 0.95 (mercado no resuelto)
-
-  2. CONSTRUCCIÓN DE SEÑAL DIRECCIONAL
-     Combina TODAS las fuentes disponibles, ponderadas por relevancia para ventanas cortas:
-
-     a) TradingView (intervalo 1m para 5m / 5m para 15m)
-        - Señal continua: (indicadores_alcistas - bajistas) / total → [-1, +1]
-        - RSI: <30 sobreventa→UP, >70 sobrecompra→DOWN
-        - MACD: positivo→UP, negativo→DOWN
-        - EMA20 vs EMA50: cruce dorado→UP, cruce de muerte→DOWN
-
-     b) Momentum de ventana (BTC ahora vs precio al inicio de la ventana)
-        - El movimiento YA ocurrido en esta ventana es la señal más directa
-        - 0.1% de movimiento = señal 0.5
-
-     c) Consenso de Polymarket (precio UP vs 0.50)
-        - Si mercado ya asignó 70% prob a UP, eso es información
-        - Peso bajo: confirma pero no decide solo
-
-     d) Tendencia macro CMC 1h
-        - Contexto amplio: si BTC lleva 1h subiendo, la inercia importa
-
-  3. DECISIÓN FINAL
-     - Si confianza < umbral → no operar
-     - Comprar la dirección indicada por la señal combinada
+  1. FILTROS DE MERCADO
+  2. DETECCIÓN DE RÉGIMEN (trending vs ranging, volatilidad)
+  3. CONSTRUCCIÓN DE SEÑAL MULTI-FUENTE
+     a) Multi-timeframe TA (1m + 5m/15m + 1h) — alineación de marcos temporales
+     b) RSI + Stochastic — osciladores sobrecompra/sobreventa
+     c) Bollinger Bands — precio relativo a volatilidad histórica
+     d) MACD + AO (Awesome Oscillator) — momentum de tendencia
+     e) EMA stack (9/20/50/100/200) — estructura de tendencia multi-EMA
+     f) ADX — fuerza de tendencia (trending vs ranging)
+     g) Funding rate Binance — contrarian: longs sobrecargados → presión bajista
+     h) Momentum intra-ventana — BTC ahora vs inicio de la ventana
+     i) Macro CMC 1h — inercia de mercado
+     j) OFI / Consenso Polymarket
+     k) Telonex on-chain (cuando disponible)
+  4. PESOS DINÁMICOS según régimen
+  5. GATES Y DECISIÓN FINAL
 """
 from typing import Optional
 from config import bot_params
 
 # ── Umbrales ──────────────────────────────────────────────────────────────────
-# Confianza mínima: subido 0.10→0.20 para evitar trades con señal débil.
-# 0.20 ≈ 60% de indicadores alineados (más conservador que el 55% previo).
 _MIN_CONFIDENCE  = 0.20
-
-# No entrar si el share de la dirección elegida cuesta >= este valor
-# $0.90 → ganas $0.10 arriesgando $0.90 → ratio 1:9 → inaceptable
 _MAX_ENTRY_PRICE = 0.89
-
-# ── Tiempo mínimo de entrada (floor fijo, independiente del learner) ──────────
-# Para que el precio BTC muestre dirección antes de apostar.
-# 5m: esperar 1.5min (30% de la ventana)
-# 15m: esperar 5.0min (33% de la ventana) — datos con 377 obs muestran WR=33% para <5min
-# El learner puede subir este umbral pero nunca lo reduce debajo del floor.
-_MIN_ELAPSED_5M  = 1.5   # minutos
-_MIN_ELAPSED_15M = 5.0   # minutos
-
-# ── Pesos de cada componente ──────────────────────────────────────────────────
-# Basado en knowledge base (v83 bot externo + IR = IC × √N):
-#   TA + RSI/EMA/MACD = señal técnica compuesta (más informativa)
-#   Momentum intra-ventana = señal más directa para 5m/15m
-#   OFI real (Telonex on-chain): buy/sell pressure desde fills reales → reemplaza proxy
-#   OFI proxy (up_price - 0.5): fallback cuando Telonex no disponible
-#   Smart wallet bias (Telonex): dirección de wallets históricamente rentables
-#   Macro (CMC 1h) = contexto amplio
-#   Consenso de mercado = confirmación secundaria
-#
-# Con Telonex disponible: TA=0.43 + MOMENTUM=0.22 + OFI_REAL=0.12 + SMART=0.10 + MACRO=0.08 + MKT=0.05
-# Sin Telonex (proxy):    TA=0.50 + MOMENTUM=0.25 + OFI_PROXY=0.10 + MACRO=0.10 + MKT=0.05
-_W_TA           = 0.50   # sin Telonex
-_W_MOMENTUM     = 0.25
-_W_OFI          = 0.10   # proxy sin Telonex
-_W_MACRO        = 0.10
-_W_MARKET       = 0.05
-
-# Con Telonex: pesos ajustados (suman 1.0)
-_W_TA_TX        = 0.43   # TA con Telonex
-_W_MOMENTUM_TX  = 0.22
-_W_OFI_REAL_TX  = 0.12   # OFI real on-chain
-_W_SMART_TX     = 0.10   # Smart wallet bias
-_W_MACRO_TX     = 0.08
-_W_MARKET_TX    = 0.05
+_MIN_ELAPSED_5M  = 1.5
+_MIN_ELAPSED_15M = 5.0
 
 
-# ── Señales individuales ──────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# SEÑALES INDIVIDUALES
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _ema_signal(ema20: Optional[float], ema50: Optional[float]) -> float:
-    """EMA20 > EMA50 = uptrend (+1); EMA20 < EMA50 = downtrend (-1)."""
     if not ema20 or not ema50:
         return 0.0
     diff_pct = (ema20 - ema50) / ema50
-    # 0.3% de diferencia = señal máxima para timeframes cortos
     return max(-1.0, min(1.0, diff_pct / 0.003))
 
 
+def _ema_stack_signal(ta: dict) -> float:
+    """
+    Stack de EMAs: cuántas están alineadas (9>20>50>100>200 = alcista total).
+    Retorna [-1, +1] proporcional al alineamiento.
+    """
+    emas = [
+        ta.get("ema9"), ta.get("ema20") or ta.get("ema21"),
+        ta.get("ema50"), ta.get("ema100"), ta.get("ema200"),
+    ]
+    close = ta.get("close")
+    if not close or close <= 0:
+        return 0.0
+    # Contar cuántas EMAs están por debajo del precio (alcista)
+    valid = [(e, e is not None and e > 0) for e in emas]
+    below = sum(1 for e, ok in valid if ok and close > e)
+    above = sum(1 for e, ok in valid if ok and close < e)
+    total = below + above
+    if total == 0:
+        return 0.0
+    return max(-1.0, min(1.0, (below - above) / total))
+
+
 def _rsi_signal(rsi: Optional[float]) -> float:
-    """
-    RSI < 30 → sobreventa → señal UP fuerte
-    RSI > 70 → sobrecompra → señal DOWN fuerte
-    RSI 45-55 → zona neutral (señal ≈ 0)
-    """
     if rsi is None:
         return 0.0
-    if rsi <= 30:
-        return (30 - rsi) / 30          # +1.0 en RSI=0, +0 en RSI=30
-    if rsi >= 70:
-        return (70 - rsi) / 30          # -1.0 en RSI=100, -0 en RSI=70
-    # Zona media: señal suave proporcional a distancia del 50
-    return (rsi - 50) / 50 * 0.25
+    if rsi <= 25:
+        return min(1.0, (25 - rsi) / 25 * 1.5)   # zona extrema de sobreventa
+    if rsi <= 35:
+        return (35 - rsi) / 35
+    if rsi >= 75:
+        return max(-1.0, (75 - rsi) / 25 * 1.5)  # zona extrema de sobrecompra
+    if rsi >= 65:
+        return (65 - rsi) / 35
+    return (rsi - 50) / 50 * 0.20   # zona neutral: señal muy suave
 
 
-def _macd_signal(macd: Optional[float]) -> float:
+def _stoch_signal(k: Optional[float], d: Optional[float]) -> float:
     """
-    MACD positivo → momentum alcista → UP
-    MACD negativo → momentum bajista → DOWN
-    Normalizado: ±50 USDC de MACD = señal máxima en BTC.
+    Stochastic %K/%D: señal de sobrecompra/sobreventa con divergencia.
+    K<20 + cruzando hacia arriba: UP fuerte
+    K>80 + cruzando hacia abajo: DOWN fuerte
+    """
+    if k is None:
+        return 0.0
+    sig = 0.0
+    if k <= 20:
+        sig = (20 - k) / 20      # 0.0 a 1.0
+    elif k >= 80:
+        sig = (80 - k) / 20      # -1.0 a 0.0
+    # Añadir señal de cruce K/D
+    if d is not None:
+        cross = (k - d) / 20.0   # K > D = momentum alcista
+        sig = sig * 0.7 + cross * 0.3
+    return max(-1.0, min(1.0, sig))
+
+
+def _bb_signal(close: Optional[float], bb_upper: Optional[float],
+               bb_lower: Optional[float], bb_basis: Optional[float]) -> tuple[float, float]:
+    """
+    Bollinger Bands: posición del precio dentro de las bandas.
+    Retorna (señal, ancho_normalizado):
+      señal: +1 en banda inferior (UP), -1 en banda superior (DOWN)
+      ancho: BB width / basis → 0 = muy comprimido, 1 = muy expandido
+    """
+    if not close or not bb_upper or not bb_lower or not bb_basis or bb_basis <= 0:
+        return 0.0, 0.0
+    width = (bb_upper - bb_lower) / bb_basis
+    # Posición del precio: 0=banda inferior, 0.5=basis, 1=banda superior
+    band_range = bb_upper - bb_lower
+    if band_range <= 0:
+        return 0.0, width
+    position = (close - bb_lower) / band_range   # 0..1
+    # Señal: mean reversion. Precio en zona alta → DOWN, en zona baja → UP
+    # Amplificar en extremos (>0.9 o <0.1)
+    signal = -(position - 0.5) * 2.0  # -1 en bb_upper, +1 en bb_lower
+    if position > 0.90:
+        signal *= 1.3   # señal bajista amplificada sobre la banda
+    elif position < 0.10:
+        signal *= 1.3   # señal alcista amplificada bajo la banda
+    return max(-1.0, min(1.0, signal)), round(width, 4)
+
+
+def _macd_signal(macd: Optional[float], macd_signal_line: Optional[float] = None) -> float:
+    """
+    MACD vs signal line: cruce alcista/bajista + magnitud.
     """
     if macd is None:
         return 0.0
-    return max(-1.0, min(1.0, macd / 50.0))
+    base = max(-1.0, min(1.0, macd / 50.0))
+    if macd_signal_line is not None:
+        # Histograma: MACD - signal. Positivo = aceleración alcista
+        hist = macd - macd_signal_line
+        hist_sig = max(-1.0, min(1.0, hist / 30.0))
+        return base * 0.6 + hist_sig * 0.4
+    return base
+
+
+def _ao_signal(ao: Optional[float]) -> float:
+    """Awesome Oscillator: positivo=momentum alcista, negativo=bajista."""
+    if ao is None:
+        return 0.0
+    return max(-1.0, min(1.0, ao / 500.0))
+
+
+def _funding_rate_signal(funding: Optional[dict]) -> float:
+    """
+    Funding rate perpetuos Binance (contrarian):
+      Positivo (longs pagan) → mercado sobre-comprado → señal bajista (DOWN)
+      Negativo (shorts pagan) → mercado sobre-vendido → señal alcista (UP)
+      También considera premium: mark >> index → exceso de longs → bajista
+
+    Rango típico funding: -0.05% a +0.05% cada 8h.
+    ±0.03% diario = señal máxima.
+    """
+    if not funding or not funding.get("available"):
+        return 0.0
+    rate = float(funding.get("funding_rate", 0))
+    # Convertir a señal contrarian (invertir signo)
+    # ±0.0003 = ±0.03% cada 8h → señal ~±1.0
+    rate_sig = max(-1.0, min(1.0, -rate / 0.0003))
+    # Añadir prima mark/index (premium_pct positivo = exceso longs → bajista)
+    premium = float(funding.get("premium_pct", 0))
+    prem_sig = max(-1.0, min(1.0, -premium / 0.05))
+    return rate_sig * 0.7 + prem_sig * 0.3
+
+
+def _adx_regime(adx: Optional[float], adx_pos: Optional[float],
+                adx_neg: Optional[float]) -> tuple[str, float]:
+    """
+    Detecta régimen de mercado usando ADX.
+    Retorna (régimen, fuerza):
+      "trending_up"   → ADX>25 y DI+ > DI-
+      "trending_down" → ADX>25 y DI- > DI+
+      "ranging"       → ADX<20
+      "neutral"       → entre 20-25
+    """
+    if adx is None:
+        return "neutral", 0.5
+    if adx >= 25:
+        if adx_pos is not None and adx_neg is not None:
+            regime = "trending_up" if adx_pos > adx_neg else "trending_down"
+        else:
+            regime = "trending"
+        strength = min(1.0, (adx - 25) / 25)
+    elif adx <= 20:
+        regime = "ranging"
+        strength = (20 - adx) / 20
+    else:
+        regime = "neutral"
+        strength = 0.5
+    return regime, round(strength, 3)
+
+
+def _multi_tf_alignment(ta_map: dict) -> tuple[float, int]:
+    """
+    Alineación multi-timeframe: cuenta cuántos timeframes apuntan la misma dirección.
+    ta_map: {"1m": ta_data, "15m": ta_data, "1h": ta_data}
+    Retorna (señal_combinada, n_alineados):
+      señal: promedio ponderado de señales × bonus de alineación
+      n_alineados: 0-3 (todos los TF disponibles apuntando mismo lado)
+    """
+    if not ta_map:
+        return 0.0, 0
+    # Peso mayor al timeframe más alto (más confiable para dirección)
+    weights = {"1m": 0.20, "3m": 0.20, "5m": 0.30, "15m": 0.30, "1h": 0.50}
+    signals = []
+    total_w = 0.0
+    for iv, ta in ta_map.items():
+        if not ta or not ta.get("available"):
+            continue
+        w = weights.get(iv, 0.25)
+        s = float(ta.get("signal", 0.0) or 0.0)
+        signals.append((s, w))
+        total_w += w
+    if not signals or total_w == 0:
+        return 0.0, 0
+    combined = sum(s * w for s, w in signals) / total_w
+    # Bonus de alineación: si todos apuntan el mismo lado, amplificar
+    signs = [1 if s > 0.05 else (-1 if s < -0.05 else 0) for s, _ in signals]
+    non_neutral = [x for x in signs if x != 0]
+    if non_neutral:
+        aligned = sum(1 for x in non_neutral if x == non_neutral[0]) / len(non_neutral)
+        if aligned >= 0.8:   # ≥80% alineados = bonus
+            combined *= 1.25
+    n_aligned = sum(1 for x in non_neutral if x == (non_neutral[0] if non_neutral else 0))
+    return max(-1.0, min(1.0, combined)), n_aligned
 
 
 def _window_momentum(btc_now: float, btc_start: Optional[float]) -> float:
-    """
-    Momentum intra-ventana: cuánto se movió BTC desde el inicio de esta ventana.
-    +0.1% → señal UP de +0.5  |  -0.1% → señal DOWN de -0.5
-    Es la señal más directa para predecir si el cierre supera el inicio.
-    """
     if not btc_start or btc_start <= 0 or not btc_now:
         return 0.0
     pct = (btc_now - btc_start) / btc_start
@@ -128,51 +236,30 @@ def _window_momentum(btc_now: float, btc_start: Optional[float]) -> float:
 
 
 def _market_consensus_signal(up_price: float, down_price: float) -> float:
-    """
-    El precio de UP/DOWN en Polymarket refleja la probabilidad implícita del mercado.
-    up_price = 0.70 → mercado cree 70% que BTC sube → señal UP moderada.
-    up_price = 0.50 → mercado neutral → señal 0.
-
-    Peso bajo: no queremos seguir al mercado ciegamente, pero sí considerarlo.
-    """
     if up_price <= 0 or down_price <= 0:
         return 0.0
-    # Lean del mercado: [−0.50, +0.50] → normalizar a [−1, +1]
     lean = up_price - 0.50
     return max(-1.0, min(1.0, lean / 0.35))
 
 
 def _macro_signal(cmc_data: Optional[dict]) -> float:
-    """Tendencia BTC en la última 1h desde CoinMarketCap."""
     if not cmc_data:
         return 0.0
     change_1h = cmc_data.get("percent_change_1h", 0.0) or 0.0
-    # ±2% en 1h = señal máxima
     return max(-1.0, min(1.0, change_1h / 2.0))
 
 
 def _order_book_imbalance(market: Optional[dict]) -> float:
-    """
-    Order Book Imbalance (OFI proxy) desde los precios bid/ask del mercado UpDown.
-    Si best_bid está muy cerca de best_ask en el lado UP, hay presión compradora.
-
-    Fórmula simplificada:
-      imbalance = (up_price - 0.5) × 2    → [-1, +1]
-      Si UP cuesta 0.65 → mercado presionado al alza → +0.30 señal UP
-      Si UP cuesta 0.35 → mercado presionado a la baja → -0.30 señal DOWN
-
-    El knowledge base (v83) usa CVD completo, pero con los datos disponibles
-    (solo precio de mercado, no full order book) este proxy es el mejor aproximado.
-    """
     if not market:
         return 0.0
     up_price = float(market.get("up_price", 0.5) or 0.5)
-    # Neutralizar en 0.50, amplificar desviaciones
     lean = (up_price - 0.5) * 2.0
     return max(-1.0, min(1.0, lean))
 
 
-# ── Señal combinada ───────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# SEÑAL COMBINADA — MOTOR PRINCIPAL
+# ══════════════════════════════════════════════════════════════════════════════
 
 def build_btc_direction_signal(
     ta_data: dict,
@@ -181,43 +268,89 @@ def build_btc_direction_signal(
     cmc_data: Optional[dict] = None,
     market: Optional[dict] = None,
     telonex_signals: Optional[dict] = None,
+    ta_multi: Optional[dict] = None,   # {"1m": ta, "15m": ta, "1h": ta}
+    funding_data: Optional[dict] = None,
 ) -> dict:
     """
-    Construye la señal de dirección BTC combinando todas las fuentes.
-
-    telonex_signals (opcional): dict de telonex_data.get_updown_signals()
-        real_ofi    – OFI on-chain de la ventana actual  [-1, +1]
-        smart_bias  – sesgo de smart wallets             [-1, +1]
-        available   – bool; si False se ignora
-
-    Returns dict con:
-        combined   – señal combinada [−1, +1]; positivo=UP, negativo=DOWN
-        confidence – |combined| × 100  (0–100%)
-        direction  – "UP" / "DOWN" / "NEUTRAL"
-        components – desglose para logging
+    Motor de señal profesional v2 con régimen detection y multi-timeframe.
     """
-    ta_signal = float(ta_data.get("signal", 0.0) or 0.0)
-    rsi_val   = ta_data.get("rsi")
-    ema20     = ta_data.get("ema20")
-    ema50     = ta_data.get("ema50")
-    macd      = ta_data.get("macd")
+    # ── Extraer indicadores del TA principal ─────────────────────────────────
+    ta_signal    = float(ta_data.get("signal", 0.0) or 0.0)
+    rsi_val      = ta_data.get("rsi")
+    stoch_k      = ta_data.get("stoch_k")
+    stoch_d      = ta_data.get("stoch_d")
+    ema20        = ta_data.get("ema20")
+    ema50        = ta_data.get("ema50")
+    macd         = ta_data.get("macd")
+    macd_sig_ln  = ta_data.get("macd_signal")
+    ao           = ta_data.get("ao")
+    bb_upper     = ta_data.get("bb_upper")
+    bb_lower     = ta_data.get("bb_lower")
+    bb_basis     = ta_data.get("bb_basis")
+    close_price  = ta_data.get("close") or btc_price
+    adx          = ta_data.get("adx")
+    adx_pos      = ta_data.get("adx_pos")
+    adx_neg      = ta_data.get("adx_neg")
 
-    rsi_sig   = _rsi_signal(rsi_val)
-    ema_sig   = _ema_signal(ema20, ema50)
-    macd_sig  = _macd_signal(macd)
-    mom_sig   = _window_momentum(btc_price, btc_price_window_start)
-    macro_sig = _macro_signal(cmc_data)
+    # ── Calcular cada señal ───────────────────────────────────────────────────
+    rsi_sig      = _rsi_signal(rsi_val)
+    stoch_sig    = _stoch_signal(stoch_k, stoch_d)
+    ema_sig      = _ema_signal(ema20, ema50)
+    ema_stack    = _ema_stack_signal(ta_data)
+    macd_sig     = _macd_signal(macd, macd_sig_ln)
+    ao_sig       = _ao_signal(ao)
+    bb_sig, bb_width = _bb_signal(close_price, bb_upper, bb_lower, bb_basis)
+    mom_sig      = _window_momentum(btc_price, btc_price_window_start)
+    macro_sig    = _macro_signal(cmc_data)
+    funding_sig  = _funding_rate_signal(funding_data)
 
-    # Componente TA: señal TV agregada + refuerzo RSI + EMA + MACD
-    ta_composite = (
-        ta_signal * 0.55
-        + rsi_sig  * 0.20
-        + ema_sig  * 0.15
-        + macd_sig * 0.10
-    )
+    # ── Detección de régimen (ADX) ────────────────────────────────────────────
+    regime, regime_strength = _adx_regime(adx, adx_pos, adx_neg)
+    is_trending = regime in ("trending_up", "trending_down", "trending")
+    is_ranging  = regime == "ranging"
+
+    # ── Multi-timeframe alignment ─────────────────────────────────────────────
+    mtf_sig, n_aligned = _multi_tf_alignment(ta_multi or {})
+
+    # ── Composite TA: ponderar osciladores según régimen ─────────────────────
+    if is_trending:
+        # En tendencia: EMA stack y MACD pesan más; BB como señal de continuación
+        ta_composite = (
+            ta_signal   * 0.35
+            + ema_stack * 0.20
+            + macd_sig  * 0.20
+            + ao_sig    * 0.10
+            + rsi_sig   * 0.10
+            + ema_sig   * 0.05
+        )
+        # BB en tendencia = señal de entrada (precio en banda inferior = pull-back en uptrend)
+        bb_contribution = bb_sig * 0.08   # más suave en tendencia
+    elif is_ranging:
+        # En rango: RSI, Stochastic y BB pesan más (mean reversion dominante)
+        ta_composite = (
+            ta_signal    * 0.20
+            + rsi_sig    * 0.25
+            + stoch_sig  * 0.20
+            + bb_sig     * 0.20
+            + macd_sig   * 0.10
+            + ema_sig    * 0.05
+        )
+        bb_contribution = bb_sig * 0.15   # BB importa más en rango
+    else:
+        # Neutral: balance entre osciladores y tendencia
+        ta_composite = (
+            ta_signal   * 0.30
+            + rsi_sig   * 0.20
+            + ema_stack * 0.15
+            + macd_sig  * 0.15
+            + stoch_sig * 0.10
+            + ao_sig    * 0.05
+            + ema_sig   * 0.05
+        )
+        bb_contribution = bb_sig * 0.12
     ta_composite = max(-1.0, min(1.0, ta_composite))
 
-    # Señal de consenso de mercado (Polymarket) + OFI proxy
+    # ── Mercado / OFI ─────────────────────────────────────────────────────────
     mkt_sig = 0.0
     ofi_sig = 0.0
     if market:
@@ -227,33 +360,79 @@ def build_btc_direction_signal(
         )
         ofi_sig = _order_book_imbalance(market)
 
-    # ── Telonex on-chain signals ──────────────────────────────────────────────
+    # ── Telonex on-chain ──────────────────────────────────────────────────────
     use_telonex = bool(telonex_signals and telonex_signals.get("available"))
-    real_ofi   = float(telonex_signals.get("real_ofi", 0.0))   if use_telonex else 0.0
-    smart_bias = float(telonex_signals.get("smart_bias", 0.0)) if use_telonex else 0.0
+    real_ofi    = float(telonex_signals.get("real_ofi", 0.0))   if use_telonex else 0.0
+    smart_bias  = float(telonex_signals.get("smart_bias", 0.0)) if use_telonex else 0.0
+
+    # ── CONSTRUCCIÓN FINAL ponderada ─────────────────────────────────────────
+    # Pesos base — ajustados según disponibilidad de datos
+    has_mtf     = bool(ta_multi and any(v.get("available") for v in ta_multi.values()))
+    has_funding = bool(funding_data and funding_data.get("available"))
 
     if use_telonex:
-        # Pesos con Telonex: TA=0.43, MOM=0.22, OFI_REAL=0.12, SMART=0.10, MACRO=0.08, MKT=0.05
         combined = (
-            ta_composite * _W_TA_TX
-            + mom_sig    * _W_MOMENTUM_TX
-            + real_ofi   * _W_OFI_REAL_TX
-            + smart_bias * _W_SMART_TX
-            + macro_sig  * _W_MACRO_TX
-            + mkt_sig    * _W_MARKET_TX
+            ta_composite  * 0.28
+            + mtf_sig     * (0.12 if has_mtf else 0.0)
+            + bb_contribution
+            + mom_sig     * 0.15
+            + real_ofi    * 0.12
+            + smart_bias  * 0.10
+            + funding_sig * (0.07 if has_funding else 0.0)
+            + macro_sig   * 0.06
+            + ofi_sig     * 0.05
+            + mkt_sig     * 0.03
+        )
+    elif has_mtf and has_funding:
+        combined = (
+            ta_composite  * 0.28
+            + mtf_sig     * 0.15
+            + bb_contribution
+            + mom_sig     * 0.18
+            + funding_sig * 0.10
+            + macro_sig   * 0.08
+            + ofi_sig     * 0.07
+            + mkt_sig     * 0.04
+        )
+    elif has_mtf:
+        combined = (
+            ta_composite  * 0.32
+            + mtf_sig     * 0.18
+            + bb_contribution
+            + mom_sig     * 0.20
+            + macro_sig   * 0.10
+            + ofi_sig     * 0.08
+            + mkt_sig     * 0.04
+        )
+    elif has_funding:
+        combined = (
+            ta_composite  * 0.35
+            + bb_contribution
+            + mom_sig     * 0.22
+            + funding_sig * 0.12
+            + macro_sig   * 0.10
+            + ofi_sig     * 0.09
+            + mkt_sig     * 0.04
         )
     else:
-        # Pesos sin Telonex (originales): TA=0.50, MOM=0.25, OFI_PROXY=0.10, MACRO=0.10, MKT=0.05
+        # Modo clásico (sin MTF ni funding): igual que v1 pero con más indicadores en ta_composite
         combined = (
-            ta_composite * _W_TA
-            + mom_sig    * _W_MOMENTUM
-            + ofi_sig    * _W_OFI
-            + macro_sig  * _W_MACRO
-            + mkt_sig    * _W_MARKET
+            ta_composite  * 0.40
+            + bb_contribution
+            + mom_sig     * 0.25
+            + macro_sig   * 0.12
+            + ofi_sig     * 0.10
+            + mkt_sig     * 0.05
         )
+
+    # Escalar por alineación multi-TF (bonus máx +20% si todos alineados)
+    if has_mtf and n_aligned >= 2:
+        scale = 1.0 + (n_aligned - 1) * 0.08
+        combined *= scale
+
     combined = max(-1.0, min(1.0, combined))
 
-    # Movimiento BTC en la ventana (para log)
+    # Movimiento BTC en la ventana
     window_pct = 0.0
     if btc_price_window_start and btc_price_window_start > 0 and btc_price:
         window_pct = round((btc_price - btc_price_window_start) / btc_price_window_start * 100, 4)
@@ -263,8 +442,19 @@ def build_btc_direction_signal(
         "ta":                round(ta_composite, 4),
         "ta_raw":            round(ta_signal, 4),
         "rsi_sig":           round(rsi_sig, 4),
+        "stoch_sig":         round(stoch_sig, 4),
         "ema_sig":           round(ema_sig, 4),
+        "ema_stack":         round(ema_stack, 4),
         "macd_sig":          round(macd_sig, 4),
+        "ao_sig":            round(ao_sig, 4),
+        "bb_sig":            round(bb_sig, 4),
+        "bb_width":          round(bb_width, 4),
+        "bb_contribution":   round(bb_contribution, 4),
+        "funding_sig":       round(funding_sig, 4),
+        "mtf_sig":           round(mtf_sig, 4),
+        "n_aligned":         n_aligned,
+        "regime":            regime,
+        "regime_strength":   regime_strength,
         "momentum":          round(mom_sig, 4),
         "market_sig":        round(mkt_sig, 4),
         "macro":             round(macro_sig, 4),
@@ -273,6 +463,11 @@ def build_btc_direction_signal(
         "smart_bias":        round(smart_bias, 4),
         "telonex_available": use_telonex,
         "rsi":               rsi_val,
+        "stoch_k":           stoch_k,
+        "stoch_d":           stoch_d,
+        "adx":               adx,
+        "bb_upper":          bb_upper,
+        "bb_lower":          bb_lower,
         "macd":              macd,
         "window_pct":        window_pct,
         "confidence":        round(abs(combined) * 100, 1),
@@ -290,6 +485,8 @@ def evaluate_updown_market(
     cmc_data: Optional[dict] = None,
     adaptive_params: Optional[dict] = None,
     telonex_signals: Optional[dict] = None,
+    ta_multi: Optional[dict] = None,
+    funding_data: Optional[dict] = None,
 ) -> tuple[Optional[dict], Optional[str]]:
     """
     Evalúa si hay condiciones para operar el mercado UP/DOWN.
@@ -347,31 +544,33 @@ def evaluate_updown_market(
         cmc_data=cmc_data,
         market=market,
         telonex_signals=telonex_signals,
+        ta_multi=ta_multi,
+        funding_data=funding_data,
     )
 
     combined = sig["combined"]
 
     # ── Mean reversion en 5m ──────────────────────────────────────────────────
-    # En ventanas de 5 minutos el bot entra cuando ya transcurrieron ~30-90 seg.
-    # El movimiento inicial de BTC en esos primeros 90s tiende a REVERTIR antes
-    # de que cierre la ventana (el token ya tiene ese movimiento descontado en el
-    # precio y el mercado se equilibra). Por eso invertimos el componente de
-    # momentum para 5m: si BTC subió → apostamos DOWN (reversión inminente).
-    # El TA de tendencia macro se mantiene porque da contexto más amplio.
+    # En ventanas de 5m el movimiento inicial tiende a revertir: invertimos momentum.
+    # Pero si el régimen es trending (ADX>25), reducimos la inversión para no
+    # ir en contra de una tendencia fuerte.
     if interval_min <= 5:
-        mom_raw       = sig["momentum"]
-        ta_composite  = sig["ta"]
-        # Recalcular combined con momentum invertido (mean-reversion)
-        combined = (
-            ta_composite   * _W_TA
-            + (-mom_raw)   * _W_MOMENTUM   # <-- invertido
-            + sig["market_sig"] * _W_MARKET
-            + sig["macro"]      * _W_MACRO
-        )
-        combined = max(-1.0, min(1.0, combined))
+        mom_raw      = sig["momentum"]
+        ta_composite = sig["ta"]
+        bb_sig_val   = sig.get("bb_sig", 0.0)
+        regime       = sig.get("regime", "neutral")
+        # En tendencia fuerte, reducir inversión del momentum (solo 50% mean-reversion)
+        mom_inversion = -0.5 if regime in ("trending_up", "trending_down") else -1.0
+        combined = max(-1.0, min(1.0,
+            ta_composite          * 0.40
+            + (mom_raw * mom_inversion) * 0.25
+            + bb_sig_val          * 0.15
+            + sig["market_sig"]   * 0.10
+            + sig["macro"]        * 0.10
+        ))
         sig["combined"]   = round(combined, 4)
         sig["direction"]  = "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL")
-        sig["5m_mode"]    = "mean_reversion (momentum invertido)"
+        sig["5m_mode"]    = f"mean_reversion (mom×{mom_inversion}, regime={regime})"
 
     if invert_signal:
         combined = -combined

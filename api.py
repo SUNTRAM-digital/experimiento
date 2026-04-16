@@ -173,6 +173,10 @@ def _build_status() -> dict:
         "updown_15m_consecutive_losses":bot.state.updown_15m_consecutive_losses,
         "updown_max_usdc":              bot_params.updown_max_usdc,
         "updown_max_consecutive_losses":bot_params.updown_max_consecutive_losses,
+        "updown_stake_min_usdc":        bot_params.updown_stake_min_usdc,
+        "updown_stake_max_usdc":        bot_params.updown_stake_max_usdc,
+        "updown_stake_conf_min_pct":    bot_params.updown_stake_conf_min_pct,
+        "updown_stake_conf_max_pct":    bot_params.updown_stake_conf_max_pct,
         # UpDown — live data
         "updown_last_market_5m":  bot.state.updown_last_market_5m,
         "updown_last_market_15m": bot.state.updown_last_market_15m,
@@ -729,6 +733,14 @@ async def set_updown_params(data: dict):
         clean["updown_15m_enabled"] = bool(data["updown_15m_enabled"])
     if "updown_max_consecutive_losses" in data:
         clean["updown_max_consecutive_losses"] = max(1, int(data["updown_max_consecutive_losses"]))
+    if "updown_stake_min_usdc" in data:
+        clean["updown_stake_min_usdc"] = max(0.5, float(data["updown_stake_min_usdc"]))
+    if "updown_stake_max_usdc" in data:
+        clean["updown_stake_max_usdc"] = max(0.5, float(data["updown_stake_max_usdc"]))
+    if "updown_stake_conf_min_pct" in data:
+        clean["updown_stake_conf_min_pct"] = max(0.0, min(99.0, float(data["updown_stake_conf_min_pct"])))
+    if "updown_stake_conf_max_pct" in data:
+        clean["updown_stake_conf_max_pct"] = max(1.0, min(100.0, float(data["updown_stake_conf_max_pct"])))
     if clean:
         bot_params.update(clean)  # update() llama a save() internamente
     return {"ok": True}
@@ -1460,6 +1472,13 @@ Bitcoin (mercados de precio):
 
 UpDown (5m/15m BTC up-or-down):
 - Si el usuario pide un escaneo UpDown → llama trigger_updown_scan con interval_minutes=5 o 15
+- Si el usuario pide pausar/activar UpDown → llama update_params con {"updown_enabled": false/true}
+- Si el usuario pide resetear el bloqueo / circuit breaker de 5m o 15m → llama reset_updown_circuit_breaker
+
+Phantom (trades de aprendizaje):
+- Si el usuario pide activar dinero real en phantom → llama toggle_phantom_real con enabled=true
+- Si el usuario pide desactivar / quitar dinero real del phantom → llama toggle_phantom_real con enabled=false
+- Si el usuario pide cambiar el capital phantom (cash libre, pool, %) → llama set_phantom_capital con los valores indicados
 
 Parámetros:
 - Si el usuario dice "aplica esa sugerencia", "cambia X a Y", "sube/baja el parámetro Z" → llama update_params
@@ -1574,7 +1593,19 @@ CHAT_TOOLS = [
             "properties": {
                 "params": {
                     "type": "object",
-                    "description": "Diccionario con los parámetros a cambiar. Claves válidas: max_position_usdc, min_position_usdc, kelly_fraction, min_ev_threshold, max_daily_loss_pct, max_hours_to_resolution, min_liquidity_usdc, max_spread_pct, min_volume_24h_usdc, scan_interval_minutes, weather_enabled, btc_enabled, btc_max_position_usdc, updown_5m_enabled, updown_15m_enabled, updown_max_usdc, updown_max_consecutive_losses, alloc_weather_pct, alloc_btc_pct, alloc_updown_pct",
+                    "description": (
+                        "Diccionario con los parámetros a cambiar. Claves válidas: "
+                        "max_position_usdc, min_position_usdc, kelly_fraction, "
+                        "min_ev_threshold, max_daily_loss_pct, max_hours_to_resolution, "
+                        "min_liquidity_usdc, max_spread_pct, min_volume_24h_usdc, "
+                        "scan_interval_minutes, weather_enabled, btc_enabled, "
+                        "btc_max_position_usdc, updown_enabled, "
+                        "updown_5m_enabled, updown_15m_enabled, "
+                        "updown_max_usdc, updown_max_consecutive_losses, "
+                        "alloc_weather_pct, alloc_btc_pct, alloc_updown_pct, "
+                        "updown_15m_min_confidence, updown_5m_min_confidence, "
+                        "updown_15m_momentum_gate, updown_5m_momentum_gate"
+                    ),
                 },
                 "reason": {
                     "type": "string",
@@ -1582,6 +1613,64 @@ CHAT_TOOLS = [
                 },
             },
             "required": ["params", "reason"],
+        },
+    },
+    {
+        "name": "toggle_phantom_real",
+        "description": "Activa o desactiva el uso de dinero real en trades phantom UpDown. Cuando está activo, el bot usa USDC reales del pool phantom para ejecutar trades junto con los ficticiios. Cuando está desactivado, solo opera en modo ficticio (aprende sin gastar). Úsalo cuando el usuario diga 'activa phantom real', 'desactiva phantom real', 'pon phantom en modo real', 'quita dinero real del phantom', etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "true para activar dinero real en phantom, false para solo ficticio"
+                },
+                "reason": {"type": "string", "description": "Razón del cambio"},
+            },
+            "required": ["enabled", "reason"],
+        },
+    },
+    {
+        "name": "set_phantom_capital",
+        "description": "Configura el capital del sistema phantom: cuánto cash libre tiene y cuánto hay en el pool de apuestas activas. También permite ajustar el porcentaje de split entre 5m y 15m. Úsalo cuando el usuario quiera cambiar el capital phantom.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cash_libre_usdc": {
+                    "type": "number",
+                    "description": "Reserva libre del phantom en USDC. No se toca al perder; crece con ganancias."
+                },
+                "pool_usdc": {
+                    "type": "number",
+                    "description": "Capital activo para apostar en USDC. Se reduce al perder; se recupera al ganar."
+                },
+                "pct_5m": {
+                    "type": "number",
+                    "description": "Porcentaje del pool para trades de 5m (0-100). Por defecto 30."
+                },
+                "pct_15m": {
+                    "type": "number",
+                    "description": "Porcentaje del pool para trades de 15m (0-100). Por defecto 70."
+                },
+                "reason": {"type": "string", "description": "Razón del cambio"},
+            },
+            "required": ["reason"],
+        },
+    },
+    {
+        "name": "reset_updown_circuit_breaker",
+        "description": "Resetea el contador de pérdidas consecutivas de un intervalo UpDown para reactivarlo después de que lo detuvo el circuit breaker. Úsalo cuando el usuario diga 'reactiva el 15m', 'resetea las pérdidas del 5m', 'quita el bloqueo UpDown', etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "interval_minutes": {
+                    "type": "integer",
+                    "description": "Intervalo a resetear: 5 o 15",
+                    "enum": [5, 15],
+                },
+                "reason": {"type": "string", "description": "Razón del reset"},
+            },
+            "required": ["interval_minutes", "reason"],
         },
     },
 ]
@@ -1742,11 +1831,14 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             "min_ev_threshold", "max_daily_loss_pct", "max_hours_to_resolution",
             "min_liquidity_usdc", "max_spread_pct", "min_volume_24h_usdc",
             "scan_interval_minutes", "weather_enabled", "btc_enabled",
-            "btc_max_position_usdc", "updown_5m_enabled", "updown_15m_enabled",
+            "btc_max_position_usdc", "updown_enabled",
+            "updown_5m_enabled", "updown_15m_enabled",
             "updown_max_usdc", "updown_max_consecutive_losses",
             "alloc_weather_pct", "alloc_btc_pct", "alloc_updown_pct",
             "updown_15m_min_confidence", "updown_5m_min_confidence",
             "updown_15m_momentum_gate",  "updown_5m_momentum_gate",
+            "updown_stake_min_usdc", "updown_stake_max_usdc",
+            "updown_stake_conf_min_pct", "updown_stake_conf_max_pct",
         }
         invalid = [k for k in params if k not in valid_keys]
         if invalid:
@@ -1761,6 +1853,68 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             return f"Parámetros actualizados:\n{changes}\nMotivo: {reason}"
         except Exception as e:
             return f"Error al actualizar parámetros: {e}"
+
+    elif name == "toggle_phantom_real":
+        enabled = bool(inputs.get("enabled", False))
+        reason  = inputs.get("reason", "Instrucción via chat")
+        try:
+            bot_params.phantom_real_enabled = enabled
+            bot_params.save()
+            mode = "REAL + FICTICIO" if enabled else "SOLO FICTICIO"
+            bot._log("INFO", f"[Chat] Phantom real {'activado' if enabled else 'desactivado'} por Claude | Motivo: {reason}")
+            return f"Phantom cambiado a modo {mode}. Motivo: {reason}"
+        except Exception as e:
+            return f"Error al cambiar modo phantom: {e}"
+
+    elif name == "set_phantom_capital":
+        reason = inputs.get("reason", "Instrucción via chat")
+        try:
+            cash_libre = inputs.get("cash_libre_usdc")
+            pool       = inputs.get("pool_usdc")
+            pct_5m     = inputs.get("pct_5m")
+            pct_15m    = inputs.get("pct_15m")
+
+            if cash_libre is not None:
+                bot_params.phantom_cash_libre_usdc = round(float(cash_libre), 4)
+            if pool is not None:
+                bot_params.phantom_pool_usdc = round(float(pool), 4)
+            if pct_5m is not None:
+                bot_params.phantom_bucket_5m_pct = round(float(pct_5m) / 100, 4)
+            if pct_15m is not None:
+                bot_params.phantom_bucket_15m_pct = round(float(pct_15m) / 100, 4)
+
+            # Recalcular buckets
+            _pool = bot_params.phantom_pool_usdc
+            bot_params.phantom_bucket_5m_usdc  = round(_pool * bot_params.phantom_bucket_5m_pct, 4)
+            bot_params.phantom_bucket_15m_usdc = round(_pool * bot_params.phantom_bucket_15m_pct, 4)
+            bot_params.save()
+
+            bot._log("INFO", f"[Chat] Capital phantom actualizado por Claude | Motivo: {reason}")
+            return (
+                f"Capital phantom actualizado:\n"
+                f"  • Cash libre: ${bot_params.phantom_cash_libre_usdc:.2f}\n"
+                f"  • Pool activo: ${bot_params.phantom_pool_usdc:.2f}\n"
+                f"  • Bucket 5m: ${bot_params.phantom_bucket_5m_usdc:.2f} ({bot_params.phantom_bucket_5m_pct*100:.0f}%)\n"
+                f"  • Bucket 15m: ${bot_params.phantom_bucket_15m_usdc:.2f} ({bot_params.phantom_bucket_15m_pct*100:.0f}%)\n"
+                f"Motivo: {reason}"
+            )
+        except Exception as e:
+            return f"Error al configurar capital phantom: {e}"
+
+    elif name == "reset_updown_circuit_breaker":
+        interval = int(inputs.get("interval_minutes", 15))
+        reason   = inputs.get("reason", "Instrucción via chat")
+        try:
+            if interval == 5:
+                bot.state.updown_5m_consecutive_losses = 0
+                bot.state.updown_5m_stopped = False
+            else:
+                bot.state.updown_15m_consecutive_losses = 0
+                bot.state.updown_15m_stopped = False
+            bot._log("INFO", f"[Chat] Circuit breaker UpDown {interval}m reseteado por Claude | Motivo: {reason}")
+            return f"Circuit breaker UpDown {interval}m reseteado. El bot puede volver a operar en {interval}m. Motivo: {reason}"
+        except Exception as e:
+            return f"Error al resetear circuit breaker: {e}"
 
     return f"Herramienta desconocida: {name}"
 
@@ -1784,7 +1938,7 @@ async def chat_endpoint(data: dict):
     import os as _os
     # Chat usa sonnet para mejor razonamiento con herramientas; CLAUDE_CHAT_MODEL lo sobreescribe
     model = _os.getenv("CLAUDE_CHAT_MODEL", _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
-    system = CHAT_SYSTEM.format(context=_build_chat_context())
+    system = CHAT_SYSTEM.replace("{context}", _build_chat_context())
 
     async def stream():
         try:
@@ -2075,6 +2229,35 @@ async def phantom_status():
 
         win_rate = round(wins / total_trades * 100, 1) if total_trades else 0.0
 
+        # ── Win rates por intervalo (phantom_learner = fuente única de verdad) ─
+        try:
+            from phantom_learner import get_total_win_rate, _AUTORULE_MIN_SAMPLES, _stats as _pl_st
+            _wr5  = get_total_win_rate(5)
+            _wr15 = get_total_win_rate(15)
+            _wr5_pct  = round(_wr5  * 100, 1) if _wr5  is not None else None
+            _wr15_pct = round(_wr15 * 100, 1) if _wr15 is not None else None
+
+            # Totales por intervalo desde phantom_learner (fuente única, no VPS combinado)
+            _s5  = _pl_st.get("5",  {})
+            _s15 = _pl_st.get("15", {})
+            _total5  = _s5.get("total", 0)
+            _total15 = _s15.get("total", 0)
+            _wins5   = _s5.get("wins", 0)
+            _wins15  = _s15.get("wins", 0)
+
+            if _wr5 is None and _wr15 is None:
+                _autorule_status = "waiting"   # esperando datos
+            elif (_wr5 is not None and _wr5 < 0.50) or (_wr15 is not None and _wr15 < 0.50):
+                _autorule_status = "disabled"  # alguno < 50% → desactiva
+            elif (_wr5 is None or _wr5 > 0.70) and (_wr15 is None or _wr15 > 0.70):
+                _autorule_status = "enabled"   # ambos > 70% → activa
+            else:
+                _autorule_status = "neutral"   # zona neutral, sin cambio
+        except Exception:
+            _wr5_pct = _wr15_pct = None
+            _autorule_status = "waiting"
+            _total5 = _total15 = _wins5 = _wins15 = 0
+
         return {
             "phantom_real_enabled":    bot_params.phantom_real_enabled,
             "phantom_cash_libre_usdc": cash_libre,
@@ -2088,10 +2271,20 @@ async def phantom_status():
             "total_trades":  total_trades,
             "wins":          wins,
             "win_rate_pct":  win_rate,
+            "wins_5m":       _wins5,
+            "total_5m":      _total5,
+            "win_rate_5m_pct": _wr5_pct,
+            "wins_15m":      _wins15,
+            "total_15m":     _total15,
+            "win_rate_15m_pct": _wr15_pct,
             "total_pnl_vps": total_pnl_vps,
             "total_pnl_real": total_pnl_real,
             "learner_5m":    _ud_summary(5),
             "learner_15m":   _ud_summary(15),
+            "autorule_wr5_pct":   _wr5_pct,
+            "autorule_wr15_pct":  _wr15_pct,
+            "autorule_status":    _autorule_status,
+            "autorule_min_trades": _AUTORULE_MIN_SAMPLES,
         }
     except Exception as e:
         return {"error": str(e)}

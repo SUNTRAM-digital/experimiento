@@ -900,6 +900,18 @@
     <!-- TAB UPDOWN -->
     <div id="tab-updown" class="tab-content">
 
+      <!-- ── Kill switch global UpDown ── -->
+      <div id="updown-killswitch-bar" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:.75rem;font-weight:700;color:var(--text)">UpDown — Estado global</div>
+          <div id="updown-killswitch-desc" style="font-size:.78rem;color:var(--muted);margin-top:2px">Activo — el bot opera 5m y 15m</div>
+        </div>
+        <button id="updown-killswitch-btn" onclick="toggleUpdownEnabled()"
+          style="padding:8px 20px;border-radius:7px;border:2px solid #15803d;background:#052e16;color:#4ade80;font-weight:700;font-size:.82rem;cursor:pointer;transition:all .2s">
+          ACTIVO
+        </button>
+      </div>
+
       <!-- ── Fila superior: tarjetas de mercado en vivo ── -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
 
@@ -1092,6 +1104,43 @@
 
         <!-- Status bar -->
         <div id="vps-status-bar" style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Cargando...</div>
+
+        <!-- Stake dinámico por confianza (item 29) -->
+        <div style="background:var(--bg3);border:1px solid #4b5563;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+          <div style="font-size:.68rem;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">
+            Stake Dinámico por Confianza<span class="help-btn" onclick="showHelp('stake_dinamico',event)">?</span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Min stake (USDC)</div>
+              <input id="ud-stake-min" type="number" min="1" max="100" step="0.5" value="3"
+                style="width:72px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                title="Stake mínimo cuando confianza ≤ umbral mínimo">
+            </div>
+            <div>
+              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Max stake (USDC)</div>
+              <input id="ud-stake-max" type="number" min="1" max="100" step="0.5" value="15"
+                style="width:72px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                title="Stake máximo cuando confianza ≥ umbral máximo">
+            </div>
+            <div>
+              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Conf. mín (%)</div>
+              <input id="ud-stake-conf-min" type="number" min="0" max="99" step="1" value="20"
+                style="width:60px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                title="% de confianza que mapea al stake mínimo">
+            </div>
+            <div>
+              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Conf. máx (%)</div>
+              <input id="ud-stake-conf-max" type="number" min="1" max="100" step="1" value="65"
+                style="width:60px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                title="% de confianza que mapea al stake máximo">
+            </div>
+            <button onclick="saveStakeDinamico()" style="padding:5px 12px;background:#7c3aed;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">
+              Guardar
+            </button>
+          </div>
+          <div id="stake-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
+        </div>
 
         <!-- Saldo virtual -->
         <div id="vps-virtual-balance" style="display:flex;gap:12px;margin-bottom:10px;font-size:.75rem">
@@ -1338,6 +1387,25 @@
           </button>
         </div>
 
+        <!-- Auto-regla de win rate -->
+        <div id="ph-autorule-banner" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:3px">Auto-Regla Win Rate</div>
+            <div id="ph-autorule-desc" style="font-size:.82rem;color:var(--muted)">Esperando datos (min 10 trades/intervalo)...</div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center">
+            <div style="text-align:center">
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:2px">WR 5m</div>
+              <div id="ph-autorule-wr5" style="font-size:.92rem;font-weight:700;font-family:monospace;color:var(--muted)">—</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:2px">WR 15m</div>
+              <div id="ph-autorule-wr15" style="font-size:.92rem;font-weight:700;font-family:monospace;color:var(--muted)">—</div>
+            </div>
+            <div id="ph-autorule-badge" style="padding:4px 10px;border-radius:6px;font-size:.72rem;font-weight:700;background:#1f2937;color:#9ca3af;border:1px solid #374151">ESPERANDO</div>
+          </div>
+        </div>
+
         <!-- Cards de capital -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
           <div style="background:var(--bg2);border:1px solid #059669;border-radius:8px;padding:12px">
@@ -1366,7 +1434,14 @@
           </div>
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
             <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Win Rate</div>
-            <div id="ph-wr" style="font-size:1.2rem;font-weight:bold;font-family:monospace">0%</div>
+            <div style="display:flex;gap:8px;align-items:baseline">
+              <span style="font-size:.65rem;color:#60a5fa;font-weight:600">5m:</span>
+              <span id="ph-wr-5m" style="font-size:1rem;font-weight:bold;font-family:monospace;color:var(--text)">—</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:baseline;margin-top:2px">
+              <span style="font-size:.65rem;color:#a78bfa;font-weight:600">15m:</span>
+              <span id="ph-wr-15m" style="font-size:1rem;font-weight:bold;font-family:monospace;color:var(--text)">—</span>
+            </div>
             <div id="ph-trades-n" style="font-size:.7rem;color:var(--muted);margin-top:2px">0 trades</div>
           </div>
         </div>
@@ -2152,6 +2227,7 @@ const HELP = {
   btc_dist:     { t:'Distancia % al umbral', b:'Qué tan lejos está el precio actual de BTC del umbral del mercado, en porcentaje.\n• Dist. +5% = BTC debe subir 5% para cruzar el umbral\n• Dist. −3% = BTC ya está 3% por encima del umbral (favorable si apostamos ABOVE)\nDistancias grandes → probabilidades más extremas → menos edge pero más certeza.' },
   // VPS experiment
   vps_experiment:  { t:'Experimento VPS-Confianza', b:'Variable Position Sizing basado en Confianza.\nEn vez de apostar siempre $3 fijos (baseline), el bot apuesta MÁS cuando tiene más confianza:\n• Confianza ≥65% → $10\n• 50-64% → $8\n• 35-49% → $6\n• 20-34% → $4\n• <20% → $3 (igual al fijo)\nSIN dinero real — todo es virtual. El objetivo es medir si apostar más en señales fuertes genera más ganancia.' },
+  stake_dinamico:  { t:'Stake dinámico por confianza', b:'Ajusta cuánto USDC apuesta el bot según el % de confianza de la señal.\n• Min stake: apuesta cuando conf ≤ umbral mínimo (p.ej. 20% → $3)\n• Max stake: apuesta cuando conf ≥ umbral máximo (p.ej. 65% → $15)\n• Entre los umbrales, el stake se interpola linealmente\n• Si conf ≥ 65% → $15; si conf = 40% y rango 20-65% → mitad del camino ≈ $9\nEl parámetro "Máx por trade" en Configuración actúa como techo adicional.' },
   vps_saldo:       { t:'Saldo virtual del experimento', b:'Saldo ficticio que simula cuánto ganarías o perderías con cada estrategia si empezaras con $50.\n• Saldo VPS = resultado con tamaño variable según confianza\n• Saldo Fixed = resultado apostando siempre $3 fijos\nSon solo números de seguimiento — no mueven dinero real.' },
   vps_pnl_vps:     { t:'P&L Neto VPS', b:'Ganancia/pérdida total simulada con la estrategia de tamaño variable.\nPnl_vps = Σ (size_vps × resultado) por todos los trades resueltos.\n• WIN = +size_vps × 0.98 (descuento Polymarket)\n• LOSS = −size_vps × 1.00' },
   vps_pnl_fixed:   { t:'P&L Neto Fijo $3', b:'Ganancia/pérdida total simulada apostando siempre $3 independientemente de la confianza.\nEs el baseline de comparación: si VPS > Fixed, la estrategia de tamaño variable vale la pena.' },
@@ -3426,6 +3502,22 @@ function _renderUpdownHistory(trades) {
 }
 
 function renderUpdownStatus(d) {
+  // Kill switch global
+  const globalEnabled = d.updown_enabled !== false;
+  const ksBtn  = document.getElementById('updown-killswitch-btn');
+  const ksDesc = document.getElementById('updown-killswitch-desc');
+  if (ksBtn) {
+    if (globalEnabled) {
+      ksBtn.textContent = 'ACTIVO';
+      ksBtn.style.cssText = 'padding:8px 20px;border-radius:7px;border:2px solid #15803d;background:#052e16;color:#4ade80;font-weight:700;font-size:.82rem;cursor:pointer;transition:all .2s';
+      if (ksDesc) { ksDesc.textContent = 'Activo — el bot opera 5m y 15m'; ksDesc.style.color = 'var(--muted)'; }
+    } else {
+      ksBtn.textContent = 'PAUSADO';
+      ksBtn.style.cssText = 'padding:8px 20px;border-radius:7px;border:2px solid #b91c1c;background:#450a0a;color:#f87171;font-weight:700;font-size:.82rem;cursor:pointer;transition:all .2s';
+      if (ksDesc) { ksDesc.textContent = 'Pausado — no se ejecutan trades UpDown'; ksDesc.style.color = '#f87171'; }
+    }
+  }
+
   // 5m
   const s5 = d.updown_5m_stopped;
   const e5 = d.updown_5m_enabled;
@@ -3485,6 +3577,20 @@ function renderUpdownStatus(d) {
   if (inpMax && document.activeElement !== inpMax) inpMax.value = mu;
   const inpLoss = document.getElementById('ud-max-losses-input');
   if (inpLoss && document.activeElement !== inpLoss) inpLoss.value = ml;
+
+  // Stake dinámico inputs (solo si no están enfocados)
+  const _sd = (id, val) => { const el = document.getElementById(id); if (el && document.activeElement !== el && val != null) el.value = val; };
+  _sd('ud-stake-min',      d.updown_stake_min_usdc);
+  _sd('ud-stake-max',      d.updown_stake_max_usdc);
+  _sd('ud-stake-conf-min', d.updown_stake_conf_min_pct);
+  _sd('ud-stake-conf-max', d.updown_stake_conf_max_pct);
+  // Vista previa stake
+  const stakeMin = d.updown_stake_min_usdc ?? 3;
+  const stakeMax = d.updown_stake_max_usdc ?? 15;
+  const cMin     = d.updown_stake_conf_min_pct ?? 20;
+  const cMax     = d.updown_stake_conf_max_pct ?? 65;
+  const prev = document.getElementById('stake-preview');
+  if (prev) prev.textContent = `Interpolación lineal: conf ${cMin}% → $${stakeMin} | conf ${cMax}% → $${stakeMax} | entre medio interpolado`;
 
   // Badge en tab
   const badge = document.getElementById('badge-updown');
@@ -3565,6 +3671,26 @@ function _renderUpdownLearn(data) {
 }
 
 // ── Toggle genérico de tipo de trade (panel izquierdo) ──────────────────────
+async function toggleUpdownEnabled() {
+  const btn = document.getElementById('updown-killswitch-btn');
+  const currently = btn && btn.textContent.trim() === 'ACTIVO';
+  const newVal = !currently;
+  if (!newVal) {
+    if (!confirm('Pausar UpDown detendrá todos los trades de 5m y 15m (phantom sigue activo).\n\n¿Confirmas pausar?')) return;
+  }
+  try {
+    const r = await fetch('/api/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ updown_enabled: newVal }),
+    });
+    const d = await r.json();
+    if (d.ok !== false) {
+      renderUpdownStatus({ updown_enabled: newVal });
+    }
+  } catch(e) { console.error('toggleUpdownEnabled error', e); }
+}
+
 async function toggleTradeType(type) {
   const btnId = {
     weather:   'btn-trade-weather',
@@ -3651,6 +3777,36 @@ async function saveUpdownParams() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Guardar';
+  }
+}
+
+async function saveStakeDinamico() {
+  const stakeMin  = parseFloat(document.getElementById('ud-stake-min').value);
+  const stakeMax  = parseFloat(document.getElementById('ud-stake-max').value);
+  const confMin   = parseFloat(document.getElementById('ud-stake-conf-min').value);
+  const confMax   = parseFloat(document.getElementById('ud-stake-conf-max').value);
+  if ([stakeMin, stakeMax, confMin, confMax].some(isNaN)) return;
+  if (stakeMax < stakeMin) { alert('Max stake debe ser ≥ min stake'); return; }
+  if (confMax  <= confMin)  { alert('Conf máx debe ser > conf mín'); return; }
+  const prev = document.getElementById('stake-preview');
+  if (prev) prev.textContent = 'Guardando…';
+  try {
+    const res = await fetch('/api/updown/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        updown_stake_min_usdc:     stakeMin,
+        updown_stake_max_usdc:     stakeMax,
+        updown_stake_conf_min_pct: confMin,
+        updown_stake_conf_max_pct: confMax,
+      }),
+    });
+    if (prev) prev.textContent = res.ok
+      ? `✓ Guardado — conf ${confMin}% → $${stakeMin} | conf ${confMax}% → $${stakeMax}`
+      : '✗ Error al guardar';
+    fetchStatus();
+  } catch(e) {
+    if (prev) prev.textContent = '✗ Sin conexión';
   }
 }
 
@@ -6647,8 +6803,20 @@ async function loadPhantom() {
     pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
     pnlEl.style.color = pnl >= 0 ? 'var(--green)' : '#f87171';
 
-    document.getElementById('ph-wr').textContent = (s.win_rate_pct||0).toFixed(1) + '%';
-    document.getElementById('ph-trades-n').textContent = (s.total_trades||0) + ' trades';
+    // WR por intervalo (fuente única: phantom_learner)
+    const wr5mEl  = document.getElementById('ph-wr-5m');
+    const wr15mEl = document.getElementById('ph-wr-15m');
+    if (wr5mEl) {
+      const v5 = s.win_rate_5m_pct;
+      wr5mEl.textContent = v5 != null ? v5.toFixed(1) + '%' : '—';
+      wr5mEl.style.color = v5 == null ? 'var(--muted)' : v5 >= 50 ? 'var(--green)' : v5 >= 40 ? '#fbbf24' : '#f87171';
+    }
+    if (wr15mEl) {
+      const v15 = s.win_rate_15m_pct;
+      wr15mEl.textContent = v15 != null ? v15.toFixed(1) + '%' : '—';
+      wr15mEl.style.color = v15 == null ? 'var(--muted)' : v15 >= 50 ? 'var(--green)' : v15 >= 40 ? '#fbbf24' : '#f87171';
+    }
+    document.getElementById('ph-trades-n').textContent = ((s.total_5m||0) + (s.total_15m||0)) + ' trades';
 
     // Config inputs — cada campo refleja su valor directamente
     document.getElementById('ph-input-cash').value = s.phantom_cash_libre_usdc != null ? s.phantom_cash_libre_usdc : 0;
@@ -6661,6 +6829,59 @@ async function loadPhantom() {
     const l15 = s.learner_15m || {};
     document.getElementById('ph-strat-5m').textContent  = l5.adaptive_reason  || l5.reason || '—';
     document.getElementById('ph-strat-15m').textContent = l15.adaptive_reason || l15.reason || '—';
+
+    // Auto-regla win rate
+    const arStatus = s.autorule_status || 'waiting';
+    const arWr5    = s.autorule_wr5_pct;
+    const arWr15   = s.autorule_wr15_pct;
+    const arMinN   = s.autorule_min_trades || 10;
+    const wr5El    = document.getElementById('ph-autorule-wr5');
+    const wr15El   = document.getElementById('ph-autorule-wr15');
+    const descEl   = document.getElementById('ph-autorule-desc');
+    const badgeEl  = document.getElementById('ph-autorule-badge');
+    const bannerEl = document.getElementById('ph-autorule-banner');
+
+    if (arWr5 != null) {
+      const c5 = arWr5 < 50 ? '#f87171' : arWr5 > 70 ? '#4ade80' : '#fbbf24';
+      wr5El.textContent  = arWr5.toFixed(1) + '%';
+      wr5El.style.color  = c5;
+    } else {
+      wr5El.textContent = '—'; wr5El.style.color = 'var(--muted)';
+    }
+    if (arWr15 != null) {
+      const c15 = arWr15 < 50 ? '#f87171' : arWr15 > 70 ? '#4ade80' : '#fbbf24';
+      wr15El.textContent = arWr15.toFixed(1) + '%';
+      wr15El.style.color = c15;
+    } else {
+      wr15El.textContent = '—'; wr15El.style.color = 'var(--muted)';
+    }
+
+    if (arStatus === 'waiting') {
+      descEl.textContent = `Esperando datos (min ${arMinN} trades por intervalo)`;
+      descEl.style.color = 'var(--muted)';
+      badgeEl.textContent = 'ESPERANDO';
+      badgeEl.style.cssText = 'padding:4px 10px;border-radius:6px;font-size:.72rem;font-weight:700;background:#1f2937;color:#9ca3af;border:1px solid #374151';
+      bannerEl.style.borderColor = 'var(--border)';
+    } else if (arStatus === 'disabled') {
+      descEl.textContent = 'WR 5m y 15m < 50% — dinero real desactivado automaticamente';
+      descEl.style.color = '#f87171';
+      badgeEl.textContent = 'REAL OFF';
+      badgeEl.style.cssText = 'padding:4px 10px;border-radius:6px;font-size:.72rem;font-weight:700;background:#450a0a;color:#f87171;border:1px solid #b91c1c';
+      bannerEl.style.borderColor = '#b91c1c';
+    } else if (arStatus === 'enabled') {
+      descEl.textContent = 'WR 5m y 15m > 70% — dinero real activado automaticamente';
+      descEl.style.color = '#4ade80';
+      badgeEl.textContent = 'REAL ON';
+      badgeEl.style.cssText = 'padding:4px 10px;border-radius:6px;font-size:.72rem;font-weight:700;background:#052e16;color:#4ade80;border:1px solid #15803d';
+      bannerEl.style.borderColor = '#15803d';
+    } else {
+      // neutral
+      descEl.textContent = 'Zona neutral (50-70%) — sin cambio automatico';
+      descEl.style.color = '#fbbf24';
+      badgeEl.textContent = 'NEUTRAL';
+      badgeEl.style.cssText = 'padding:4px 10px;border-radius:6px;font-size:.72rem;font-weight:700;background:#451a03;color:#fbbf24;border:1px solid #b45309';
+      bannerEl.style.borderColor = '#b45309';
+    }
 
   } catch(e) { console.warn('[Phantom] status error', e); }
 

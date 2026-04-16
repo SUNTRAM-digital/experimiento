@@ -525,7 +525,11 @@ def _execute_trade(opportunity: dict) -> bool:
         if is_updown:
             token_id = opportunity["token_id"]
             try:
-                live_ask = float(_clob_client.get_price(token_id, "BUY") or 0)
+                _raw_price = _clob_client.get_price(token_id, "BUY")
+                if isinstance(_raw_price, dict):
+                    live_ask = float(_raw_price.get("price", _raw_price.get("ask", 0)) or 0)
+                else:
+                    live_ask = float(_raw_price or 0)
             except Exception as _pe:
                 live_ask = 0.0
                 _log("WARN", f"UpDown | No se pudo obtener precio real del CLOB ({_pe}) — usando outcome_price={price:.3f}")
@@ -548,7 +552,22 @@ def _execute_trade(opportunity: dict) -> bool:
             # Actualizar entry_price en la oportunidad con el precio real ajustado
             opportunity["entry_price"] = price
 
-            max_usdc = max(1.0, round(float(bot_params.updown_max_usdc), 2))
+            # Stake dinámico por confianza (item 29)
+            _conf_val     = float(opportunity.get("confidence", 0))
+            _stake_min    = max(1.0, float(bot_params.updown_stake_min_usdc))
+            _stake_max    = max(_stake_min, float(bot_params.updown_stake_max_usdc))
+            _conf_lo      = float(bot_params.updown_stake_conf_min_pct)
+            _conf_hi      = max(_conf_lo + 1.0, float(bot_params.updown_stake_conf_max_pct))
+            if _conf_hi > _conf_lo:
+                _t        = max(0.0, min(1.0, (_conf_val - _conf_lo) / (_conf_hi - _conf_lo)))
+            else:
+                _t        = 0.0
+            max_usdc      = round(_stake_min + (_stake_max - _stake_min) * _t, 2)
+            # Retrocompatibilidad: si los nuevos params están en default y updown_max_usdc fue
+            # cambiado manualmente, usar updown_max_usdc como techo
+            if bot_params.updown_max_usdc < max_usdc:
+                max_usdc = round(float(bot_params.updown_max_usdc), 2)
+            max_usdc = max(1.0, max_usdc)
             shares   = round(max_usdc / price, 2)
 
             # Mínimo 5 shares
@@ -632,7 +651,13 @@ def _execute_trade(opportunity: dict) -> bool:
             return False
 
     except Exception as e:
-        _log("ERROR", f"Error ejecutando trade: {e}")
+        err_str = str(e)
+        # Error 500 de Polymarket = fallo del servidor, NO del trade
+        # No cuenta como pérdida — es un error de ejecución transient
+        if "500" in err_str or "could not run the execution" in err_str:
+            _log("WARN", f"Polymarket 500 — fallo de ejecución del servidor (trade NO colocado, NO cuenta como pérdida): {e}")
+        else:
+            _log("ERROR", f"Error ejecutando trade: {e}")
         return False
 
 
@@ -1416,6 +1441,66 @@ def _refund_phantom_bucket(attr: str, amount: float) -> None:
     except Exception as e:
         logger.warning(f"[PHANTOM] Error recargando bucket {attr}: {e}")
 
+
+def _check_phantom_autorule() -> None:
+    """
+    Auto-regla de dinero real phantom:
+      - Si WR total 5m < 50% O WR total 15m < 50% → desactiva phantom_real_enabled
+        (cualquiera de los dos con mal rendimiento es suficiente para parar)
+      - Si WR total 5m > 70% Y WR total 15m > 70% → activa phantom_real_enabled
+        (ambos tienen que ser buenos para reactivar)
+      - Entre 50-70%: sin cambio (zona neutral)
+    Requiere al menos 10 trades por intervalo para activarse.
+    Si solo un intervalo tiene datos suficientes, se aplica la regla con ese solo.
+    """
+    try:
+        from phantom_learner import get_total_win_rate
+        wr5  = get_total_win_rate(5)
+        wr15 = get_total_win_rate(15)
+
+        # Necesitamos al menos uno con datos
+        if wr5 is None and wr15 is None:
+            return
+
+        current = bot_params.phantom_real_enabled
+
+        # Desactivar: cualquiera de los dos bajo 50%
+        should_disable = (
+            (wr5  is not None and wr5  < 0.50) or
+            (wr15 is not None and wr15 < 0.50)
+        )
+        # Activar: ambos sobre 70% (si solo hay datos de uno, ese debe estar >70%)
+        should_enable = (
+            (wr5  is None or wr5  > 0.70) and
+            (wr15 is None or wr15 > 0.70) and
+            (wr5 is not None or wr15 is not None)
+        )
+
+        wr5_str  = f"{wr5:.0%}"  if wr5  is not None else "N/A"
+        wr15_str = f"{wr15:.0%}" if wr15 is not None else "N/A"
+
+        if should_disable:
+            if current:
+                bot_params.phantom_real_enabled = False
+                bot_params.save()
+                _log("WARN",
+                     f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — "
+                     f"alguno < 50% → dinero real DESACTIVADO automáticamente")
+            else:
+                logger.debug(f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — ya estaba desactivado")
+        elif should_enable:
+            if not current:
+                bot_params.phantom_real_enabled = True
+                bot_params.save()
+                _log("INFO",
+                     f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — "
+                     f"ambos > 70% → dinero real ACTIVADO automáticamente")
+        else:
+            logger.debug(f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — zona neutral, sin cambio")
+    except Exception as _ar_err:
+        logger.debug(f"[PHANTOM AUTO-REGLA] Error: {_ar_err}")
+
+
 # Mapeo slug → detalles de apuesta fantasma pendiente de resolución
 _updown_phantom_pending: dict[str, dict] = {}
 
@@ -1428,6 +1513,22 @@ try:
         logger.info(f"[VPS] Restaurados {len(_vps_pending_restore)} trades PENDING tras reinicio")
 except Exception as _vps_restore_err:
     logger.warning(f"[VPS] No se pudo restaurar pending: {_vps_restore_err}")
+
+# Sincronizar phantom_learner con VPS si el archivo de stats está vacío o desactualizado
+try:
+    from phantom_learner import _stats as _pl_stats, rebuild_from_vps_file as _pl_rebuild
+    _pl_total = sum(v.get("total", 0) for v in _pl_stats.values() if isinstance(v, dict))
+    if _pl_total == 0:
+        _rebuilt = _pl_rebuild()
+        logger.info(f"[PhantomLearner] Reconstruido desde VPS: {_rebuilt} trades")
+except Exception as _pl_err:
+    logger.debug(f"[PhantomLearner] No se pudo reconstruir desde VPS: {_pl_err}")
+
+# Aplicar auto-regla al arranque (no esperar al próximo trade para corregir el estado)
+try:
+    _check_phantom_autorule()
+except Exception as _ar_startup_err:
+    logger.debug(f"[PHANTOM AUTO-REGLA] Error en startup: {_ar_startup_err}")
 
 
 async def _sweep_stale_vps_pending() -> None:
@@ -1533,9 +1634,39 @@ async def _scan_updown(interval_minutes: int):
         _log("INFO", f"UpDown {interval_minutes}m | Posición ya abierta en {slug} — omitiendo trade duplicado")
         return
 
-    # Obtener TA para el intervalo adecuado
-    ta_interval = "1m" if interval_minutes == 5 else "5m"
-    ta_data = await get_btc_ta(interval=ta_interval)
+    # Obtener TA multi-timeframe en paralelo
+    # 5m: usa 1m como primario + 5m + 1h para contexto
+    # 15m: usa 5m como primario + 15m + 1h para contexto
+    if is_5m:
+        ta_primary_interval = "1m"
+        ta_extra_intervals  = ["5m", "1h"]
+    else:
+        ta_primary_interval = "5m"
+        ta_extra_intervals  = ["15m", "1h"]
+
+    from price_feed import get_btc_ta_multi, get_btc_funding_rate
+    _all_intervals = [ta_primary_interval] + ta_extra_intervals
+    _results = await asyncio.gather(
+        get_btc_ta_multi(_all_intervals),
+        get_btc_funding_rate(),
+        return_exceptions=True,
+    )
+    ta_all, funding_data = _results[0], _results[1]
+
+    # Extraer TA principal y multi-TF
+    if isinstance(ta_all, dict):
+        ta_data  = ta_all.get(ta_primary_interval, {}) or {}
+        ta_multi = {k: v for k, v in ta_all.items() if k != ta_primary_interval}
+    else:
+        ta_data  = await get_btc_ta(interval=ta_primary_interval)
+        ta_multi = {}
+    if not isinstance(funding_data, dict):
+        funding_data = {"available": False}
+
+    # Log de datos nuevos disponibles
+    if funding_data.get("available"):
+        _log("DEBUG", f"UpDown {interval_minutes}m | Funding rate: {funding_data.get('rate_pct',0):+.4f}% | "
+             f"MTF disponible: {list(ta_multi.keys())}")
 
     if is_5m:
         state.updown_ta_5m = ta_data
@@ -1579,6 +1710,8 @@ async def _scan_updown(interval_minutes: int):
         cmc_data=cmc_data,
         telonex_signals=telonex_signals,
         adaptive_params=_ap,
+        ta_multi=ta_multi,
+        funding_data=funding_data,
     )
 
     # Guardar oportunidad evaluada (aunque no se opere)
@@ -1601,31 +1734,35 @@ async def _scan_updown(interval_minutes: int):
     else:
         state.updown_last_opp_15m = scan_snapshot
 
-    # Log del análisis completo (siempre, haya o no señal)
-    from strategy_updown import build_btc_direction_signal
-    _sig = build_btc_direction_signal(
-        ta_data=ta_data,
-        btc_price=btc_price_now or 0,
-        btc_price_window_start=btc_price_start,
-        cmc_data=cmc_data,
-        market=market,
-        telonex_signals=telonex_signals,
-    )
+    # Log del análisis completo (usa el sig ya calculado en opp evaluation)
+    # Re-usar _sig del opp si fue calculado, sino recalcular para el log
+    _sig = (opp.get("signal_breakdown") if opp else None) or {}
+    if not _sig:
+        from strategy_updown import build_btc_direction_signal as _bds
+        _sig = _bds(
+            ta_data=ta_data, btc_price=btc_price_now or 0,
+            btc_price_window_start=btc_price_start, cmc_data=cmc_data,
+            market=market, telonex_signals=telonex_signals,
+            ta_multi=ta_multi, funding_data=funding_data,
+        )
     _log("INFO",
          f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
-         f"| BTC inicio=${btc_price_start:.0f} ahora=${btc_price_now:.0f} ({_sig['window_pct']:+.3f}%) "
-         f"| cierra en {market['minutes_to_close']:.1f}min")
+         f"| BTC inicio=${btc_price_start:.0f} ahora=${btc_price_now:.0f} ({_sig.get('window_pct',0):+.3f}%) "
+         f"| cierra en {market['minutes_to_close']:.1f}min | Régimen:{_sig.get('regime','?')} ADX:{_sig.get('adx','?')}")
     _tx_str = (
-        f" RealOFI:{_sig['real_ofi']:+.3f} SmartBias:{_sig['smart_bias']:+.3f}"
+        f" RealOFI:{_sig.get('real_ofi',0):+.3f} SmartBias:{_sig.get('smart_bias',0):+.3f}"
         if _sig.get("telonex_available") else " [Telonex:off]"
     )
+    _funding_str = f" Fund:{_sig.get('funding_sig',0):+.3f}" if funding_data and funding_data.get("available") else ""
+    _mtf_str     = f" MTF:{_sig.get('mtf_sig',0):+.3f}(x{_sig.get('n_aligned',0)}tf)" if ta_multi else ""
     _log("INFO",
          f"UpDown {interval_minutes}m | Señales — "
-         f"TA:{ta_data.get('recommendation','?')}({_sig['ta_raw']:+.3f}) "
-         f"RSI:{ta_data.get('rsi','?')} MACD:{_sig['macd_sig']:+.3f} "
-         f"EMA:{_sig['ema_sig']:+.3f} Momentum:{_sig['momentum']:+.3f} "
-         f"OFI:{_sig.get('ofi',0):+.3f} Mercado:{_sig['market_sig']:+.3f} Macro:{_sig['macro']:+.3f}"
-         f"{_tx_str} → COMBINADA:{_sig['combined']:+.4f} ({_sig['direction']})")
+         f"TA:{ta_data.get('recommendation','?')}({_sig.get('ta_raw',0):+.3f}) "
+         f"RSI:{ta_data.get('rsi','?')} Stoch:{_sig.get('stoch_sig',0):+.3f} "
+         f"BB:{_sig.get('bb_sig',0):+.3f}(w={_sig.get('bb_width',0):.3f}) "
+         f"MACD:{_sig.get('macd_sig',0):+.3f} Mom:{_sig.get('momentum',0):+.3f}"
+         f"{_mtf_str}{_funding_str}{_tx_str}"
+         f" → COMBINADA:{_sig.get('combined',0):+.4f} ({_sig.get('direction','?')})")
 
     # ── Apuesta fantasma (siempre, haya o no señal real) ────────────────────
     # Se registra para CADA mercado escaneado — si hubo trade real la
@@ -1700,6 +1837,9 @@ async def _scan_updown(interval_minutes: int):
                             "confidence":     phantom_conf,
                             "market_title":   market.get("title", ""),
                             "slug":           slug,
+                            "ev_pct":         0,
+                            "poly_url":       "",
+                            "window_pct":     0,
                         }
                         try:
                             _ph_success = await asyncio.get_event_loop().run_in_executor(
@@ -2051,6 +2191,24 @@ def _sync_consecutive_losses_from_history():
             else:
                 break  # WIN encontrado — la racha termina aquí
         setattr(state, attr, streak)
+
+        # ── Corregir inconsistencia stopped/losses ───────────────────────────
+        # Si stopped=True pero losses < max_consecutive_losses, el estado
+        # quedó desincronizado (ej: max cambió después de que se activó).
+        stopped_attr = f"updown_{interval}m_stopped"
+        max_losses   = bot_params.updown_max_consecutive_losses
+        currently_stopped = getattr(state, stopped_attr, False)
+        if currently_stopped and streak < max_losses:
+            setattr(state, stopped_attr, False)
+            _log("INFO",
+                 f"UpDown {interval}m | Estado inconsistente corregido: "
+                 f"stopped=True pero solo {streak} pérdidas < max({max_losses}) → reseteado")
+        elif not currently_stopped and streak >= max_losses and streak > 0:
+            setattr(state, stopped_attr, True)
+            _log("WARN",
+                 f"UpDown {interval}m | Circuit breaker activado al arrancar: "
+                 f"{streak} pérdidas consecutivas ≥ max({max_losses})")
+
         if streak > 0:
             _log("INFO", f"UpDown {interval}m | Racha de pérdidas recalculada desde historial: {streak}")
 
@@ -2346,6 +2504,22 @@ async def _resolve_pending_updown_outcomes():
         except Exception as e:
             _log("WARN", f"UpDown phantom learner error: {e}")
 
+        # ── Sincronizar phantom_learner (fuente de verdad de WR por intervalo) ──
+        try:
+            from phantom_learner import record_result as _ph_rec
+            from vps_experiment import calculate_vps_size as _cvs
+            _, _ph_tier = _cvs(pending.get("confidence", 0))
+            _ph_rec(interval, {
+                "signal":          pending.get("side", "UP"),
+                "confidence_pct":  pending.get("confidence", 0),
+                "confidence_tier": _ph_tier,
+            }, ph_won)
+        except Exception as e:
+            _log("WARN", f"PhantomLearner sync error: {e}")
+
+        # ── Auto-regla: ajustar phantom_real_enabled según win rate ──────────────
+        _check_phantom_autorule()
+
         # ── Phantom REAL: devolver stake al bucket; ganancia → cash libre ───────
         _ph_bucket_attr = pending.get("phantom_bucket_attr")
         _ph_real_size   = pending.get("phantom_real_size", 0.0)
@@ -2634,10 +2808,13 @@ async def _run_updown_loop():
             # Resolver trades pasados cuya ventana ya cerró
             await _resolve_pending_updown_outcomes()
 
-            if bot_params.updown_5m_enabled:
-                await _scan_updown(5)
-            if bot_params.updown_15m_enabled:
-                await _scan_updown(15)
+            if not bot_params.updown_enabled:
+                _log("INFO", "UpDown | updown_enabled=False — loop pausado")
+            else:
+                if bot_params.updown_5m_enabled:
+                    await _scan_updown(5)
+                if bot_params.updown_15m_enabled:
+                    await _scan_updown(15)
         except Exception as e:
             _log("ERROR", f"UpDown loop error: {e}")
         await asyncio.sleep(60)

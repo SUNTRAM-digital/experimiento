@@ -273,6 +273,7 @@ def _get_btc_ta_sync(interval: str = "1m") -> dict:
         total = buy + neutral + sell
         # Señal continua de -1 a +1 basada en conteo de indicadores
         continuous_signal = (buy - sell) / total if total > 0 else 0.0
+        ind = analysis.indicators
         result = {
             "recommendation": rec,
             "signal":   continuous_signal,
@@ -280,12 +281,39 @@ def _get_btc_ta_sync(interval: str = "1m") -> dict:
             "buy":      buy,
             "neutral":  neutral,
             "sell":     sell,
-            "rsi":      analysis.indicators.get("RSI"),
-            "ema20":    analysis.indicators.get("EMA20"),
-            "ema50":    analysis.indicators.get("EMA50"),
-            "macd":     analysis.indicators.get("MACD.macd"),
-            "close":    analysis.indicators.get("close"),
-            "interval": interval,
+            # ── Osciladores básicos ─────────────────────────────────────────
+            "rsi":       ind.get("RSI"),
+            "stoch_k":   ind.get("Stoch.K"),
+            "stoch_d":   ind.get("Stoch.D"),
+            "macd":      ind.get("MACD.macd"),
+            "macd_signal": ind.get("MACD.signal"),
+            "cci":       ind.get("CCI20"),
+            "ao":        ind.get("AO"),       # Awesome Oscillator
+            "mom":       ind.get("Mom"),      # Momentum
+            # ── Tendencia ───────────────────────────────────────────────────
+            "ema9":      ind.get("EMA9"),
+            "ema20":     ind.get("EMA20"),
+            "ema21":     ind.get("EMA21"),
+            "ema50":     ind.get("EMA50"),
+            "ema100":    ind.get("EMA100"),
+            "ema200":    ind.get("EMA200"),
+            "adx":       ind.get("ADX"),
+            "adx_pos":   ind.get("ADX+DI"),   # DI+ (comprador)
+            "adx_neg":   ind.get("ADX-DI"),   # DI- (vendedor)
+            "psar":      ind.get("P.SAR"),     # Parabolic SAR
+            # ── Volatilidad / Bandas ─────────────────────────────────────
+            "bb_upper":  ind.get("BB.upper"),
+            "bb_lower":  ind.get("BB.lower"),
+            "bb_basis":  ind.get("BB.basis"),
+            "atr":       ind.get("ATR"),
+            # ── Precio / Volumen ─────────────────────────────────────────
+            "open":      ind.get("open"),
+            "high":      ind.get("high"),
+            "low":       ind.get("low"),
+            "close":     ind.get("close"),
+            "volume":    ind.get("volume"),
+            "vwma":      ind.get("VWMA"),
+            "interval":  interval,
             "available": True,
         }
         _ta_cache[interval] = (result, time.time())
@@ -303,6 +331,62 @@ async def get_btc_ta(interval: str = "1m") -> dict:
     """Análisis técnico TradingView de forma asíncrona."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_btc_ta_sync, interval)
+
+
+async def get_btc_ta_multi(intervals: list[str]) -> dict[str, dict]:
+    """
+    Obtiene TA de múltiples timeframes en paralelo.
+    Retorna dict {interval: ta_data} con caché independiente por intervalo.
+    """
+    import asyncio as _aio
+    results = await _aio.gather(*[get_btc_ta(iv) for iv in intervals])
+    return {iv: r for iv, r in zip(intervals, results)}
+
+
+# ── Binance Perpetuals: Funding Rate ──────────────────────────────────────────
+
+_FUNDING_CACHE: tuple[dict, float] = ({}, 0.0)
+_FUNDING_CACHE_TTL = 120  # el funding rate cambia cada 8h, 2min de caché es suficiente
+
+
+async def get_btc_funding_rate() -> dict:
+    """
+    Tasa de financiamiento del perpetuo BTCUSDT en Binance (gratis, sin API key).
+    Funding rate positivo (+) → longs pagan shorts → mercado sobre-comprado → señal bajista.
+    Funding rate negativo (-) → shorts pagan longs → mercado sobre-vendido → señal alcista.
+    Actualiza cada 8h (00:00, 08:00, 16:00 UTC); caché de 2min.
+    """
+    import time
+    global _FUNDING_CACHE
+    cached, fetched_at = _FUNDING_CACHE
+    if cached and (time.time() - fetched_at) < _FUNDING_CACHE_TTL:
+        return cached
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=6) as client:
+            resp = await client.get(
+                "https://fapi.binance.com/fapi/v1/premiumIndex",
+                params={"symbol": "BTCUSDT"},
+            )
+            if resp.status_code != 200:
+                return {"available": False}
+            data = resp.json()
+            rate = float(data.get("lastFundingRate", 0))
+            mark = float(data.get("markPrice", 0))
+            index = float(data.get("indexPrice", 0))
+            premium_pct = round((mark - index) / index * 100, 4) if index > 0 else 0.0
+            result = {
+                "funding_rate":  round(rate, 6),
+                "rate_pct":      round(rate * 100, 4),
+                "mark_price":    mark,
+                "index_price":   index,
+                "premium_pct":   premium_pct,   # mark vs index spread
+                "available":     True,
+            }
+            _FUNDING_CACHE = (result, time.time())
+            return result
+    except Exception as e:
+        logger.debug(f"Funding rate error: {e}")
+        return {"available": False}
 
 
 # ── CoinMarketCap ─────────────────────────────────────────────────────────────

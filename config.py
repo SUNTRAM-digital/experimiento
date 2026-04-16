@@ -41,6 +41,7 @@ class BotParams:
         self.btc_vol_candles: int = int(os.getenv("BTC_VOL_CANDLES", 96))
         self.btc_momentum_weight: float = float(os.getenv("BTC_MOMENTUM_WEIGHT", 0.03))
         # --- BTC Up/Down (5m y 15m) ---
+        self.updown_enabled: bool = os.getenv("UPDOWN_ENABLED", "true").lower() == "true"  # kill switch global
         self.updown_5m_enabled: bool = os.getenv("UPDOWN_5M_ENABLED", "true").lower() == "true"
         self.updown_15m_enabled: bool = os.getenv("UPDOWN_15M_ENABLED", "true").lower() == "true"
         self.updown_max_usdc: float = float(os.getenv("UPDOWN_MAX_USDC", 1.0))
@@ -85,6 +86,13 @@ class BotParams:
         self.phantom_bucket_15m_pct: float = 0.70    # % del pool para trades 15m
         self.phantom_bucket_5m_usdc: float = 0.0     # saldo actual bucket phantom 5m
         self.phantom_bucket_15m_usdc: float = 0.0    # saldo actual bucket phantom 15m
+        # Stake dinámico UpDown por nivel de confianza (item 29)
+        # Stake = min_stake + (max_stake - min_stake) * (conf - conf_min) / (conf_max - conf_min)
+        # clipped to [min_stake, max_stake]
+        self.updown_stake_min_usdc: float = 3.0      # stake mínimo (en conf ≤ conf_min_pct)
+        self.updown_stake_max_usdc: float = 15.0     # stake máximo (en conf ≥ conf_max_pct)
+        self.updown_stake_conf_min_pct: float = 20.0 # % confianza que mapea al stake mínimo
+        self.updown_stake_conf_max_pct: float = 65.0 # % confianza que mapea al stake máximo
         # Cargar valores guardados previamente (sobreescriben los defaults)
         self._load()
 
@@ -108,6 +116,7 @@ class BotParams:
             "btc_max_hours_to_resolution": self.btc_max_hours_to_resolution,
             "btc_vol_candles": self.btc_vol_candles,
             "btc_momentum_weight": self.btc_momentum_weight,
+            "updown_enabled": self.updown_enabled,
             "updown_5m_enabled": self.updown_5m_enabled,
             "updown_15m_enabled": self.updown_15m_enabled,
             "updown_max_usdc": self.updown_max_usdc,
@@ -142,6 +151,10 @@ class BotParams:
             "phantom_bucket_15m_pct": self.phantom_bucket_15m_pct,
             "phantom_bucket_5m_usdc": self.phantom_bucket_5m_usdc,
             "phantom_bucket_15m_usdc": self.phantom_bucket_15m_usdc,
+            "updown_stake_min_usdc":      self.updown_stake_min_usdc,
+            "updown_stake_max_usdc":      self.updown_stake_max_usdc,
+            "updown_stake_conf_min_pct":  self.updown_stake_conf_min_pct,
+            "updown_stake_conf_max_pct":  self.updown_stake_conf_max_pct,
         }
 
     def _load(self):
