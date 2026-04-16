@@ -650,6 +650,7 @@
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
       <div class="tab" onclick="showTab('tab-bots')">🤖 Bots</div>
       <div class="tab" onclick="showTab('tab-telonex')">🔗 Telonex</div>
+      <div class="tab" onclick="showTab('tab-asesor')" id="tab-btn-asesor">🔔 Asesor <span id="badge-asesor" style="display:none;background:#f85149;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem"></span></div>
       <div class="tab" onclick="showTab('tab-perf')">⚙ Recursos</div>
     </div>
 
@@ -2130,13 +2131,30 @@
         <div id="perf-no-data" style="text-align:center;color:var(--muted);padding:20px;font-size:.8rem">Sin datos aún — espera el primer ciclo de escaneo</div>
       </div>
     </div>
+
+    <!-- ASESOR TAB -->
+    <div id="tab-asesor" class="tab-content">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <h2 style="font-size:1rem;font-weight:700;color:var(--text);margin:0">🔔 Historial del Asesor</h2>
+        <button onclick="requestAdvisorAnalysis();loadAdvisorTab()" class="btn" style="font-size:.75rem;padding:5px 12px">
+          🔍 Analizar ahora
+        </button>
+        <button onclick="loadAdvisorTab()" class="btn save" style="font-size:.75rem;padding:5px 12px">
+          ↻ Actualizar
+        </button>
+        <span id="asesor-count" style="font-size:.75rem;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div id="asesor-notif-list" style="display:flex;flex-direction:column;gap:10px">
+        <div style="text-align:center;color:var(--muted);padding:40px">Cargando...</div>
+      </div>
+    </div>
   </div>
 
   <!-- CHAT PANEL -->
   <div class="chat-panel">
     <div class="chat-header">
       <span>◆</span> Chat con Claude
-      <span id="advisor-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;cursor:pointer" onclick="showAdvisorNotifications()" title="Notificaciones del asesor">● notif</span>
+      <span id="advisor-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;cursor:pointer" onclick="showTab('tab-asesor')" title="Ver notificaciones del asesor">● notif</span>
       <button class="chat-hdr-btn" id="btn-hist" onclick="toggleHistPanel()" title="Ver conversaciones guardadas">☰ Historial</button>
       <button class="chat-hdr-btn" onclick="newChat()" title="Nueva conversación">＋ Nueva</button>
       <button class="chat-hdr-btn" onclick="requestAdvisorAnalysis()" title="Pedir análisis proactivo ahora">🔍 Analizar</button>
@@ -2384,6 +2402,11 @@ function connectWS() {
       if (badge) {
         badge.style.display = 'inline';
         badge.textContent = `● ${_unreadAdvisor} nueva${_unreadAdvisor > 1 ? 's' : ''}`;
+      }
+      const tabBadge = document.getElementById('badge-asesor');
+      if (tabBadge) {
+        tabBadge.style.display = 'inline';
+        tabBadge.textContent = _unreadAdvisor;
       }
     }
   };
@@ -5063,34 +5086,61 @@ async function loadAdvisorNotifications() {
       badge.style.display = _unreadAdvisor > 0 ? 'inline' : 'none';
       badge.textContent = `● ${_unreadAdvisor} nueva${_unreadAdvisor > 1 ? 's' : ''}`;
     }
+    const tabBadge = document.getElementById('badge-asesor');
+    if (tabBadge) {
+      tabBadge.style.display = _unreadAdvisor > 0 ? 'inline' : 'none';
+      tabBadge.textContent = _unreadAdvisor;
+    }
   } catch(e) {}
 }
 
 async function showAdvisorNotifications() {
+  // Navigate to dedicated asesor tab instead of injecting into chat
+  showTab('tab-asesor');
+}
+
+async function loadAdvisorTab() {
+  const list = document.getElementById('asesor-notif-list');
+  const countEl = document.getElementById('asesor-count');
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px">Cargando notificaciones...</div>';
   try {
     const r = await fetch('/api/advisor/notifications');
     const d = await r.json();
     const notifs = d.notifications || [];
-    const box = document.getElementById('chat-messages');
 
-    // Insertar notificaciones como mensajes del asistente
+    if (countEl) countEl.textContent = `${notifs.length} notificación${notifs.length !== 1 ? 'es' : ''}`;
+
     if (!notifs.length) {
-      _appendMsg('assistant', '📭 No hay notificaciones del asesor aún. Haz clic en 🔍 Analizar para pedir un análisis inmediato.');
+      list.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px">
+        <div style="font-size:2rem;margin-bottom:8px">📭</div>
+        <div>No hay notificaciones del asesor aún.</div>
+        <div style="font-size:.75rem;margin-top:6px">Haz clic en "Analizar ahora" para pedir un análisis inmediato.</div>
+      </div>`;
     } else {
-      notifs.slice(0, 3).forEach(n => {
+      list.innerHTML = notifs.map(n => {
         const parsed = _parseAdvisorMsg(n.text);
-        const txt = `**🔔 Notificación del asesor** (${n.time})\n\n${parsed.text}`;
-        _appendMsg('assistant', txt, false, parsed.cardHtml);
-      });
+        const body = _renderMarkdown(parsed.text);
+        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:.65rem;color:var(--muted);background:var(--bg3);padding:2px 8px;border-radius:10px">${escHtml(n.time || '')}</span>
+            ${n.unread ? '<span style="font-size:.65rem;background:#f85149;color:#fff;padding:2px 7px;border-radius:10px">NUEVO</span>' : ''}
+          </div>
+          <div style="font-size:.8rem;color:var(--text);line-height:1.5">${body}</div>
+          ${parsed.cardHtml}
+        </div>`;
+      }).join('');
     }
 
-    // Marcar como leídas
+    // Mark as read
     await fetch('/api/advisor/notifications/read', { method: 'POST' });
     _unreadAdvisor = 0;
     const badge = document.getElementById('advisor-badge');
     if (badge) badge.style.display = 'none';
+    const tabBadge = document.getElementById('badge-asesor');
+    if (tabBadge) tabBadge.style.display = 'none';
   } catch(e) {
-    _appendMsg('assistant', 'Error cargando notificaciones.');
+    list.innerHTML = `<div style="color:var(--red);padding:20px">Error cargando notificaciones: ${escHtml(e.message)}</div>`;
   }
 }
 
@@ -6295,6 +6345,7 @@ showTab = function(id) {
   _origShowTabBots(id);
   if (id === 'tab-bots')    loadBots();
   if (id === 'tab-phantom') loadPhantom();
+  if (id === 'tab-asesor')  loadAdvisorTab();
 };
 
 // ── Bots Arena ────────────────────────────────────────────────────────────────
