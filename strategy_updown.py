@@ -550,27 +550,62 @@ def evaluate_updown_market(
 
     combined = sig["combined"]
 
-    # ── Mean reversion en 5m ──────────────────────────────────────────────────
-    # En ventanas de 5m el movimiento inicial tiende a revertir: invertimos momentum.
-    # Pero si el régimen es trending (ADX>25), reducimos la inversión para no
-    # ir en contra de una tendencia fuerte.
+    # ── Señal de desplazamiento: precio actual vs inicio de ventana ──────────
+    # Cuando BTC ya está significativamente por encima/abajo del precio de
+    # apertura, el mercado PROBABLEMENTE ya cerró en esa dirección.
+    # Este es el predictor más fuerte para entradas tardías.
+    window_pct_val = sig.get("window_pct", 0.0)      # % movimiento en la ventana
+    displacement   = abs(window_pct_val)              # magnitud del movimiento
+    # Umbrales configurables (defaults en config o params del bot)
+    try:
+        _disp_hi = float(getattr(bot_params, "updown_displacement_hi_pct", 0.20))
+        _disp_lo = float(getattr(bot_params, "updown_displacement_lo_pct", 0.10))
+    except Exception:
+        _disp_hi, _disp_lo = 0.20, 0.10
+
+    # Señal de desplazamiento: signo del movimiento en la ventana
+    displacement_sig = 1.0 if window_pct_val > 0 else (-1.0 if window_pct_val < 0 else 0.0)
+
+    # ── Mean reversion / trend-follow adaptativo en 5m ───────────────────────
+    # Lógica: movimiento GRANDE = seguir tendencia (precio ya se movió).
+    #         movimiento pequeño en rango = mean-reversion puede aplicar.
     if interval_min <= 5:
         mom_raw      = sig["momentum"]
         ta_composite = sig["ta"]
         bb_sig_val   = sig.get("bb_sig", 0.0)
         regime       = sig.get("regime", "neutral")
-        # En tendencia fuerte, reducir inversión del momentum (solo 50% mean-reversion)
-        mom_inversion = -0.5 if regime in ("trending_up", "trending_down") else -1.0
+
+        if displacement >= _disp_hi:
+            # Movimiento grande (>0.20%): BTC ya se desplazó fuertemente.
+            # Seguir la dirección del movimiento — no invertir.
+            mom_inversion = 1.0
+            mode_label    = f"trend_follow (disp={displacement:.3f}%>={_disp_hi:.2f}%)"
+        elif displacement >= _disp_lo:
+            # Movimiento medio (0.10-0.20%): neutral, dejar que TA decida.
+            mom_inversion = 0.0
+            mode_label    = f"neutral (disp={displacement:.3f}% in [{_disp_lo:.2f},{_disp_hi:.2f}]%)"
+        elif regime in ("trending_up", "trending_down"):
+            # Tendencia fuerte + movimiento pequeño: semi mean-reversion
+            mom_inversion = -0.5
+            mode_label    = f"semi_mean_rev (regime={regime}, disp={displacement:.3f}%)"
+        else:
+            # Rango + movimiento pequeño: mean-reversion completa
+            mom_inversion = -1.0
+            mode_label    = f"mean_rev (regime={regime}, disp={displacement:.3f}%)"
+
         combined = max(-1.0, min(1.0,
-            ta_composite          * 0.40
-            + (mom_raw * mom_inversion) * 0.25
-            + bb_sig_val          * 0.15
-            + sig["market_sig"]   * 0.10
-            + sig["macro"]        * 0.10
+            ta_composite              * 0.35
+            + (mom_raw * mom_inversion) * 0.30
+            + displacement_sig        * (0.20 if displacement >= _disp_lo else 0.0)
+            + bb_sig_val              * 0.10
+            + sig["market_sig"]       * 0.05
         ))
-        sig["combined"]   = round(combined, 4)
-        sig["direction"]  = "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL")
-        sig["5m_mode"]    = f"mean_reversion (mom×{mom_inversion}, regime={regime})"
+        sig["combined"]       = round(combined, 4)
+        sig["direction"]      = "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL")
+        sig["confidence"]     = round(abs(combined) * 100, 1)
+        sig["5m_mode"]        = mode_label
+        sig["displacement"]   = round(displacement, 4)
+        sig["mom_inversion"]  = mom_inversion
 
     if invert_signal:
         combined = -combined

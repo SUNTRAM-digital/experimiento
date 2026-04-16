@@ -1142,6 +1142,34 @@
           <div id="stake-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
         </div>
 
+        <!-- Señal de desplazamiento 5m (item 1) -->
+        <div style="background:var(--bg3);border:1px solid #4b5563;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+          <div style="font-size:.68rem;color:#f59e0b;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">
+            Estrategia 5m — Desplazamiento BTC<span class="help-btn" onclick="showHelp('estrategia_5m',event)">?</span>
+          </div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px">
+            Umbral (% de movimiento BTC en la ventana) que determina si el bot sigue la tendencia o hace mean-reversion
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <div style="font-size:.68rem;color:#4ade80;margin-bottom:3px">Umbral alto → seguir tendencia (%)</div>
+              <input id="ud-disp-hi" type="number" min="0.01" max="5" step="0.01" value="0.20"
+                style="width:80px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                title="Si BTC se movió más de este % desde el inicio de la ventana → el bot sigue la tendencia (no invierte)">
+            </div>
+            <div>
+              <div style="font-size:.68rem;color:#fbbf24;margin-bottom:3px">Umbral bajo → neutro (%)</div>
+              <input id="ud-disp-lo" type="number" min="0.01" max="5" step="0.01" value="0.10"
+                style="width:80px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                title="Entre este % y el umbral alto → señal neutral. Por debajo → mean-reversion">
+            </div>
+            <button onclick="saveDisplacementParams()" style="padding:5px 12px;background:#f59e0b;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">
+              Guardar
+            </button>
+          </div>
+          <div id="disp-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
+        </div>
+
         <!-- Saldo virtual -->
         <div id="vps-virtual-balance" style="display:flex;gap:12px;margin-bottom:10px;font-size:.75rem">
           <!-- inyectado por JS -->
@@ -2227,6 +2255,7 @@ const HELP = {
   btc_dist:     { t:'Distancia % al umbral', b:'Qué tan lejos está el precio actual de BTC del umbral del mercado, en porcentaje.\n• Dist. +5% = BTC debe subir 5% para cruzar el umbral\n• Dist. −3% = BTC ya está 3% por encima del umbral (favorable si apostamos ABOVE)\nDistancias grandes → probabilidades más extremas → menos edge pero más certeza.' },
   // VPS experiment
   vps_experiment:  { t:'Experimento VPS-Confianza', b:'Variable Position Sizing basado en Confianza.\nEn vez de apostar siempre $3 fijos (baseline), el bot apuesta MÁS cuando tiene más confianza:\n• Confianza ≥65% → $10\n• 50-64% → $8\n• 35-49% → $6\n• 20-34% → $4\n• <20% → $3 (igual al fijo)\nSIN dinero real — todo es virtual. El objetivo es medir si apostar más en señales fuertes genera más ganancia.' },
+  estrategia_5m:   { t:'Estrategia 5m — Desplazamiento BTC', b:'Controla si el bot sigue la tendencia o intenta predecir reversión para mercados de 5 minutos.\n\nEl "desplazamiento" es cuánto se movió BTC desde el inicio de la ventana (por ejemplo, +0.25% = BTC subió $200 en un mercado de $80k).\n\n• Mayor al umbral ALTO (default 0.20%): el bot SIGUE LA TENDENCIA. BTC ya se movió fuerte → probable que cierre en esa dirección.\n• Entre umbrales (0.10%-0.20%): NEUTRO. Los indicadores técnicos deciden sin sesgo de reversión.\n• Menor al umbral BAJO (default 0.10%): MEAN-REVERSION. Movimiento pequeño → puede revertir al cierre.\n\nFix principal: antes el bot invertía siempre el momentum en 5m, causando que apostara DOWN cuando BTC estaba $200 arriba.' },
   stake_dinamico:  { t:'Stake dinámico por confianza', b:'Ajusta cuánto USDC apuesta el bot según el % de confianza de la señal.\n• Min stake: apuesta cuando conf ≤ umbral mínimo (p.ej. 20% → $3)\n• Max stake: apuesta cuando conf ≥ umbral máximo (p.ej. 65% → $15)\n• Entre los umbrales, el stake se interpola linealmente\n• Si conf ≥ 65% → $15; si conf = 40% y rango 20-65% → mitad del camino ≈ $9\nEl parámetro "Máx por trade" en Configuración actúa como techo adicional.' },
   vps_saldo:       { t:'Saldo virtual del experimento', b:'Saldo ficticio que simula cuánto ganarías o perderías con cada estrategia si empezaras con $50.\n• Saldo VPS = resultado con tamaño variable según confianza\n• Saldo Fixed = resultado apostando siempre $3 fijos\nSon solo números de seguimiento — no mueven dinero real.' },
   vps_pnl_vps:     { t:'P&L Neto VPS', b:'Ganancia/pérdida total simulada con la estrategia de tamaño variable.\nPnl_vps = Σ (size_vps × resultado) por todos los trades resueltos.\n• WIN = +size_vps × 0.98 (descuento Polymarket)\n• LOSS = −size_vps × 1.00' },
@@ -3584,6 +3613,15 @@ function renderUpdownStatus(d) {
   _sd('ud-stake-max',      d.updown_stake_max_usdc);
   _sd('ud-stake-conf-min', d.updown_stake_conf_min_pct);
   _sd('ud-stake-conf-max', d.updown_stake_conf_max_pct);
+  // Desplazamiento 5m inputs
+  _sd('ud-disp-hi', d.updown_displacement_hi_pct);
+  _sd('ud-disp-lo', d.updown_displacement_lo_pct);
+  const dprev = document.getElementById('disp-preview');
+  if (dprev && d.updown_displacement_hi_pct != null) {
+    const lo = d.updown_displacement_lo_pct ?? 0.10;
+    const hi = d.updown_displacement_hi_pct ?? 0.20;
+    dprev.textContent = `<${lo}% → mean-rev | ${lo}-${hi}% → neutro | >${hi}% → sigue tendencia`;
+  }
   // Vista previa stake
   const stakeMin = d.updown_stake_min_usdc ?? 3;
   const stakeMax = d.updown_stake_max_usdc ?? 15;
@@ -3808,6 +3846,26 @@ async function saveStakeDinamico() {
   } catch(e) {
     if (prev) prev.textContent = '✗ Sin conexión';
   }
+}
+
+async function saveDisplacementParams() {
+  const hi = parseFloat(document.getElementById('ud-disp-hi').value);
+  const lo = parseFloat(document.getElementById('ud-disp-lo').value);
+  if (isNaN(hi) || isNaN(lo)) return;
+  if (hi <= lo) { alert('Umbral alto debe ser > umbral bajo'); return; }
+  const prev = document.getElementById('disp-preview');
+  if (prev) prev.textContent = 'Guardando…';
+  try {
+    const res = await fetch('/api/updown/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ updown_displacement_hi_pct: hi, updown_displacement_lo_pct: lo }),
+    });
+    if (prev) prev.textContent = res.ok
+      ? `✓ Guardado — <${lo}% mean-rev | ${lo}-${hi}% neutro | >${hi}% sigue tendencia`
+      : '✗ Error al guardar';
+    fetchStatus();
+  } catch(e) { if (prev) prev.textContent = '✗ Sin conexión'; }
 }
 
 async function toggleAutoTrade() {

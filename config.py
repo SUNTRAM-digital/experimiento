@@ -51,6 +51,10 @@ class BotParams:
         self.updown_5m_min_confidence:  float = 0.20   # confianza mínima para entrar en 5m
         self.updown_15m_momentum_gate:  float = 0.20   # umbral momentum gate para 15m
         self.updown_5m_momentum_gate:   float = 0.20   # umbral momentum gate para 5m
+        # Umbrales de desplazamiento para 5m (% de movimiento BTC en la ventana)
+        # >= hi → seguir tendencia | [lo, hi) → neutro | < lo → mean-reversion
+        self.updown_displacement_hi_pct: float = 0.20  # >0.20% → follow trend
+        self.updown_displacement_lo_pct: float = 0.10  # >0.10% → neutral
         # --- Telonex (Fase 11) ---
         self.telonex_enabled: bool = os.getenv("TELONEX_ENABLED", "true").lower() == "true"
         self.telonex_smart_wallet_weight: float = float(os.getenv("TELONEX_SMART_WALLET_WEIGHT", 0.10))
@@ -125,6 +129,8 @@ class BotParams:
             "updown_5m_min_confidence":  self.updown_5m_min_confidence,
             "updown_15m_momentum_gate":  self.updown_15m_momentum_gate,
             "updown_5m_momentum_gate":   self.updown_5m_momentum_gate,
+            "updown_displacement_hi_pct": self.updown_displacement_hi_pct,
+            "updown_displacement_lo_pct": self.updown_displacement_lo_pct,
             "telonex_enabled":               self.telonex_enabled,
             "telonex_smart_wallet_weight":   self.telonex_smart_wallet_weight,
             "telonex_real_ofi_weight":       self.telonex_real_ofi_weight,

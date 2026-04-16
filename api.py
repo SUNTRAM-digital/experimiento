@@ -177,6 +177,8 @@ def _build_status() -> dict:
         "updown_stake_max_usdc":        bot_params.updown_stake_max_usdc,
         "updown_stake_conf_min_pct":    bot_params.updown_stake_conf_min_pct,
         "updown_stake_conf_max_pct":    bot_params.updown_stake_conf_max_pct,
+        "updown_displacement_hi_pct":   bot_params.updown_displacement_hi_pct,
+        "updown_displacement_lo_pct":   bot_params.updown_displacement_lo_pct,
         # UpDown — live data
         "updown_last_market_5m":  bot.state.updown_last_market_5m,
         "updown_last_market_15m": bot.state.updown_last_market_15m,
@@ -741,6 +743,10 @@ async def set_updown_params(data: dict):
         clean["updown_stake_conf_min_pct"] = max(0.0, min(99.0, float(data["updown_stake_conf_min_pct"])))
     if "updown_stake_conf_max_pct" in data:
         clean["updown_stake_conf_max_pct"] = max(1.0, min(100.0, float(data["updown_stake_conf_max_pct"])))
+    if "updown_displacement_hi_pct" in data:
+        clean["updown_displacement_hi_pct"] = max(0.01, min(5.0, float(data["updown_displacement_hi_pct"])))
+    if "updown_displacement_lo_pct" in data:
+        clean["updown_displacement_lo_pct"] = max(0.01, min(5.0, float(data["updown_displacement_lo_pct"])))
     if clean:
         bot_params.update(clean)  # update() llama a save() internamente
     return {"ok": True}
@@ -1839,6 +1845,7 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             "updown_15m_momentum_gate",  "updown_5m_momentum_gate",
             "updown_stake_min_usdc", "updown_stake_max_usdc",
             "updown_stake_conf_min_pct", "updown_stake_conf_max_pct",
+            "updown_displacement_hi_pct", "updown_displacement_lo_pct",
         }
         invalid = [k for k in params if k not in valid_keys]
         if invalid:

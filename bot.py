@@ -1769,19 +1769,10 @@ async def _scan_updown(interval_minutes: int):
     # skip_reason será "traded_real", si no "no_signal" u otro filtro.
     # Así acumulamos datos continuos para el learner.
     if slug not in _updown_phantom_slugs:
-        if interval_minutes <= 5:
-            _ph_combined = (
-                _sig["ta"]            * 0.55
-                + (-_sig["momentum"]) * 0.25   # mean-reversion en 5m
-                + _sig["market_sig"]  * 0.10
-                + _sig["macro"]       * 0.10
-            )
-            _ph_combined = max(-1.0, min(1.0, _ph_combined))
-            phantom_dir  = "UP" if _ph_combined > 0 else ("DOWN" if _ph_combined < 0 else "NEUTRAL")
-            phantom_conf = round(abs(_ph_combined) * 100, 1)
-        else:
-            phantom_dir  = _sig["direction"]
-            phantom_conf = _sig["confidence"]
+        # Phantom usa la MISMA señal que el bot real — ya incluye
+        # lógica de desplazamiento, régimen y mean-reversion correcta.
+        phantom_dir  = _sig["direction"]
+        phantom_conf = _sig["confidence"]
 
         if phantom_dir != "NEUTRAL":
             _ph_reason = skip_reason or ("traded_real" if opp else "no_signal")
