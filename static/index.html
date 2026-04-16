@@ -2014,6 +2014,21 @@
             <span style="color:#484f58">Cargando señal en vivo...</span>
           </div>
         </div>
+        <!-- Embedded bot chat -->
+        <div style="margin-top:14px;border-top:1px solid #21262d;padding-top:14px">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#8b949e;margin-bottom:8px">
+            Chat con Claude · <span id="brain-chat-label" style="color:#58a6ff">este bot</span>
+          </div>
+          <div id="brain-chat-messages" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px;padding:4px 0"></div>
+          <div style="display:flex;gap:6px;align-items:flex-end">
+            <textarea id="brain-chat-input"
+              placeholder="Pregunta sobre este bot o pídele que cambie parámetros..."
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendBrainChat();}"
+              style="flex:1;resize:none;height:36px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;border-radius:6px;padding:8px;font-size:.75rem;font-family:inherit;line-height:1.3"></textarea>
+            <button id="brain-chat-send" onclick="sendBrainChat()"
+              style="padding:6px 14px;background:#238636;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:.8rem;height:36px">↑</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -6646,6 +6661,9 @@ let _brainPulses = [];
 let _brainLastData = null;
 let _brainLastId = null;
 let _brainInterval = '15m';
+let _brainChatHistory = [];
+let _brainChatBusy = false;
+let _brainLiveData = null;  // last dry-run result, used as context for chat
 
 function _brainStop() {
   if (_brainRAF) { cancelAnimationFrame(_brainRAF); _brainRAF = null; }
@@ -6664,12 +6682,119 @@ async function _brainRefreshLive() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ interval_minutes: interval })
     }).then(r => r.json());
+    _brainLiveData = r;
     _renderBrainLive(r);
     if (tsEl) tsEl.textContent = r.timestamp || '';
   } catch(e) {
     liveEl.innerHTML = `<span style="color:#f85149">Error: ${e.message}</span>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Actualizar'; }
+  }
+}
+
+function _buildBrainContext() {
+  const names = { ud5m:'UpDown 5m (Real)', ud15m:'UpDown 15m (Real)', ph5m:'Phantom 5m', ph15m:'Phantom 15m' };
+  const d = _brainLastData || {};
+  const adapt = d._adaptive || {};
+  const live = _brainLiveData;
+  const botName = names[_brainLastId] || _brainLastId || 'bot';
+
+  let ctx = `[CONTEXTO BOT: ${botName} | Intervalo: ${_brainInterval}`;
+  if (d.win_rate != null) ctx += ` | WR total: ${(d.win_rate*100).toFixed(1)}%`;
+  if (d.total != null) ctx += ` (${d.total} trades)`;
+  if (d.recent_wr != null) ctx += ` | WR reciente: ${(d.recent_wr*100).toFixed(1)}%`;
+  if (adapt.min_signal != null) ctx += ` | Confianza min: ${(adapt.min_signal*100).toFixed(0)}%`;
+  if (adapt.momentum_gate_strict != null) ctx += ` | Gate momentum: ${adapt.momentum_gate_strict ? 'ESTRICTO' : 'normal'}`;
+  if (d.by_side?.UP != null) ctx += ` | WR UP: ${(d.by_side.UP*100).toFixed(1)}%`;
+  if (d.by_side?.DOWN != null) ctx += ` | WR DOWN: ${(d.by_side.DOWN*100).toFixed(1)}%`;
+  if (live?.ok) {
+    const btc = live.btc || {};
+    const sig = live.signal || {};
+    const dec = live.decision || {};
+    if (btc.move_pct != null) ctx += ` | BTC ahora: ${btc.move_pct > 0 ? '+' : ''}${btc.move_pct.toFixed(3)}%`;
+    if (dec.side) ctx += ` | Señal actual: ${dec.side} (${dec.confidence?.toFixed(1) || '—'}% conf)`;
+    if (sig['5m_mode']) ctx += ` | Modo: ${sig['5m_mode']}`;
+    if (dec.would_trade != null) ctx += ` | Decisión: ${dec.would_trade ? 'TRADE' : 'SKIP'}`;
+  }
+  ctx += ']';
+  return ctx;
+}
+
+function _appendBrainMsg(role, text) {
+  const box = document.getElementById('brain-chat-messages');
+  if (!box) return;
+  const div = document.createElement('div');
+  div.style.cssText = `display:flex;flex-direction:column;align-items:${role==='user'?'flex-end':'flex-start'}`;
+  div.innerHTML = `<div style="max-width:85%;background:${role==='user'?'#1f6feb':'#161b22'};border:1px solid ${role==='user'?'#1f6feb':'#30363d'};border-radius:8px;padding:7px 10px;font-size:.74rem;color:#c9d1d9;line-height:1.45">${_renderMarkdown(text)}</div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendBrainChat() {
+  if (_brainChatBusy) return;
+  const input = document.getElementById('brain-chat-input');
+  const sendBtn = document.getElementById('brain-chat-send');
+  const rawText = input.value.trim();
+  if (!rawText) return;
+
+  input.value = '';
+  _brainChatBusy = true;
+  if (sendBtn) sendBtn.disabled = true;
+
+  _appendBrainMsg('user', rawText);
+
+  // Build message with bot context prepended (only for first message or context reset)
+  const ctx = _buildBrainContext();
+  const msgWithCtx = `${ctx}\n\n${rawText}`;
+  _brainChatHistory.push({ role: 'user', content: msgWithCtx });
+
+  // Streaming response bubble
+  const box = document.getElementById('brain-chat-messages');
+  const respDiv = document.createElement('div');
+  respDiv.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start';
+  respDiv.innerHTML = `<div style="max-width:85%;background:#161b22;border:1px solid #58a6ff;border-radius:8px;padding:7px 10px;font-size:.74rem;color:#c9d1d9;line-height:1.45" id="brain-stream-bubble">...</div>`;
+  box.appendChild(respDiv);
+  box.scrollTop = box.scrollHeight;
+  const bubble = document.getElementById('brain-stream-bubble');
+
+  let fullText = '';
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: _brainChatHistory }),
+    });
+    if (!resp.ok) {
+      bubble.innerHTML = '<span style="color:#f85149">Error contactando Claude</span>';
+    } else {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') break;
+          try {
+            const d = JSON.parse(payload);
+            if (d.text) { fullText += d.text; bubble.innerHTML = _renderMarkdown(fullText); box.scrollTop = box.scrollHeight; }
+            if (d.error) { bubble.innerHTML = `<span style="color:#f85149">${escHtml(d.error)}</span>`; }
+          } catch(e) {}
+        }
+      }
+    }
+  } catch(e) {
+    bubble.innerHTML = `<span style="color:#f85149">Error: ${escHtml(e.message)}</span>`;
+  } finally {
+    if (bubble) bubble.style.borderColor = '#30363d';
+    if (fullText) _brainChatHistory.push({ role: 'assistant', content: fullText });
+    _brainChatBusy = false;
+    if (sendBtn) sendBtn.disabled = false;
   }
 }
 
@@ -6792,7 +6917,16 @@ async function showBotBrain(botId) {
   } catch(e) {}
 
   const names = { ud5m:'UpDown 5m (Real)', ud15m:'UpDown 15m (Real)', ph5m:'Phantom 5m', ph15m:'Phantom 15m' };
-  titleEl.textContent = `🧠 Cerebro del Bot · ${names[botId] || botId} · ${_wrLabel(d.win_rate)} WR total`;
+  const botName = names[botId] || botId;
+  titleEl.textContent = `🧠 Cerebro del Bot · ${botName} · ${_wrLabel(d.win_rate)} WR total`;
+
+  // Reset chat for this bot
+  _brainChatHistory = [];
+  _brainLiveData = null;
+  const chatBox = document.getElementById('brain-chat-messages');
+  if (chatBox) chatBox.innerHTML = '';
+  const chatLabel = document.getElementById('brain-chat-label');
+  if (chatLabel) chatLabel.textContent = botName;
 
   _renderBrainStats(d);
   _brainLastData = d;
