@@ -1415,27 +1415,63 @@ def _build_chat_context(include_logs: bool = True, include_learner: bool = True)
                 f"${t.get('cost_usdc',0):.2f} @ {t.get('price',0):.3f} | {result}"
             )
 
-    # === APRENDIZAJE UPDOWN ===
+    # === BOTS ARENA — COMPARATIVA DETALLADA ===
     if include_learner:
         try:
             from updown_learner import get_summary as _ud_summary
+            from config import bot_params as _bp2
+            bp2 = _bp2.to_dict()
+            lines += ["", "=== BOTS ARENA — COMPARATIVA DETALLADA ==="]
             for iv in [5, 15]:
                 ud = _ud_summary(iv)
-                if ud and ud.get("total", 0) > 0:
-                    wr_str = f"{ud['win_rate']*100:.1f}%" if ud.get("win_rate") is not None else "N/A"
-                    rwr_str = f"{ud['recent_wr']*100:.1f}%" if ud.get("recent_wr") is not None else "N/A"
-                    ap = ud.get("adaptive", {})
-                    ph = ud.get("phantom")
-                    ph_str = ""
-                    if ph:
-                        ph_wr = f"{ph['win_rate']*100:.1f}%" if ph.get("win_rate") is not None else "N/A"
-                        ph_str = f" | Phantom: {ph['total']} obs WR={ph_wr}"
-                    lines.append(
-                        f"UpDown {iv}m learner: {ud['wins']}/{ud['total']} WR={wr_str} | "
-                        f"Reciente={rwr_str}{ph_str} | Ajuste: {ap.get('reason','?')}"
-                    )
-        except Exception:
-            pass
+                if not ud:
+                    continue
+                ap = ud.get("adaptive", {})
+                ph = ud.get("phantom") or {}
+
+                def _pct(v):
+                    return f"{v*100:.1f}%" if v is not None else "—"
+
+                # Real bot
+                wr_str   = _pct(ud.get("win_rate"))
+                rwr_str  = _pct(ud.get("recent_wr"))
+                up_wr    = _pct((ud.get("by_side") or {}).get("UP"))
+                dn_wr    = _pct((ud.get("by_side") or {}).get("DOWN"))
+                sig_w    = _pct((ud.get("by_signal") or {}).get("weak"))
+                sig_m    = _pct((ud.get("by_signal") or {}).get("med"))
+                sig_s    = _pct((ud.get("by_signal") or {}).get("strong"))
+                el_e     = _pct((ud.get("by_elapsed") or {}).get("early"))
+                el_m     = _pct((ud.get("by_elapsed") or {}).get("mid"))
+                el_l     = _pct((ud.get("by_elapsed") or {}).get("late"))
+                conf_min = bp2.get(f"updown_{iv}m_min_confidence", 0.20)
+                mom_gate = bp2.get(f"updown_{iv}m_momentum_gate", 0.20)
+                gate_str = "ESTRICTO" if ap.get("momentum_gate_strict") else "normal"
+                inv_str  = " [SEÑAL INVERTIDA]" if ap.get("invert_signal") else ""
+                lines += [
+                    f"",
+                    f"--- Bot UpDown {iv}m (Real) ---",
+                    f"  Trades: {ud.get('total',0)} | Wins: {ud.get('wins',0)} | WR total: {wr_str} | WR reciente: {rwr_str}",
+                    f"  Por lado: UP={up_wr} | DOWN={dn_wr}",
+                    f"  Por señal: débil={sig_w} | media={sig_m} | fuerte={sig_s}",
+                    f"  Por timing: temprano={el_e} | medio={el_m} | tardío={el_l}",
+                    f"  Params adaptativos: confianza_min={conf_min*100:.0f}% | gate_momentum={mom_gate*100:.0f}% | modo_gate={gate_str}{inv_str}",
+                    f"  Min elapsed aprendido: {ap.get('min_elapsed_min','?')}min | Motivo ajuste: {ap.get('reason','?')}",
+                ]
+                # Phantom bot
+                if ph.get("total", 0) > 0:
+                    ph_wr  = _pct(ph.get("win_rate"))
+                    ph_rwr = _pct(ph.get("recent_wr"))
+                    ph_up  = _pct((ph.get("by_side") or {}).get("UP"))
+                    ph_dn  = _pct((ph.get("by_side") or {}).get("DOWN"))
+                    lines += [
+                        f"--- Bot Phantom {iv}m ---",
+                        f"  Trades: {ph.get('total',0)} | WR total: {ph_wr} | WR reciente: {ph_rwr}",
+                        f"  Por lado: UP={ph_up} | DOWN={ph_dn}",
+                    ]
+                else:
+                    lines.append(f"--- Bot Phantom {iv}m — sin datos aún ---")
+        except Exception as _e:
+            lines.append(f"(Error al cargar comparativa bots: {_e})")
 
     # === LOGS RECIENTES (últimos 30) ===
     if include_logs:
@@ -1480,6 +1516,8 @@ UpDown (5m/15m BTC up-or-down):
 - Si el usuario pide un escaneo UpDown → llama trigger_updown_scan con interval_minutes=5 o 15
 - Si el usuario pide pausar/activar UpDown → llama update_params con {"updown_enabled": false/true}
 - Si el usuario pide resetear el bloqueo / circuit breaker de 5m o 15m → llama reset_updown_circuit_breaker
+- Si el usuario pregunta "¿qué ve el bot ahora?", "analiza el 5m/15m", "señal actual", "¿debería entrar?" → llama analyze_bot con el interval correspondiente
+- Para comparar bots o recomendar cambios con datos frescos → llama analyze_bot para cada intervalo de interés
 
 Phantom (trades de aprendizaje):
 - Si el usuario pide activar dinero real en phantom → llama toggle_phantom_real con enabled=true
@@ -1610,7 +1648,10 @@ CHAT_TOOLS = [
                         "updown_max_usdc, updown_max_consecutive_losses, "
                         "alloc_weather_pct, alloc_btc_pct, alloc_updown_pct, "
                         "updown_15m_min_confidence, updown_5m_min_confidence, "
-                        "updown_15m_momentum_gate, updown_5m_momentum_gate"
+                        "updown_15m_momentum_gate, updown_5m_momentum_gate, "
+                        "updown_stake_min_usdc, updown_stake_max_usdc, "
+                        "updown_stake_conf_min_pct, updown_stake_conf_max_pct, "
+                        "updown_displacement_hi_pct, updown_displacement_lo_pct"
                     ),
                 },
                 "reason": {
@@ -1677,6 +1718,27 @@ CHAT_TOOLS = [
                 "reason": {"type": "string", "description": "Razón del reset"},
             },
             "required": ["interval_minutes", "reason"],
+        },
+    },
+    {
+        "name": "analyze_bot",
+        "description": (
+            "Ejecuta un análisis en tiempo real de un bot UpDown específico: obtiene señal BTC actual, "
+            "indicadores técnicos, mercado activo, y la decisión que tomaría el bot ahora mismo. "
+            "Úsalo cuando el usuario pregunte '¿qué ve el bot 5m ahora?', 'analiza el bot 15m', "
+            "'¿cuál es la señal actual?', 'compara 5m y 15m', o cuando necesites datos fresh para recomendar cambios."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "interval_minutes": {
+                    "type": "integer",
+                    "description": "Intervalo del bot a analizar: 5 o 15",
+                    "enum": [5, 15],
+                },
+                "reason": {"type": "string", "description": "Por qué se hace el análisis"},
+            },
+            "required": ["interval_minutes"],
         },
     },
 ]
@@ -1922,6 +1984,49 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             return f"Circuit breaker UpDown {interval}m reseteado. El bot puede volver a operar en {interval}m. Motivo: {reason}"
         except Exception as e:
             return f"Error al resetear circuit breaker: {e}"
+
+    elif name == "analyze_bot":
+        interval = int(inputs.get("interval_minutes", 5))
+        try:
+            from markets_updown import fetch_updown_market
+            from strategy_updown import evaluate_updown_market, build_btc_direction_signal
+            from price_feed import get_btc_price, get_btc_ta
+            ta_interval = "1m" if interval == 5 else "5m"
+            market = await fetch_updown_market(interval)
+            if not market:
+                return f"Sin mercado UpDown {interval}m activo en este momento."
+            ta_data = await get_btc_ta(interval=ta_interval)
+            btc_now = bot.state.btc_price or await get_btc_price()
+            btc_start = await bot._get_btc_price_at_ts(market["window_start_ts"])
+            if not btc_start:
+                return f"No se pudo obtener precio BTC al inicio de ventana para {interval}m."
+            sig = build_btc_direction_signal(
+                ta_data=ta_data, btc_price=btc_now or 0,
+                btc_price_window_start=btc_start, cmc_data=bot.state.btc_cmc or {},
+            )
+            opp, reason_skip = evaluate_updown_market(
+                market=market, ta_data=ta_data,
+                btc_price=btc_now or 0, btc_price_window_start=btc_start,
+                cmc_data=bot.state.btc_cmc or {},
+            )
+            move_pct = round((btc_now - btc_start) / btc_start * 100, 4) if btc_start else None
+            result = [
+                f"=== ANÁLISIS BOT UPDOWN {interval}m ===",
+                f"BTC ahora: ${btc_now:,.0f} | Inicio ventana: ${btc_start:,.0f} | Movimiento: {move_pct:+.3f}%" if move_pct is not None else f"BTC: ${btc_now:,.0f}",
+                f"Mercado: {market.get('slug','')} | Elapsed: {market.get('elapsed_minutes',0):.1f}m | Cierra en: {market.get('minutes_to_close',0):.1f}m",
+                f"UP/DOWN precios: {market.get('up_price',0)*100:.1f}¢ / {market.get('down_price',0)*100:.1f}¢",
+                f"TA: {ta_data.get('recommendation','?')} [↑{ta_data.get('buy',0)} ↔{ta_data.get('neutral',0)} ↓{ta_data.get('sell',0)}] RSI={ta_data.get('rsi',0):.1f}",
+                f"Señal combinada: {sig.get('direction','?')} | Confianza: {sig.get('confidence',0):.1f}% | Combined: {sig.get('combined',0):.4f}",
+            ]
+            if sig.get("5m_mode"):
+                result.append(f"Modo 5m: {sig['5m_mode']}")
+            if opp:
+                result.append(f"DECISIÓN: TRADE {opp['side']} @ {opp['entry_price']*100:.1f}¢ | ${opp['size_usdc']:.2f} | {opp['confidence']:.1f}% confianza")
+            else:
+                result.append(f"DECISIÓN: SKIP — {reason_skip or 'señal insuficiente'}")
+            return "\n".join(result)
+        except Exception as e:
+            return f"Error al analizar bot {interval}m: {e}"
 
     return f"Herramienta desconocida: {name}"
 
