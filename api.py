@@ -765,6 +765,32 @@ async def get_updown_learn():
         return {"error": str(e)}
 
 
+@app.get("/api/risk/status")
+async def get_risk_status():
+    """Estado actual del risk manager: circuit breaker activo, drawdown semanal."""
+    try:
+        from risk_manager import risk_manager as _rm, MAX_WEEKLY_DRAWDOWN_PCT
+        return {
+            "circuit_breaker_active": _rm.circuit_breaker_active,
+            "circuit_breaker_reason": _rm.circuit_breaker_reason,
+            "weekly_start_value":     getattr(_rm, "weekly_start_value", None),
+            "weekly_drawdown_limit":  MAX_WEEKLY_DRAWDOWN_PCT,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/risk/reset-circuit-breaker")
+async def reset_risk_circuit_breaker():
+    """Desactiva manualmente el circuit breaker del risk manager."""
+    try:
+        from risk_manager import risk_manager as _rm
+        _rm.reset_circuit_breaker()
+        return {"ok": True, "message": "Circuit breaker desactivado — el bot puede volver a operar."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/bots/param-history/{bot_id}")
 async def get_bot_param_history(bot_id: str, limit: int = 50):
     """Historial de cambios de parámetros aplicados a un bot desde el chat."""
