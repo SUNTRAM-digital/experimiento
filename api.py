@@ -949,7 +949,7 @@ async def updown_dry_run(data: dict = {}):
         cmc_data=cmc_data,
     )
 
-    opp = evaluate_updown_market(
+    opp, _opp_reason = evaluate_updown_market(
         market=market,
         ta_data=ta_data,
         btc_price=btc_now or 0,
@@ -984,7 +984,7 @@ async def updown_dry_run(data: dict = {}):
         },
         "decision": {
             "would_trade": opp is not None,
-            "reason":      "Señal insuficiente" if opp is None else f"Señal {opp['side']} con {opp['confidence']}% de confianza",
+            "reason":      (_opp_reason or "Señal insuficiente") if opp is None else f"Señal {opp['side']} con {opp['confidence']}% de confianza",
             "side":        opp["side"] if opp else None,
             "entry_price": opp["entry_price"] if opp else None,
             "size_usdc":   opp["size_usdc"] if opp else None,
