@@ -1308,13 +1308,22 @@
             Abre el cerebro desde la pestaña Bots para ver y modificar la estrategia de ese bot específico.
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
-            ${['ud5m','ud15m','ph5m','ph15m'].map(id => {
-              const names = {ud5m:'UpDown 5m',ud15m:'UpDown 15m',ph5m:'Phantom 5m',ph15m:'Phantom 15m'};
-              return `<button onclick="showTab('tab-bots');setTimeout(()=>showBotBrain('${id}'),200)"
-                style="padding:5px 14px;background:#161b22;border:1px solid #a78bfa44;color:#a78bfa;border-radius:6px;cursor:pointer;font-size:.73rem">
-                🧠 ${names[id]}
-              </button>`;
-            }).join('')}
+            <button onclick="showTab('tab-bots');setTimeout(()=>showBotBrain('ud5m'),200)"
+              style="padding:5px 14px;background:#161b22;border:1px solid #a78bfa44;color:#a78bfa;border-radius:6px;cursor:pointer;font-size:.73rem">
+              🧠 UpDown 5m
+            </button>
+            <button onclick="showTab('tab-bots');setTimeout(()=>showBotBrain('ud15m'),200)"
+              style="padding:5px 14px;background:#161b22;border:1px solid #a78bfa44;color:#a78bfa;border-radius:6px;cursor:pointer;font-size:.73rem">
+              🧠 UpDown 15m
+            </button>
+            <button onclick="showTab('tab-bots');setTimeout(()=>showBotBrain('ph5m'),200)"
+              style="padding:5px 14px;background:#161b22;border:1px solid #a78bfa44;color:#a78bfa;border-radius:6px;cursor:pointer;font-size:.73rem">
+              🧠 Phantom 5m
+            </button>
+            <button onclick="showTab('tab-bots');setTimeout(()=>showBotBrain('ph15m'),200)"
+              style="padding:5px 14px;background:#161b22;border:1px solid #a78bfa44;color:#a78bfa;border-radius:6px;cursor:pointer;font-size:.73rem">
+              🧠 Phantom 15m
+            </button>
           </div>
         </div>
         <!-- Hidden for backward compat with JS that still writes here -->
