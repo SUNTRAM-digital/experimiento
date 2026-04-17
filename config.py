@@ -191,10 +191,25 @@ class BotParams:
         except Exception:
             pass
 
+    # Campos que deben ser fracciones [0.0, 1.0].
+    # Si el asesor envía un valor > 1 (ej. 38 en vez de 0.38) se divide entre 100.
+    _FRACTION_FIELDS = {
+        "updown_15m_min_confidence", "updown_5m_min_confidence",
+        "updown_15m_momentum_gate",  "updown_5m_momentum_gate",
+        "updown_displacement_hi_pct", "updown_displacement_lo_pct",
+        "kelly_fraction", "min_ev_threshold", "max_daily_loss_pct",
+        "max_spread_pct",
+    }
+
     def update(self, data: dict):
         for key, value in data.items():
-            if hasattr(self, key):
-                setattr(self, key, type(getattr(self, key))(value))
+            if not hasattr(self, key):
+                continue
+            typed = type(getattr(self, key))(value)
+            # Auto-corregir fracciones enviadas como porcentaje entero
+            if key in self._FRACTION_FIELDS and isinstance(typed, float) and typed > 1.0:
+                typed = round(typed / 100.0, 6)
+            setattr(self, key, typed)
         self.save()  # Persistir tras cada cambio
 
 
