@@ -765,6 +765,14 @@ async def get_updown_learn():
         return {"error": str(e)}
 
 
+@app.get("/api/bots/param-history/{bot_id}")
+async def get_bot_param_history(bot_id: str, limit: int = 50):
+    """Historial de cambios de parámetros aplicados a un bot desde el chat."""
+    history = _load_param_history()
+    entries = history.get(bot_id, [])
+    return {"bot_id": bot_id, "entries": entries[:limit]}
+
+
 @app.get("/api/bots/stats")
 async def get_bots_stats():
     """
@@ -1805,7 +1813,47 @@ CHAT_TOOLS = [
 ]
 
 
-async def _execute_chat_tool(name: str, inputs: dict) -> str:
+_PARAM_HISTORY_FILE = Path(__file__).parent / "data" / "bot_param_history.json"
+_MAX_HISTORY_PER_BOT = 100  # entradas más recientes a conservar
+
+
+def _load_param_history() -> dict:
+    try:
+        if _PARAM_HISTORY_FILE.exists():
+            return json.loads(_PARAM_HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_param_history_entry(bot_id: str | None, tool: str, inputs: dict,
+                               old_values: dict, result_ok: bool, reason: str):
+    """Persiste un cambio de parámetros en el historial por bot."""
+    try:
+        from datetime import datetime, timezone
+        history = _load_param_history()
+        key = bot_id or "global"
+        if key not in history:
+            history[key] = []
+        entry = {
+            "ts":        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "tool":      tool,
+            "params":    inputs.get("params") or {k: v for k, v in inputs.items()
+                                                   if k not in ("reason",)},
+            "old":       old_values,
+            "reason":    reason,
+            "ok":        result_ok,
+        }
+        history[key].insert(0, entry)          # más recientes primero
+        history[key] = history[key][:_MAX_HISTORY_PER_BOT]
+        _PARAM_HISTORY_FILE.parent.mkdir(exist_ok=True)
+        _PARAM_HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2),
+                                        encoding="utf-8")
+    except Exception:
+        pass
+
+
+async def _execute_chat_tool(name: str, inputs: dict, bot_id: str | None = None) -> str:
     """Ejecuta una herramienta del chat y retorna el resultado como string."""
     if name == "sell_position":
         token_id = inputs.get("token_id", "")
@@ -1980,18 +2028,23 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             bot_params.update(params)
             changes = "\n".join(f"  • {k}: {old_values[k]} → {params[k]}" for k in params)
             bot._log("INFO", f"[Chat] Parámetros actualizados por Claude: {', '.join(f'{k}={v}' for k,v in params.items())} | Motivo: {reason}")
+            _save_param_history_entry(bot_id, "update_params", {"params": params}, old_values, True, reason)
             return f"Parámetros actualizados:\n{changes}\nMotivo: {reason}"
         except Exception as e:
+            _save_param_history_entry(bot_id, "update_params", {"params": params}, old_values, False, reason)
             return f"Error al actualizar parámetros: {e}"
 
     elif name == "toggle_phantom_real":
         enabled = bool(inputs.get("enabled", False))
         reason  = inputs.get("reason", "Instrucción via chat")
         try:
+            old_val = bot_params.phantom_real_enabled
             bot_params.phantom_real_enabled = enabled
             bot_params.save()
             mode = "REAL + FICTICIO" if enabled else "SOLO FICTICIO"
             bot._log("INFO", f"[Chat] Phantom real {'activado' if enabled else 'desactivado'} por Claude | Motivo: {reason}")
+            _save_param_history_entry(bot_id, "toggle_phantom_real",
+                                      {"enabled": enabled}, {"phantom_real_enabled": old_val}, True, reason)
             return f"Phantom cambiado a modo {mode}. Motivo: {reason}"
         except Exception as e:
             return f"Error al cambiar modo phantom: {e}"
@@ -2020,6 +2073,9 @@ async def _execute_chat_tool(name: str, inputs: dict) -> str:
             bot_params.save()
 
             bot._log("INFO", f"[Chat] Capital phantom actualizado por Claude | Motivo: {reason}")
+            _save_param_history_entry(bot_id, "set_phantom_capital",
+                {"cash_libre_usdc": cash_libre, "pool_usdc": pool,
+                 "pct_5m": pct_5m, "pct_15m": pct_15m}, {}, True, reason)
             return (
                 f"Capital phantom actualizado:\n"
                 f"  • Cash libre: ${bot_params.phantom_cash_libre_usdc:.2f}\n"
@@ -2168,7 +2224,7 @@ async def chat_endpoint(data: dict):
                 tool_results = []
                 for tb in tool_use_blocks:
                     yield f"data: {_json.dumps({'tool_call': {'name': tb.name, 'input': tb.input}})}\n\n"
-                    result = await _execute_chat_tool(tb.name, tb.input)
+                    result = await _execute_chat_tool(tb.name, tb.input, bot_id=bot_id)
                     yield f"data: {_json.dumps({'tool_result': result})}\n\n"
                     tool_results.append({
                         "type": "tool_result",

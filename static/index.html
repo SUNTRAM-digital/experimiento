@@ -2046,6 +2046,19 @@
             <span style="color:#484f58">Cargando estrategia...</span>
           </div>
         </div>
+        <!-- Historial de cambios acordados con Claude -->
+        <div style="margin-top:14px;border-top:1px solid #21262d;padding-top:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#8b949e">📋 Cambios Acordados</span>
+            <button onclick="_refreshBrainHistory()"
+              style="font-size:.7rem;padding:3px 10px;background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:5px;cursor:pointer">
+              ↻
+            </button>
+          </div>
+          <div id="bot-brain-history" style="font-size:.72rem;color:#c9d1d9;max-height:200px;overflow-y:auto">
+            <span style="color:#484f58">Sin cambios registrados aún.</span>
+          </div>
+        </div>
         <!-- Embedded bot chat -->
         <div style="margin-top:14px;border-top:1px solid #21262d;padding-top:14px">
           <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#8b949e;margin-bottom:8px">
@@ -6764,6 +6777,52 @@ function _buildBrainContext() {
   return ctx;
 }
 
+// ── Historial de cambios acordados con Claude ─────────────────────────────────
+
+async function _refreshBrainHistory() {
+  const el = document.getElementById('bot-brain-history');
+  if (!el || !_brainLastId) return;
+  try {
+    const r = await fetch(`/api/bots/param-history/${_brainLastId}?limit=30`);
+    const d = await r.json();
+    const entries = d.entries || [];
+    if (entries.length === 0) {
+      el.innerHTML = '<span style="color:#484f58;font-style:italic">Sin cambios acordados con Claude aún.</span>';
+      return;
+    }
+    const toolLabels = {
+      update_params:           '⚙️ Parámetros',
+      toggle_phantom_real:     '💰 Modo Real',
+      set_phantom_capital:     '🪣 Capital Phantom',
+      reset_updown_circuit_breaker: '🔄 Reset Circuit Breaker',
+    };
+    el.innerHTML = entries.map(e => {
+      const dt = new Date(e.ts);
+      const dateStr = dt.toLocaleDateString('es-MX', {day:'2-digit',month:'short'});
+      const timeStr = dt.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'});
+      const label = toolLabels[e.tool] || e.tool;
+      const okDot = e.ok ? '🟢' : '🔴';
+      const params = e.params || {};
+      const old    = e.old    || {};
+      const paramLines = Object.entries(params).map(([k, v]) => {
+        const prev = old[k];
+        const arrow = prev !== undefined ? ` <span style="color:#484f58">(antes: ${prev})</span>` : '';
+        return `<div style="padding-left:8px;color:#c9d1d9">${k}: <b style="color:#58a6ff">${JSON.stringify(v)}</b>${arrow}</div>`;
+      }).join('');
+      return `<div style="padding:7px 0;border-bottom:1px solid #21262d">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+          <span style="color:#484f58;font-size:.65rem">${dateStr} ${timeStr}</span>
+          <span style="font-size:.7rem">${okDot} ${label}</span>
+        </div>
+        ${paramLines}
+        ${e.reason ? `<div style="color:#6b7280;font-size:.67rem;padding-left:8px;margin-top:2px">💬 ${escHtml(e.reason)}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(err) {
+    el.innerHTML = `<span style="color:#f85149;font-size:.7rem">Error: ${escHtml(err.message)}</span>`;
+  }
+}
+
 // ── Estrategia del bot en el cerebro ─────────────────────────────────────────
 
 let _brainStratTimer = null;
@@ -7022,8 +7081,9 @@ async function sendBrainChat() {
     if (fullText) _brainChatHistory.push({ role: 'assistant', content: fullText });
     _brainChatBusy = false;
     if (sendBtn) sendBtn.disabled = false;
-    // Refrescar estrategia — Claude puede haber cambiado parámetros
+    // Refrescar estrategia e historial — Claude puede haber cambiado parámetros
     _refreshBrainStrategy();
+    _refreshBrainHistory();
   }
 }
 
@@ -7178,9 +7238,10 @@ async function showBotBrain(botId) {
   const canvas = document.getElementById('bot-brain-canvas');
   _drawBrain(canvas, d);
 
-  // Fetch live signal + strategy automatically
+  // Fetch live signal + strategy + history automatically
   _brainRefreshLive();
   _refreshBrainStrategy();
+  _refreshBrainHistory();
 
   // Auto-refresh strategy every 30s while brain is open
   clearTimeout(_brainStratTimer);
