@@ -769,45 +769,56 @@ async def get_updown_learn():
 async def get_bots_stats():
     """
     Fuente única de verdad para WR de los 4 bots.
-    - Real bots (ud5m, ud15m): updown_learner
-    - Phantom bots (ph5m, ph15m): phantom_learner (fuente canónica de WR phantom)
+    - Real bots (ud5m, ud15m): updown_learner (datos reales completos)
+    - Phantom bots (ph5m, ph15m): updown_learner .phantom (historial completo)
+      phantom_learner solo para adaptive params (strategy_hint, insights, tier)
     """
     try:
         from updown_learner import get_summary as _ud_sum
         ud5  = _ud_sum(5)
         ud15 = _ud_sum(15)
 
-        # Phantom: phantom_learner es la fuente de verdad
-        try:
-            from phantom_learner import _stats as _pl_st, get_adaptive_params as _pl_ap, _load as _pl_load
-            _pl_load()
-            def _ph_stats(interval: int) -> dict:
-                s = _pl_st.get(str(interval), {})
-                total = s.get("total", 0)
-                wins  = s.get("wins",  0)
-                ap    = _pl_ap(interval)
-                recent_wr_pct = ap.get("recent_wr_pct")
-                return {
-                    "total":     total,
-                    "wins":      wins,
-                    "win_rate":  round(wins / total, 3) if total > 0 else None,
-                    "recent_wr": round(recent_wr_pct / 100, 3) if recent_wr_pct is not None else None,
-                    "by_side":   {k: round(v["w"]/v["t"], 3) if v.get("t", 0) > 0 else None
-                                  for k, v in s.get("by_side", {}).items()},
-                    "adaptive":  ap,
-                }
-            ph5  = _ph_stats(5)
-            ph15 = _ph_stats(15)
-        except Exception:
-            ph5 = ph15 = {"total": 0, "wins": 0, "win_rate": None, "recent_wr": None, "by_side": {}, "adaptive": {}}
+        # Phantom: updown_learner.phantom tiene el historial COMPLETO
+        # phantom_learner solo se usa para adaptive params / insights
+        def _ph_stats(ud_summary: dict, interval: int) -> dict:
+            ph = ud_summary.get("phantom") or {}
+            total = ph.get("total", 0)
+            wins  = ph.get("wins",  0)
+            # recent WR desde phantom sub-stats
+            ph_recent = ph.get("recent_wr")
+            # adaptive params: preferir phantom_learner (tiene strategy_hint, insights)
+            ap = {}
+            try:
+                from phantom_learner import get_adaptive_params as _pl_ap
+                ap = _pl_ap(interval)
+            except Exception:
+                pass
+            # fallback: adaptive del learner updown
+            if not ap:
+                ap = ud_summary.get("adaptive", {})
+            return {
+                "total":     total,
+                "wins":      wins,
+                "win_rate":  round(wins / total, 3) if total > 0 else None,
+                "recent_wr": ph_recent,
+                "by_side":   ph.get("by_side", {}),
+                "by_signal": ph.get("by_signal", {}),
+                "by_elapsed": ph.get("by_elapsed", {}),
+                "adaptive":  ap,
+            }
+
+        ph5  = _ph_stats(ud5,  5)
+        ph15 = _ph_stats(ud15, 15)
 
         return {
             "ud5m":  {"total": ud5.get("total",0), "wins": ud5.get("wins",0),
                       "win_rate": ud5.get("win_rate"), "recent_wr": ud5.get("recent_wr"),
-                      "by_side": ud5.get("by_side",{}), "adaptive": ud5.get("adaptive",{})},
+                      "by_side": ud5.get("by_side",{}), "by_signal": ud5.get("by_signal",{}),
+                      "by_elapsed": ud5.get("by_elapsed",{}), "adaptive": ud5.get("adaptive",{})},
             "ud15m": {"total": ud15.get("total",0), "wins": ud15.get("wins",0),
                       "win_rate": ud15.get("win_rate"), "recent_wr": ud15.get("recent_wr"),
-                      "by_side": ud15.get("by_side",{}), "adaptive": ud15.get("adaptive",{})},
+                      "by_side": ud15.get("by_side",{}), "by_signal": ud15.get("by_signal",{}),
+                      "by_elapsed": ud15.get("by_elapsed",{}), "adaptive": ud15.get("adaptive",{})},
             "ph5m":  ph5,
             "ph15m": ph15,
         }
