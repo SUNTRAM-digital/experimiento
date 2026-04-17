@@ -773,6 +773,19 @@ async def get_bot_param_history(bot_id: str, limit: int = 50):
     return {"bot_id": bot_id, "entries": entries[:limit]}
 
 
+@app.get("/api/bots/optimizer-status")
+async def get_optimizer_status():
+    """Estado del optimizador autónomo para los bots phantom (5m y 15m)."""
+    try:
+        from phantom_optimizer import get_status as _opt_status
+        return {
+            "ph5m":  _opt_status(5),
+            "ph15m": _opt_status(15),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/api/bots/stats")
 async def get_bots_stats():
     """

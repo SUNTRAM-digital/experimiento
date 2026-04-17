@@ -6837,12 +6837,18 @@ async function _refreshBrainStrategy() {
   const isPhantom = botId.startsWith('ph');
 
   try {
-    const [botsR, learnR] = await Promise.all([
+    const fetches = [
       _fetchBotsStats(),
       fetch('/api/updown/learn').then(r => r.json()),
-    ]);
+    ];
+    if (isPhantom) fetches.push(fetch('/api/bots/optimizer-status').then(r => r.json()));
+    const results  = await Promise.all(fetches);
+    const botsR    = results[0];
+    const learnR   = results[1];
+    const optR     = isPhantom ? (results[2] || {}) : {};
     const canon    = (botsR || {})[botId] || {};
     const learnRaw = (learnR || {})[interval] || {};
+    const optStat  = isPhantom ? ((optR[botId] || {})) : null;
 
     // Actualizar _brainLastData con WR canónico (para _buildBrainContext)
     if (_brainLastData) {
@@ -6852,7 +6858,7 @@ async function _refreshBrainStrategy() {
     }
 
     el.innerHTML = isPhantom
-      ? _renderBrainStrategyPhantom(canon, learnRaw.phantom || {})
+      ? _renderBrainStrategyPhantom(canon, learnRaw.phantom || {}, optStat)
       : _renderBrainStrategyReal(canon, learnRaw);
 
     if (tsEl) tsEl.textContent = new Date().toLocaleTimeString();
@@ -6909,7 +6915,7 @@ function _renderBrainStrategyReal(canon, s) {
   return html;
 }
 
-function _renderBrainStrategyPhantom(canon, ph) {
+function _renderBrainStrategyPhantom(canon, ph, opt) {
   // Phantom bot: phantom_learner stats + adaptive params
   const pct  = v => v == null ? '<span style="color:#6b7280">—</span>'
     : `<span style="color:${v>=0.55?'#3fb950':v>=0.42?'#f97316':'#f87171'}">${(v*100).toFixed(0)}%</span>`;
@@ -6976,6 +6982,56 @@ function _renderBrainStrategyPhantom(canon, ph) {
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <div>Por señal: débil ${pct(phBs.weak)} · media ${pct(phBs.med)} · fuerte ${pct(phBs.strong)}</div>
         <div>Por lado: UP ${pct(phBt.UP)} · DOWN ${pct(phBt.DOWN)}</div>
+      </div>
+    </div>`;
+  }
+
+  // ── Optimizer autónomo ───────────────────────────────────────────────────
+  if (opt) {
+    const wrOpt = opt.win_rate != null ? (opt.win_rate*100).toFixed(0)+'%' : 'N/A';
+    const wrClr = opt.win_rate == null ? '#6b7280'
+                : opt.win_rate >= opt.wr_enable ? '#3fb950'
+                : opt.win_rate >= opt.wr_disable ? '#f97316' : '#f87171';
+    const streakHtml = opt.consec_wins > 0
+      ? `<span style="color:#3fb950">+${opt.consec_wins} wins</span>`
+      : opt.consec_losses > 0
+        ? `<span style="color:#f87171">-${opt.consec_losses} losses</span>`
+        : '<span style="color:#6b7280">—</span>';
+    const progressPct = Math.min(100, Math.round((opt.trades_in_preset / opt.trial_min) * 100));
+    html += `<div style="background:#0d1f12;border:1px solid #1a4a2e;border-radius:6px;padding:8px 10px;font-size:.71rem;margin-top:6px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="color:#3fb950;font-size:.63rem;font-weight:700;text-transform:uppercase">Optimizer autónomo</span>
+        <span style="background:#1a4a2e;color:#3fb950;border-radius:4px;padding:1px 6px;font-size:.62rem">activo</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">
+        <div>
+          <div style="color:#6b7280;font-size:.60rem;text-transform:uppercase;margin-bottom:2px">WR actual</div>
+          <div style="font-weight:700;color:${wrClr}">${wrOpt}</div>
+          <div style="color:#6b7280;font-size:.60rem">${opt.wins}/${opt.total} trades</div>
+        </div>
+        <div>
+          <div style="color:#6b7280;font-size:.60rem;text-transform:uppercase;margin-bottom:2px">Racha</div>
+          <div style="font-weight:600">${streakHtml}</div>
+          <div style="color:#6b7280;font-size:.60rem">activa ${opt.consec_wins > 0 ? opt.consec_wins : opt.consec_losses} consecutivos</div>
+        </div>
+        <div>
+          <div style="color:#6b7280;font-size:.60rem;text-transform:uppercase;margin-bottom:2px">Preset actual</div>
+          <div style="color:#58a6ff;font-weight:600">${opt.preset_name}</div>
+          <div style="color:#6b7280;font-size:.60rem">conf ${(opt.preset_conf*100).toFixed(0)}% · mom ${(opt.preset_mom*100).toFixed(0)}%</div>
+        </div>
+      </div>
+      <div style="margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;color:#6b7280;font-size:.60rem;margin-bottom:2px">
+          <span>Prueba preset: ${opt.trades_in_preset}/${opt.trial_min} trades</span>
+          <span>${progressPct}%</span>
+        </div>
+        <div style="background:#1e2d23;border-radius:3px;height:4px;overflow:hidden">
+          <div style="background:#3fb950;height:100%;width:${progressPct}%;transition:width .3s"></div>
+        </div>
+      </div>
+      <div style="color:#6b7280;font-size:.60rem">
+        activa dinero real: WR ≥ ${(opt.wr_enable*100).toFixed(0)}% o ${opt.consec_win_enable} wins seguidos &nbsp;·&nbsp;
+        desactiva: WR < ${(opt.wr_disable*100).toFixed(0)}% o ${opt.consec_loss_disable} losses seguidos
       </div>
     </div>`;
   }

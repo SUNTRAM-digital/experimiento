@@ -1454,9 +1454,17 @@ def _check_phantom_autorule() -> None:
     Si solo un intervalo tiene datos suficientes, se aplica la regla con ese solo.
     """
     try:
-        from phantom_learner import get_total_win_rate
-        wr5  = get_total_win_rate(5)
-        wr15 = get_total_win_rate(15)
+        from updown_learner import _stats as _ul_stats
+
+        def _ul_phantom_wr(key: str):
+            ph = _ul_stats.get(key, {}).get("phantom", {})
+            t = ph.get("total", 0)
+            if t < 10:
+                return None
+            return ph.get("wins", 0) / t
+
+        wr5  = _ul_phantom_wr("5")
+        wr15 = _ul_phantom_wr("15")
 
         # Necesitamos al menos uno con datos
         if wr5 is None and wr15 is None:
@@ -2508,8 +2516,13 @@ async def _resolve_pending_updown_outcomes():
         except Exception as e:
             _log("WARN", f"PhantomLearner sync error: {e}")
 
-        # ── Auto-regla: ajustar phantom_real_enabled según win rate ──────────────
-        _check_phantom_autorule()
+        # ── Optimizer autónomo: ajustar preset/dinero real según WR y racha ────
+        try:
+            from phantom_optimizer import check_and_act as _opt_act
+            _opt_act(interval, ph_won)
+        except Exception as _opt_err:
+            _log("WARN", f"[Optimizer] Error: {_opt_err}")
+            _check_phantom_autorule()  # fallback
 
         # ── Phantom REAL: devolver stake al bucket; ganancia → cash libre ───────
         _ph_bucket_attr = pending.get("phantom_bucket_attr")
