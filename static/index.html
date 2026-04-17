@@ -1300,7 +1300,25 @@
         <div style="font-size:.8rem;color:var(--text);font-weight:700;margin-bottom:10px">📊 ESTADÍSTICAS DETALLADAS</div>
         <div id="strat-detail-weather" style="margin-bottom:12px"></div>
         <div id="strat-detail-btc"     style="margin-bottom:12px"></div>
-        <div id="strat-learner-detail" style="font-size:.75rem;color:var(--muted)">Cargando...</div>
+        <!-- UpDown/Phantom: estrategia ahora vive en el cerebro de cada bot -->
+        <div style="background:#0d1117;border:1px solid #a78bfa44;border-radius:8px;padding:12px;font-size:.75rem">
+          <div style="color:#a78bfa;font-weight:700;margin-bottom:6px">⚡ UpDown / Phantom — Estrategia por Bot</div>
+          <div style="color:#8b949e;margin-bottom:10px">
+            La estrategia de cada bot (parámetros adaptativos, WR por señal/lado/timing, aprendizaje) está integrada dentro del cerebro de cada bot.
+            Abre el cerebro desde la pestaña Bots para ver y modificar la estrategia de ese bot específico.
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            ${['ud5m','ud15m','ph5m','ph15m'].map(id => {
+              const names = {ud5m:'UpDown 5m',ud15m:'UpDown 15m',ph5m:'Phantom 5m',ph15m:'Phantom 15m'};
+              return `<button onclick="showTab('tab-bots');setTimeout(()=>showBotBrain('${id}'),200)"
+                style="padding:5px 14px;background:#161b22;border:1px solid #a78bfa44;color:#a78bfa;border-radius:6px;cursor:pointer;font-size:.73rem">
+                🧠 ${names[id]}
+              </button>`;
+            }).join('')}
+          </div>
+        </div>
+        <!-- Hidden for backward compat with JS that still writes here -->
+        <div id="strat-learner-detail" style="display:none"></div>
       </div>
 
       <!-- Notas del usuario -->
@@ -2012,6 +2030,20 @@
           </div>
           <div id="bot-brain-live" style="font-size:.75rem;color:#c9d1d9">
             <span style="color:#484f58">Cargando señal en vivo...</span>
+          </div>
+        </div>
+        <!-- Estrategia del bot -->
+        <div style="margin-top:14px;border-top:1px solid #21262d;padding-top:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#8b949e">📊 Estrategia del Bot</span>
+            <button onclick="_refreshBrainStrategy()"
+              style="font-size:.7rem;padding:3px 10px;background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:5px;cursor:pointer">
+              ↻ Actualizar
+            </button>
+            <span id="brain-strat-ts" style="font-size:.65rem;color:#484f58;margin-left:auto"></span>
+          </div>
+          <div id="bot-brain-strategy" style="font-size:.74rem;color:#c9d1d9">
+            <span style="color:#484f58">Cargando estrategia...</span>
           </div>
         </div>
         <!-- Embedded bot chat -->
@@ -6732,6 +6764,185 @@ function _buildBrainContext() {
   return ctx;
 }
 
+// ── Estrategia del bot en el cerebro ─────────────────────────────────────────
+
+let _brainStratTimer = null;
+
+async function _refreshBrainStrategy() {
+  const el  = document.getElementById('bot-brain-strategy');
+  const tsEl = document.getElementById('brain-strat-ts');
+  if (!el || !_brainLastId) return;
+
+  const botId    = _brainLastId;
+  const interval = botId.includes('15m') ? '15m' : '5m';
+  const isPhantom = botId.startsWith('ph');
+
+  try {
+    const [botsR, learnR] = await Promise.all([
+      _fetchBotsStats(),
+      fetch('/api/updown/learn').then(r => r.json()),
+    ]);
+    const canon    = (botsR || {})[botId] || {};
+    const learnRaw = (learnR || {})[interval] || {};
+
+    // Actualizar _brainLastData con WR canónico (para _buildBrainContext)
+    if (_brainLastData) {
+      _brainLastData.win_rate  = canon.win_rate  ?? _brainLastData.win_rate;
+      _brainLastData.recent_wr = canon.recent_wr ?? _brainLastData.recent_wr;
+      _brainLastData._adaptive = canon.adaptive  || learnRaw.adaptive || _brainLastData._adaptive;
+    }
+
+    el.innerHTML = isPhantom
+      ? _renderBrainStrategyPhantom(canon, learnRaw.phantom || {})
+      : _renderBrainStrategyReal(canon, learnRaw);
+
+    if (tsEl) tsEl.textContent = new Date().toLocaleTimeString();
+  } catch(e) {
+    el.innerHTML = `<div style="color:#f85149;font-size:.72rem">Error cargando estrategia: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function _renderBrainStrategyReal(canon, s) {
+  // UD bot: trades reales + adaptive params + phantom sub-stats
+  const pct  = v => v == null ? '<span style="color:#6b7280">—</span>'
+    : `<span style="color:${v>=0.55?'#3fb950':v>=0.42?'#f97316':'#f87171'}">${(v*100).toFixed(0)}%</span>`;
+  const pctN = v => v == null ? '—' : (v*100).toFixed(0) + '%';
+  const clr  = v => v==null?'#6b7280':v>=0.5?'#3fb950':v>=0.4?'#f97316':'#f87171';
+  const ap   = canon.adaptive || s.adaptive || {};
+  const bs   = s.by_signal  || {};
+  const bt   = canon.by_side || s.by_side   || {};
+  const be   = s.by_elapsed || {};
+  const total = canon.total ?? s.total ?? 0;
+  const hasData = total > 0;
+
+  let html = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <span style="color:#6b7280;font-size:.72rem">${total} trades reales</span>
+    ${hasData
+      ? `<span style="font-size:.95rem;font-weight:700;color:${clr(canon.win_rate)}">${pctN(canon.win_rate)} WR total</span>
+         <span style="font-size:.8rem;color:${clr(canon.recent_wr)}">reciente: ${pctN(canon.recent_wr)}</span>
+         <span style="font-size:.7rem;color:#6b7280">Acc TA: ${pctN(s.ta_accuracy)}</span>`
+      : '<span style="color:#6b7280;font-style:italic">Sin trades aún — acumulando historial...</span>'}
+  </div>`;
+
+  if (hasData) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:.71rem">
+      <div>
+        <div style="color:#6b7280;font-size:.63rem;margin-bottom:3px;text-transform:uppercase">Por señal</div>
+        <div>débil: ${pct(bs.weak)}</div>
+        <div>media: ${pct(bs.med)}</div>
+        <div>fuerte: ${pct(bs.strong)}</div>
+      </div>
+      <div>
+        <div style="color:#6b7280;font-size:.63rem;margin-bottom:3px;text-transform:uppercase">Por lado</div>
+        <div>↑ UP: ${pct(bt.UP)}</div>
+        <div>↓ DOWN: ${pct(bt.DOWN)}</div>
+      </div>
+      <div>
+        <div style="color:#6b7280;font-size:.63rem;margin-bottom:3px;text-transform:uppercase">Por timing</div>
+        <div>temprano: ${pct(be.early)}</div>
+        <div>medio: ${pct(be.mid)}</div>
+        <div>tardío: ${pct(be.late)}</div>
+      </div>
+    </div>`;
+  }
+
+  html += _renderAdaptiveParams(ap);
+  return html;
+}
+
+function _renderBrainStrategyPhantom(canon, ph) {
+  // Phantom bot: phantom_learner stats + adaptive params
+  const pct  = v => v == null ? '<span style="color:#6b7280">—</span>'
+    : `<span style="color:${v>=0.55?'#3fb950':v>=0.42?'#f97316':'#f87171'}">${(v*100).toFixed(0)}%</span>`;
+  const pctN = v => v == null ? '—' : (v*100).toFixed(0) + '%';
+  const clr  = v => v==null?'#6b7280':v>=0.5?'#3fb950':v>=0.4?'#f97316':'#f87171';
+  const ap   = canon.adaptive || {};
+  const bt   = canon.by_side || {};
+  const total = canon.total ?? 0;
+  const hasData = total > 0;
+
+  const stratIcon = ap.strategy_hint === 'mean_reversion' ? '↩ Mean-Reversion'
+                  : ap.strategy_hint === 'trend_following' ? '→ Trend-Following'
+                  : ap.strategy_hint ? ap.strategy_hint : '— Sin patrón';
+  const stratColor = ap.strategy_hint === 'mean_reversion' ? '#f59e0b'
+                   : ap.strategy_hint === 'trend_following' ? '#60a5fa' : '#6b7280';
+
+  let html = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <span style="color:#6b7280;font-size:.72rem">${total} trades phantom</span>
+    ${hasData
+      ? `<span style="font-size:.95rem;font-weight:700;color:${clr(canon.win_rate)}">${pctN(canon.win_rate)} WR total</span>
+         <span style="font-size:.8rem;color:${clr(canon.recent_wr)}">reciente: ${pctN(canon.recent_wr)}</span>`
+      : '<span style="color:#6b7280;font-style:italic">Sin datos aún...</span>'}
+  </div>`;
+
+  if (hasData) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;font-size:.71rem">
+      <div>
+        <div style="color:#6b7280;font-size:.63rem;margin-bottom:3px;text-transform:uppercase">Por lado</div>
+        <div>↑ UP: ${pct(bt.UP)}</div>
+        <div>↓ DOWN: ${pct(bt.DOWN)}</div>
+      </div>
+      <div>
+        <div style="color:#6b7280;font-size:.63rem;margin-bottom:3px;text-transform:uppercase">Estrategia detectada</div>
+        <div style="color:${stratColor};font-weight:600">${stratIcon}</div>
+        ${ap.preferred_side ? `<div style="margin-top:3px">Lado preferido: <b style="color:${ap.preferred_side==='UP'?'#3fb950':'#f87171'}">${ap.preferred_side}</b></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // Parámetros phantom adaptivos
+  html += `<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;padding:8px 10px;font-size:.71rem;margin-bottom:6px">
+    <div style="color:#58a6ff;font-size:.63rem;font-weight:700;margin-bottom:5px;text-transform:uppercase">Parámetros phantom activos</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${ap.min_confidence_pct != null ? `<span>confianza mín: <b>${ap.min_confidence_pct}%</b></span>` : ''}
+      ${ap.min_tier ? `<span>tier mín: <b>${ap.min_tier}</b></span>` : ''}
+      ${ap.block_up   ? '<span style="color:#f87171">🚫 UP bloqueado</span>' : ''}
+      ${ap.block_down ? '<span style="color:#f87171">🚫 DOWN bloqueado</span>' : ''}
+      ${ap.invert_confidence ? '<span style="color:#f97316;font-weight:700">⚠ Confianza INVERTIDA</span>' : ''}
+      ${ap.conf_corr != null ? `<span style="color:#6b7280">corr conf: <b style="color:${ap.conf_corr<-0.05?'#f87171':ap.conf_corr>0.10?'#3fb950':'#6b7280'}">${ap.conf_corr>0?'+':''}${ap.conf_corr.toFixed(3)}</b></span>` : ''}
+    </div>
+    ${(ap.insights||[]).length > 0 ? `<div style="margin-top:5px;border-top:1px solid #1e3a5f;padding-top:5px">
+      ${ap.insights.map(i => `<div style="color:#8b949e;margin-bottom:2px">• ${escHtml(i)}</div>`).join('')}
+    </div>` : ''}
+  </div>`;
+
+  // Phantom de updown_learner (señales skipped)
+  if (ph && ph.total > 0) {
+    const phBs = ph.by_signal || {};
+    const phBt = ph.by_side   || {};
+    html += `<div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:7px 10px;font-size:.70rem">
+      <div style="color:#6b7280;font-size:.63rem;font-weight:700;margin-bottom:4px;text-transform:uppercase">
+        👻 Señales skipped por updown_learner: ${ph.total} | WR ${pctN(ph.win_rate)}
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div>Por señal: débil ${pct(phBs.weak)} · media ${pct(phBs.med)} · fuerte ${pct(phBs.strong)}</div>
+        <div>Por lado: UP ${pct(phBt.UP)} · DOWN ${pct(phBt.DOWN)}</div>
+      </div>
+    </div>`;
+  }
+
+  return html;
+}
+
+function _renderAdaptiveParams(ap) {
+  if (!ap || Object.keys(ap).length === 0) return '';
+  return `<div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:.71rem">
+    <div style="color:#58a6ff;font-size:.63rem;font-weight:700;margin-bottom:5px;text-transform:uppercase">Parámetros adaptativos activos</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${ap.min_signal != null ? `<span>señal mín: <b>${ap.min_signal.toFixed(2)}</b></span>` : ''}
+      ${ap.min_ev    != null ? `<span>EV mín: <b>${ap.min_ev.toFixed(3)}</b></span>` : ''}
+      ${ap.momentum_weight != null ? `<span>peso TA: <b>${ap.momentum_weight.toFixed(2)}</b></span>` : ''}
+      <span>invertir señal: <b style="color:${ap.invert_signal?'#f97316':'#3fb950'}">${ap.invert_signal?'⚠️ SÍ':'No'}</b></span>
+      ${ap.block_up   ? '<span style="color:#f87171">🚫 UP bloqueado</span>' : ''}
+      ${ap.block_down ? '<span style="color:#f87171">🚫 DOWN bloqueado</span>' : ''}
+      ${ap.max_elapsed_min != null ? `<span>max elapsed: <b>${ap.max_elapsed_min}min</b></span>` : ''}
+      ${ap.momentum_gate_strict ? '<span style="color:#f97316">⚡ gate momentum estricto</span>' : ''}
+      ${ap.min_confidence != null ? `<span>min conf: <b>${(ap.min_confidence*100).toFixed(0)}%</b></span>` : ''}
+    </div>
+    ${ap.reason ? `<div style="color:#6b7280;font-size:.67rem;margin-top:4px;border-top:1px solid #21262d;padding-top:4px">📊 ${escHtml(ap.reason)}</div>` : ''}
+  </div>`;
+}
+
 function _appendBrainMsg(role, text) {
   const box = document.getElementById('brain-chat-messages');
   if (!box) return;
@@ -6811,6 +7022,8 @@ async function sendBrainChat() {
     if (fullText) _brainChatHistory.push({ role: 'assistant', content: fullText });
     _brainChatBusy = false;
     if (sendBtn) sendBtn.disabled = false;
+    // Refrescar estrategia — Claude puede haber cambiado parámetros
+    _refreshBrainStrategy();
   }
 }
 
@@ -6965,8 +7178,20 @@ async function showBotBrain(botId) {
   const canvas = document.getElementById('bot-brain-canvas');
   _drawBrain(canvas, d);
 
-  // Fetch live signal automatically
+  // Fetch live signal + strategy automatically
   _brainRefreshLive();
+  _refreshBrainStrategy();
+
+  // Auto-refresh strategy every 30s while brain is open
+  clearTimeout(_brainStratTimer);
+  (function _scheduleStratRefresh() {
+    _brainStratTimer = setTimeout(() => {
+      if (_brainLastId && document.getElementById('bot-brain-panel')?.style.display !== 'none') {
+        _refreshBrainStrategy();
+        _scheduleStratRefresh();
+      }
+    }, 30000);
+  })();
 }
 
 function _renderBrainStats(d) {
