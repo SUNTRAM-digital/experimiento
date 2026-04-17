@@ -2050,7 +2050,11 @@ async def chat_endpoint(data: dict):
     import os as _os
     # Chat usa sonnet para mejor razonamiento con herramientas; CLAUDE_CHAT_MODEL lo sobreescribe
     model = _os.getenv("CLAUDE_CHAT_MODEL", _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
-    system = CHAT_SYSTEM.replace("{context}", _build_chat_context())
+    try:
+        system = CHAT_SYSTEM.replace("{context}", _build_chat_context())
+    except Exception as _ctx_err:
+        import traceback as _tb
+        return JSONResponse(status_code=500, content={"error": f"Error building context: {_ctx_err}\n{_tb.format_exc()}"})
 
     async def stream():
         try:

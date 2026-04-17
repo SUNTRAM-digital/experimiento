@@ -5004,8 +5004,9 @@ async function sendChat() {
     });
 
     if (!resp.ok) {
-      const err = await resp.json();
-      bubble.innerHTML = `<span style="color:var(--red)">${escHtml(err.error || 'Error al contactar Claude')}</span>`;
+      let errMsg = `HTTP ${resp.status}`;
+      try { const err = await resp.json(); errMsg = err.error || errMsg; } catch(_) { try { errMsg = await resp.text(); } catch(__) {} }
+      bubble.innerHTML = `<span style="color:var(--red)">${escHtml(errMsg)}</span>`;
       bubble.classList.remove('streaming');
     } else {
       const reader = resp.body.getReader();
@@ -6765,7 +6766,9 @@ async function sendBrainChat() {
       body: JSON.stringify({ messages: _brainChatHistory }),
     });
     if (!resp.ok) {
-      bubble.innerHTML = '<span style="color:#f85149">Error contactando Claude</span>';
+      let errMsg = `HTTP ${resp.status}`;
+      try { const err = await resp.json(); errMsg = err.error || errMsg; } catch(_) { try { errMsg = await resp.text(); } catch(__) {} }
+      bubble.innerHTML = `<span style="color:#f85149">${escHtml(errMsg)}</span>`;
     } else {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
