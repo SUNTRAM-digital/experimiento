@@ -121,8 +121,8 @@ class TestRealMoneyRules:
                 opt.check_and_act(5, True)
         assert True in toggle_calls
 
-    def test_disables_on_3_consec_losses(self):
-        """3 consecutive losses → disable real money."""
+    def test_consec_losses_no_longer_disables(self):
+        """3 consecutive losses alone do NOT disable real money (rule removed)."""
         import phantom_optimizer as opt
         fake_stats = _make_phantom_stats(2, 5)  # Insufficient for WR rule
         toggle_calls = []
@@ -132,7 +132,8 @@ class TestRealMoneyRules:
              patch.object(opt, '_save_state'):
             for _ in range(3):
                 opt.check_and_act(5, False)
-        assert False in toggle_calls
+        # Should NOT have disabled (no False in toggle calls)
+        assert False not in toggle_calls
 
     def test_no_action_in_neutral_zone(self):
         """WR between 50-75% with < TRIAL_MIN trades → no toggle."""

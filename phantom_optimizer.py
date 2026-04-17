@@ -220,14 +220,9 @@ def check_and_act(interval_minutes: int, won: bool) -> None:
         )
         _toggle_real_money(True, reason, bot_id)
 
-    # Desactivar si WR < 50% O 3+ losses consecutivos
-    elif (wr is not None and wr < WIN_RATE_DISABLE and total >= TRIAL_MIN) or \
-         s["consec_losses"] >= CONSEC_LOSS_DISABLE:
-        reason = (
-            f"WR={wr_str} < {WIN_RATE_DISABLE:.0%}" if (wr is not None and wr < WIN_RATE_DISABLE)
-            else f"{s['consec_losses']} losses consecutivos"
-        )
-        _toggle_real_money(False, reason, bot_id)
+    # Desactivar solo si WR < 50% (la racha de losses ya no desactiva)
+    elif wr is not None and wr < WIN_RATE_DISABLE and total >= TRIAL_MIN:
+        _toggle_real_money(False, f"WR={wr_str} < {WIN_RATE_DISABLE:.0%}", bot_id)
 
     # ── 3. Cambio de preset si WR bajo después del periodo de prueba ─────────
     if (
