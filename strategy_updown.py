@@ -629,6 +629,80 @@ def evaluate_updown_market(
         sig["displacement"]   = round(displacement, 4)
         sig["mom_inversion"]  = mom_inversion
 
+    elif interval_min >= 15:
+        # ── Recalculación displacement-aware para 15m ────────────────────────
+        # Problema detectado: los indicadores lagging (EMA stack, MACD, macro 1h)
+        # dominaban la señal y producían sesgo hacia la tendencia general.
+        # Solución: el desplazamiento intra-ventana y el momentum de la ventana
+        # son los predictores más fuertes para ESTA ventana de 15m específica.
+        # Los indicadores de tendencia bajan a rol de contexto (peso reducido).
+        mom_raw     = sig["momentum"]
+        ta_composite = sig["ta"]
+        bb_sig_val  = sig.get("bb_sig", 0.0)
+        mtf_15m     = sig.get("mtf_sig", 0.0)
+        funding_15m = sig.get("funding_sig", 0.0)
+
+        # Umbrales calibrados para ventanas de 15m.
+        # BTC se mueve menos en % por minuto que en 5m, así que los umbrales
+        # son menores: 0.15% en 5-6 min ya es un movimiento decisivo en 15m.
+        _disp_hi_15 = 0.15   # movimiento decisivo → seguir la dirección
+        _disp_lo_15 = 0.07   # movimiento moderado → momentum + TA equilibrado
+
+        if displacement >= _disp_hi_15:
+            # BTC ya se desplazó fuertemente en la ventana actual.
+            # La dirección de ese movimiento es la señal primaria.
+            # TA y contexto son de apoyo, no determinantes.
+            combined = max(-1.0, min(1.0,
+                displacement_sig * 0.30
+                + mom_raw        * 0.25
+                + ta_composite   * 0.22
+                + mtf_15m        * 0.10
+                + bb_sig_val     * 0.07
+                + funding_15m    * 0.06
+            ))
+            mode_15m = f"displacement_follow (disp={displacement:.3f}%>={_disp_hi_15:.2f}%)"
+
+        elif displacement >= _disp_lo_15:
+            # Desplazamiento moderado: momentum y displacement guían,
+            # TA aporta contexto de tendencia sin dominar.
+            combined = max(-1.0, min(1.0,
+                mom_raw          * 0.28
+                + displacement_sig * 0.22
+                + ta_composite   * 0.24
+                + mtf_15m        * 0.10
+                + bb_sig_val     * 0.10
+                + funding_15m    * 0.06
+            ))
+            mode_15m = f"momentum_guided (disp={displacement:.3f}% in [{_disp_lo_15:.2f},{_disp_hi_15:.2f}]%)"
+
+        else:
+            # Desplazamiento mínimo: sin señal intra-ventana clara.
+            # TA y MTF dominan, pero se penaliza la confianza final
+            # porque la falta de displacement indica ventana incierta.
+            combined = max(-1.0, min(1.0,
+                ta_composite       * 0.32
+                + mom_raw          * 0.28
+                + mtf_15m          * 0.15
+                + bb_sig_val       * 0.15
+                + displacement_sig * 0.05
+                + funding_15m      * 0.05
+            ))
+            combined *= 0.75   # penalizar confianza sin dirección intra-ventana
+            combined = max(-1.0, min(1.0, combined))
+            mode_15m = f"ta_guided_penalized (disp={displacement:.3f}%<{_disp_lo_15:.2f}%)"
+
+        # Reaplicar penalización por TA ruidosa (pocas señales direccionales)
+        # solo cuando además no hay displacement que compense.
+        ta_cons = sig.get("ta_consensus", 0.5)
+        if ta_cons < 0.25 and displacement < _disp_lo_15:
+            combined = max(-1.0, min(1.0, combined * 0.65))
+
+        sig["combined"]     = round(combined, 4)
+        sig["direction"]    = "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL")
+        sig["confidence"]   = round(abs(combined) * 100, 1)
+        sig["15m_mode"]     = mode_15m
+        sig["displacement"] = round(displacement, 4)
+
     if invert_signal:
         combined = -combined
         sig["combined"]  = combined
@@ -651,13 +725,16 @@ def evaluate_updown_market(
         gate_strict = adaptive_params.get("momentum_gate_strict", False)
         # Umbral de confianza para bypassear el gate cuando hay conflicto TA/momentum
         # (solo aplica cuando gate_strict=False)
-        gate_bypass_confidence = 0.25
+        # Umbral subido de 0.25 → 0.40: el gate solo se bypasea con señal
+        # genuinamente fuerte. Antes, cualquier señal >25% lo bypaseaba,
+        # lo que en la práctica inutilizaba el gate.
+        gate_bypass_confidence = 0.40
 
         if combined > 0 and momentum < -mom_threshold:
             if not gate_strict and abs(combined) >= gate_bypass_confidence:
-                pass  # confianza suficiente y modo normal — continúa sin bloquear
+                pass  # confianza ≥40% y modo normal — continúa sin bloquear
             else:
-                strict_note = " [gate estricto activo]" if gate_strict else f", conf={abs(combined)*100:.1f}%<25%"
+                strict_note = " [gate estricto activo]" if gate_strict else f", conf={abs(combined)*100:.1f}%<40%"
                 return None, (
                     f"Gate momentum: señal UP pero BTC bajó {sig['window_pct']:+.3f}% en la ventana "
                     f"(momentum={momentum:+.3f} < -{mom_threshold:.2f}{strict_note}) "
@@ -665,9 +742,9 @@ def evaluate_updown_market(
                 )
         if combined < 0 and momentum > mom_threshold:
             if not gate_strict and abs(combined) >= gate_bypass_confidence:
-                pass  # confianza >25% y modo normal — permitir entrada
+                pass  # confianza ≥40% y modo normal — permitir entrada
             else:
-                strict_note = " [gate estricto activo]" if gate_strict else f", conf={abs(combined)*100:.1f}%<25%"
+                strict_note = " [gate estricto activo]" if gate_strict else f", conf={abs(combined)*100:.1f}%<40%"
                 return None, (
                     f"Gate momentum: señal DOWN pero BTC subió {sig['window_pct']:+.3f}% en la ventana "
                     f"(momentum={momentum:+.3f} > +{mom_threshold:.2f}{strict_note}) "
