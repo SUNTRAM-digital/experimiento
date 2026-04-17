@@ -765,6 +765,56 @@ async def get_updown_learn():
         return {"error": str(e)}
 
 
+@app.get("/api/bots/stats")
+async def get_bots_stats():
+    """
+    Fuente única de verdad para WR de los 4 bots.
+    - Real bots (ud5m, ud15m): updown_learner
+    - Phantom bots (ph5m, ph15m): phantom_learner (fuente canónica de WR phantom)
+    """
+    try:
+        from updown_learner import get_summary as _ud_sum
+        ud5  = _ud_sum(5)
+        ud15 = _ud_sum(15)
+
+        # Phantom: phantom_learner es la fuente de verdad
+        try:
+            from phantom_learner import _stats as _pl_st, get_adaptive_params as _pl_ap, _load as _pl_load
+            _pl_load()
+            def _ph_stats(interval: int) -> dict:
+                s = _pl_st.get(str(interval), {})
+                total = s.get("total", 0)
+                wins  = s.get("wins",  0)
+                ap    = _pl_ap(interval)
+                recent_wr_pct = ap.get("recent_wr_pct")
+                return {
+                    "total":     total,
+                    "wins":      wins,
+                    "win_rate":  round(wins / total, 3) if total > 0 else None,
+                    "recent_wr": round(recent_wr_pct / 100, 3) if recent_wr_pct is not None else None,
+                    "by_side":   {k: round(v["w"]/v["t"], 3) if v.get("t", 0) > 0 else None
+                                  for k, v in s.get("by_side", {}).items()},
+                    "adaptive":  ap,
+                }
+            ph5  = _ph_stats(5)
+            ph15 = _ph_stats(15)
+        except Exception:
+            ph5 = ph15 = {"total": 0, "wins": 0, "win_rate": None, "recent_wr": None, "by_side": {}, "adaptive": {}}
+
+        return {
+            "ud5m":  {"total": ud5.get("total",0), "wins": ud5.get("wins",0),
+                      "win_rate": ud5.get("win_rate"), "recent_wr": ud5.get("recent_wr"),
+                      "by_side": ud5.get("by_side",{}), "adaptive": ud5.get("adaptive",{})},
+            "ud15m": {"total": ud15.get("total",0), "wins": ud15.get("wins",0),
+                      "win_rate": ud15.get("win_rate"), "recent_wr": ud15.get("recent_wr"),
+                      "by_side": ud15.get("by_side",{}), "adaptive": ud15.get("adaptive",{})},
+            "ph5m":  ph5,
+            "ph15m": ph15,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ── Estrategias: rendimiento + notas ──────────────────────────────────────────
 
 _NOTES_FILE = Path(__file__).parent / "data" / "strategy_notes.json"
@@ -2050,8 +2100,28 @@ async def chat_endpoint(data: dict):
     import os as _os
     # Chat usa sonnet para mejor razonamiento con herramientas; CLAUDE_CHAT_MODEL lo sobreescribe
     model = _os.getenv("CLAUDE_CHAT_MODEL", _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
+    bot_id = data.get("bot_id")  # presente solo en brain chat
     try:
-        system = CHAT_SYSTEM.replace("{context}", _build_chat_context())
+        if bot_id:
+            # Brain chat: sistema enfocado solo en el bot solicitado
+            _bot_names = {
+                "ud5m": "UpDown 5m (Real)", "ud15m": "UpDown 15m (Real)",
+                "ph5m": "Phantom 5m",        "ph15m": "Phantom 15m",
+            }
+            _bot_name = _bot_names.get(bot_id, bot_id)
+            _interval = "15" if "15m" in bot_id else "5"
+            _ctx = _build_chat_context()
+            system = (
+                f"Eres el asistente especializado del bot '{_bot_name}' (intervalo {_interval}m). "
+                f"Tu rol es EXCLUSIVAMENTE ayudar con este bot: analizar su rendimiento, "
+                f"modificar sus parámetros mediante herramientas, y responder preguntas sobre él. "
+                f"NO hagas cambios a otros bots. NO hables de otros bots a menos que el usuario lo pida explícitamente para comparar. "
+                f"Cuando el usuario diga 'el bot' o 'este bot', siempre se refiere a '{_bot_name}'. "
+                f"Usa update_params con interval_minutes={_interval} cuando modifiques parámetros.\n\n"
+                + CHAT_SYSTEM.replace("{context}", _ctx)
+            )
+        else:
+            system = CHAT_SYSTEM.replace("{context}", _build_chat_context())
     except Exception as _ctx_err:
         import traceback as _tb
         return JSONResponse(status_code=500, content={"error": f"Error building context: {_ctx_err}\n{_tb.format_exc()}"})

@@ -4280,21 +4280,23 @@ setInterval(() => {
 
 async function fetchStrategies() {
   try {
-    const [perfR, notesR, learnR, vpsR] = await Promise.all([
+    const [perfR, notesR, learnR, vpsR, botsR] = await Promise.all([
       fetch('/api/strategy/performance'),
       fetch('/api/strategy/notes'),
       fetch('/api/updown/learn'),
       fetch('/api/vps-experiment'),
+      _fetchBotsStats(),
     ]);
-    const perf  = await perfR.json();
-    const notes = await notesR.json();
-    const learn = await learnR.json();
-    const vps   = await vpsR.json().catch(() => null);
+    const perf     = await perfR.json();
+    const notes    = await notesR.json();
+    const learn    = await learnR.json();
+    const vps      = await vpsR.json().catch(() => null);
+    const botStats = botsR || _botsStatsCache || {};
     _renderStratPerf(perf, vps);
     _renderStratParams(perf);
     _renderStratDetailWeather(perf.WEATHER || {});
     _renderStratDetailBtc(perf.BTC || {});
-    _renderStratLearner(learn, perf);
+    _renderStratLearner(learn, perf, botStats);
     _loadNoteFields(notes);
   } catch(e) {}
 }
@@ -4498,9 +4500,10 @@ function _renderStratDetailBtc(s) {
   el.innerHTML = html;
 }
 
-function _renderStratLearner(data) {
+function _renderStratLearner(data, _perf, botStats) {
   const el = document.getElementById('strat-learner-detail');
   if (!el) return;
+  botStats = botStats || _botsStatsCache || {};
 
   const pct  = v => v == null ? '<span style="color:var(--muted)">—</span>'
     : `<span style="color:${v>=0.55?'var(--green)':v>=0.42?'var(--yellow)':'var(--red)'}">${(v*100).toFixed(0)}%</span>`;
@@ -4562,14 +4565,18 @@ function _renderStratLearner(data) {
       ${ap.reason ? `<div style="color:var(--muted);font-size:.68rem;margin-top:4px;border-top:1px solid var(--border);padding-top:4px">📊 ${ap.reason}</div>` : ''}
     </div>`;
 
-    // Phantom bets (apuestas fantasma)
-    if (ph && ph.total > 0) {
-      const phBs = ph.by_signal || {};
-      const phBt = ph.by_side   || {};
-      const phSr = ph.by_skip_reason || {};
+    // Phantom bets (apuestas fantasma) — WR de fuente canónica (phantom_learner)
+    const _phCanon = k === '5m' ? (botStats.ph5m || {}) : (botStats.ph15m || {});
+    const _phTotal = _phCanon.total || (ph && ph.total) || 0;
+    if (_phTotal > 0 || (ph && ph.total > 0)) {
+      const phBs = (ph||{}).by_signal || {};
+      const phBt = _phCanon.by_side || (ph||{}).by_side   || {};
+      const phSr = (ph||{}).by_skip_reason || {};
+      const _phWR = _phCanon.win_rate ?? (ph||{}).win_rate;
+      const _phRWR = _phCanon.recent_wr ?? (ph||{}).recent_wr;
       html += `<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;padding:8px 10px;font-size:.71rem;margin-top:8px">
         <div style="color:var(--blue);font-size:.65rem;font-weight:700;margin-bottom:6px;text-transform:uppercase">
-          👻 Apuestas fantasma (señales no ejecutadas): ${ph.total} | WR ${pctN(ph.win_rate)} | reciente ${pctN(ph.recent_wr)}
+          👻 Apuestas fantasma (señales no ejecutadas): ${_phCanon.total ?? (ph||{}).total ?? 0} | WR ${pctN(_phWR)} | reciente ${pctN(_phRWR)}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
           <div>Por señal: débil ${pct(phBs.weak)} · media ${pct(phBs.med)} · fuerte ${pct(phBs.strong)}</div>
@@ -4583,8 +4590,8 @@ function _renderStratLearner(data) {
             return `<span style="margin-right:8px">${k2} (${t}) <span style="color:${c}">${wr}</span></span>`;
           }).join('')}
         </div>
-        ${ph.win_rate != null && ph.win_rate > 0.55 ? `<div style="color:var(--yellow);font-size:.7rem;margin-top:4px">⚠️ Win rate fantasma alto — considera relajar los filtros</div>` : ''}
-        ${ph.win_rate != null && ph.win_rate < 0.35 ? `<div style="color:var(--green);font-size:.7rem;margin-top:4px">✅ Filtros correctos — fantasmas perderían</div>` : ''}
+        ${_phWR != null && _phWR > 0.55 ? `<div style="color:var(--yellow);font-size:.7rem;margin-top:4px">⚠️ Win rate fantasma alto — considera relajar los filtros</div>` : ''}
+        ${_phWR != null && _phWR < 0.35 ? `<div style="color:var(--green);font-size:.7rem;margin-top:4px">✅ Filtros correctos — fantasmas perderían</div>` : ''}
       </div>`;
     }
 
@@ -6573,74 +6580,78 @@ function _renderBotCard(cfg) {
 </div>`;
 }
 
+// Cache de /api/bots/stats — compartido entre loadBots y showBotBrain
+let _botsStatsCache = null;
+
+async function _fetchBotsStats() {
+  const r = await fetch('/api/bots/stats');
+  _botsStatsCache = await r.json();
+  return _botsStatsCache;
+}
+
 async function loadBots() {
   const grid = document.getElementById('bots-grid');
   if (!grid) return;
 
-  let learnData = {};
-  let vpsData   = {};
-  let statusData= {};
+  let botsStats = {};
+  let statusData = {};
 
   try {
-    const [r1, r2, r3] = await Promise.all([
-      fetch('/api/updown/learn').then(r => r.json()),
-      fetch('/api/vps-experiment').then(r => r.json()),
+    const [r1, r2] = await Promise.all([
+      _fetchBotsStats(),
       fetch('/api/status').then(r => r.json()),
     ]);
-    learnData  = r1 || {};
-    vpsData    = r2 || {};
-    statusData = r3 || {};
+    botsStats  = r1 || {};
+    statusData = r2 || {};
   } catch(e) {
     grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--red);padding:40px">Error cargando datos de bots: ${e.message}</div>`;
     return;
   }
 
   // ── UpDown 5m (real) ─────────────────────────────────────────────────────
-  const ud5 = learnData['5m'] || {};
+  const ud5 = botsStats['ud5m'] || {};
   const ud5adp = ud5.adaptive || {};
   const ud5cfg = {
     id: 'ud5m', name: 'UpDown 5m', badge: 'Real',
-    wr:           ud5.win_rate    ?? null,
-    recentWr:     ud5.recent_wr   ?? null,
-    consLosses:   ud5adp.consecutive_losses ?? 0,
-    totalTrades:  ud5.total       ?? 0,
-    hasData:      (ud5.total ?? 0) > 0,
+    wr:          ud5.win_rate    ?? null,
+    recentWr:    ud5.recent_wr   ?? null,
+    consLosses:  ud5adp.consecutive_losses ?? 0,
+    totalTrades: ud5.total       ?? 0,
+    hasData:     (ud5.total ?? 0) > 0,
   };
 
   // ── UpDown 15m (real) ────────────────────────────────────────────────────
-  const ud15 = learnData['15m'] || {};
+  const ud15 = botsStats['ud15m'] || {};
   const ud15adp = ud15.adaptive || {};
   const ud15cfg = {
     id: 'ud15m', name: 'UpDown 15m', badge: 'Real',
-    wr:           ud15.win_rate   ?? null,
-    recentWr:     ud15.recent_wr  ?? null,
-    consLosses:   ud15adp.consecutive_losses ?? 0,
-    totalTrades:  ud15.total      ?? 0,
-    hasData:      (ud15.total ?? 0) > 0,
+    wr:          ud15.win_rate   ?? null,
+    recentWr:    ud15.recent_wr  ?? null,
+    consLosses:  ud15adp.consecutive_losses ?? 0,
+    totalTrades: ud15.total      ?? 0,
+    hasData:     (ud15.total ?? 0) > 0,
   };
 
-  // ── Phantom 5m ──────────────────────────────────────────────────────────
-  const ph5 = vpsData.phantom_learn_5m || {};
-  const ph5WrRaw = ph5.recent_wr_pct != null ? ph5.recent_wr_pct / 100 : null;
+  // ── Phantom 5m (canonical: phantom_learner) ──────────────────────────────
+  const ph5 = botsStats['ph5m'] || {};
   const ph5cfg = {
     id: 'ph5m', name: 'Phantom 5m', badge: 'Phantom',
-    wr:           ph5WrRaw,
-    recentWr:     ph5WrRaw,
-    consLosses:   0,   // phantom doesn't track consecutive losses yet
-    totalTrades:  ph5.total_trades ?? 0,
-    hasData:      ph5.has_data === true,
+    wr:          ph5.win_rate  ?? null,
+    recentWr:    ph5.recent_wr ?? null,
+    consLosses:  0,
+    totalTrades: ph5.total     ?? 0,
+    hasData:     (ph5.total ?? 0) > 0,
   };
 
-  // ── Phantom 15m ─────────────────────────────────────────────────────────
-  const ph15 = vpsData.phantom_learn_15m || {};
-  const ph15WrRaw = ph15.recent_wr_pct != null ? ph15.recent_wr_pct / 100 : null;
+  // ── Phantom 15m (canonical: phantom_learner) ─────────────────────────────
+  const ph15 = botsStats['ph15m'] || {};
   const ph15cfg = {
     id: 'ph15m', name: 'Phantom 15m', badge: 'Phantom',
-    wr:           ph15WrRaw,
-    recentWr:     ph15WrRaw,
-    consLosses:   0,
-    totalTrades:  ph15.total_trades ?? 0,
-    hasData:      ph15.has_data === true,
+    wr:          ph15.win_rate  ?? null,
+    recentWr:    ph15.recent_wr ?? null,
+    consLosses:  0,
+    totalTrades: ph15.total     ?? 0,
+    hasData:     (ph15.total ?? 0) > 0,
   };
 
   grid.innerHTML = [ud5cfg, ud15cfg, ph5cfg, ph15cfg]
@@ -6763,7 +6774,7 @@ async function sendBrainChat() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: _brainChatHistory }),
+      body: JSON.stringify({ messages: _brainChatHistory, bot_id: _brainLastId }),
     });
     if (!resp.ok) {
       let errMsg = `HTTP ${resp.status}`;
@@ -6906,16 +6917,30 @@ async function showBotBrain(botId) {
   panel.style.display = 'block';
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-  // Fetch data
+  // Fetch data — usa /api/bots/stats como fuente única de WR
   let d = {};
   const isPhantom = botId.startsWith('ph');
-  const interval  = botId.includes('5m') ? '5m' : '15m';
+  const interval  = botId.includes('15m') ? '15m' : '5m';
   _brainInterval  = interval;
   try {
-    const r = await fetch('/api/updown/learn').then(r => r.json());
-    const raw = r[interval] || {};
-    d = isPhantom ? (raw.phantom || {}) : raw;
-    d._adaptive = raw.adaptive || {};
+    // Siempre refrescar stats canónicas
+    const [botsR, learnR] = await Promise.all([
+      _fetchBotsStats(),
+      fetch('/api/updown/learn').then(r => r.json()),
+    ]);
+    const canonical = (botsR || {})[botId] || {};
+    // Para adaptive params y detalles extras seguimos usando updown/learn
+    const learnRaw  = (learnR || {})[interval] || {};
+    const learnDetail = isPhantom ? (learnRaw.phantom || {}) : learnRaw;
+    // Mezclar: WR siempre de canonical, resto de learnDetail
+    d = Object.assign({}, learnDetail, {
+      win_rate:  canonical.win_rate  ?? learnDetail.win_rate,
+      recent_wr: canonical.recent_wr ?? learnDetail.recent_wr,
+      total:     canonical.total     ?? learnDetail.total,
+      wins:      canonical.wins      ?? learnDetail.wins,
+      by_side:   canonical.by_side   ?? learnDetail.by_side,
+    });
+    d._adaptive = canonical.adaptive || learnRaw.adaptive || {};
     d._interval = interval;
   } catch(e) {}
 
