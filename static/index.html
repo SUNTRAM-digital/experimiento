@@ -6760,14 +6760,16 @@ async function sendBrainChat() {
   const msgWithCtx = `${ctx}\n\n${rawText}`;
   _brainChatHistory.push({ role: 'user', content: msgWithCtx });
 
-  // Streaming response bubble
+  // Streaming response bubble — sin ID fijo para no pisar bubbles anteriores
   const box = document.getElementById('brain-chat-messages');
   const respDiv = document.createElement('div');
   respDiv.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start';
-  respDiv.innerHTML = `<div style="max-width:85%;background:#161b22;border:1px solid #58a6ff;border-radius:8px;padding:7px 10px;font-size:.74rem;color:#c9d1d9;line-height:1.45" id="brain-stream-bubble">...</div>`;
+  const bubble = document.createElement('div');
+  bubble.style.cssText = 'max-width:85%;background:#161b22;border:1px solid #58a6ff;border-radius:8px;padding:7px 10px;font-size:.74rem;color:#c9d1d9;line-height:1.45';
+  bubble.textContent = '...';
+  respDiv.appendChild(bubble);
   box.appendChild(respDiv);
   box.scrollTop = box.scrollHeight;
-  const bubble = document.getElementById('brain-stream-bubble');
 
   let fullText = '';
   try {
