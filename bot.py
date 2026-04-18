@@ -1808,8 +1808,14 @@ async def _scan_updown(interval_minutes: int):
             )
             # ── Phantom REAL: ejecutar trade con dinero real cuando está habilitado ──
             _ph_used_real = False
-            if bot_params.phantom_real_enabled and not opp:
-                # Solo ejecutar phantom real si NO hubo trade real ya en este mercado
+            # Disparar phantom real cuando el bot real NO va a operar en este mercado:
+            #   - sin señal suficiente (opp is None), O
+            #   - hay señal pero el bot real está stopped (pérdidas consecutivas)
+            # En ambos casos no hay trade real → phantom real puede tomar la posición.
+            # Si el bot real SÍ va a ejecutar (opp and not stopped) → no doblar exposición.
+            _real_will_trade = bool(opp and not stopped)
+            if bot_params.phantom_real_enabled and not _real_will_trade:
+                # Solo ejecutar phantom real si el bot real no va a operar
                 _ph_bucket_attr = (
                     "phantom_bucket_5m_usdc" if interval_minutes <= 5 else "phantom_bucket_15m_usdc"
                 )
