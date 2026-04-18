@@ -1,0 +1,14 @@
+{
+  "5": {
+    "consec_wins": 0,
+    "consec_losses": 0,
+    "preset_idx": 0,
+    "trades_in_preset": 0
+  },
+  "15": {
+    "consec_wins": 1,
+    "consec_losses": 0,
+    "preset_idx": 0,
+    "trades_in_preset": 78
+  }
+}

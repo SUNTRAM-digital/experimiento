@@ -27,7 +27,12 @@ data/strategy_notes.json
 data/category_stats.json
 data/wallet_cache.json
 data/risk_state.json
+data/telonex_top_wallets.json
+data/telonex_cache/
 !data/.gitkeep
+
+# Imágenes y documentos locales
+imagenes de contexto/
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ARCHIVOS DE MEMORIA DEL AGENTE — pueden contener contexto del usuario

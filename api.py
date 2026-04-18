@@ -770,11 +770,13 @@ async def get_risk_status():
     """Estado actual del risk manager: circuit breaker activo, drawdown semanal."""
     try:
         from risk_manager import risk_manager as _rm, MAX_WEEKLY_DRAWDOWN_PCT
+        from config import bot_params
         return {
-            "circuit_breaker_active": _rm.circuit_breaker_active,
-            "circuit_breaker_reason": _rm.circuit_breaker_reason,
-            "weekly_start_value":     getattr(_rm, "weekly_start_value", None),
-            "weekly_drawdown_limit":  MAX_WEEKLY_DRAWDOWN_PCT,
+            "circuit_breaker_enabled": bot_params.circuit_breaker_enabled,
+            "circuit_breaker_active":  _rm.circuit_breaker_active,
+            "circuit_breaker_reason":  _rm.circuit_breaker_reason,
+            "weekly_start_value":      getattr(_rm, "weekly_start_value", None),
+            "weekly_drawdown_limit":   MAX_WEEKLY_DRAWDOWN_PCT,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -787,6 +789,24 @@ async def reset_risk_circuit_breaker():
         from risk_manager import risk_manager as _rm
         _rm.reset_circuit_breaker()
         return {"ok": True, "message": "Circuit breaker desactivado — el bot puede volver a operar."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/risk/toggle-circuit-breaker")
+async def toggle_circuit_breaker(body: dict):
+    """Activa o desactiva el circuit breaker (feature flag)."""
+    try:
+        from config import bot_params
+        from risk_manager import risk_manager as _rm
+        enable = bool(body.get("enabled", False))
+        bot_params.circuit_breaker_enabled = enable
+        bot_params.save()
+        # Si se desactiva, limpiar cualquier CB activo
+        if not enable and _rm.circuit_breaker_active:
+            _rm.reset_circuit_breaker()
+        state = "ACTIVADO" if enable else "DESACTIVADO"
+        return {"ok": True, "circuit_breaker_enabled": enable, "message": f"Circuit breaker {state}."}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

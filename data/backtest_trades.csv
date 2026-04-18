@@ -1,0 +1,1 @@
+trade_id,timestamp,asset,interval_min,market_title,side,entry_price,size_sim,cost_sim,confidence,ev_pct,ta_rec,rsi,ema20,ofi,elapsed_min,min_to_close,window_start_ts,btc_start_price,condition_id,resolved,result,exit_price,pnl_usdc,pnl_pct,real_trade_placed,skip_reason

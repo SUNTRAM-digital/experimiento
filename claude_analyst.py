@@ -456,19 +456,24 @@ Precio share {side}: {opportunity.get('entry_price', 0.5):.3f}
         reason    = "Sin razón especificada."
         confidence_str = "MEDIA"
 
+        import unicodedata
+        def _norm(s: str) -> str:
+            """Normaliza acentos para comparar: RAZÓN → RAZON"""
+            return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").upper().strip()
+
         for line in raw.splitlines():
-            upper = line.upper().strip()
-            if upper.startswith("DECISION:"):
-                approved = "APROBAR" in upper
-            elif upper.startswith("DIRECCION:"):
+            norm = _norm(line)
+            if norm.startswith("DECISION:"):
+                approved = "APROBAR" in norm
+            elif norm.startswith("DIRECCION:"):
                 val = line.split(":", 1)[1].strip().upper()
                 if "UP" in val and "DOWN" not in val:
                     direction = "UP"
                 elif "DOWN" in val:
                     direction = "DOWN"
-            elif upper.startswith("RAZON:"):
+            elif norm.startswith("RAZON:"):
                 reason = line.split(":", 1)[1].strip()
-            elif upper.startswith("CONFIANZA:"):
+            elif norm.startswith("CONFIANZA:"):
                 confidence_str = line.split(":", 1)[1].strip().upper()
 
         direction_changed = direction != side

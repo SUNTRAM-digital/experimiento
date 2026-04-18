@@ -1,0 +1,54 @@
+{
+  "ph15m": [
+    {
+      "ts": "2026-04-18T00:58:02Z",
+      "tool": "update_params",
+      "params": {
+        "updown_15m_momentum_gate": 10,
+        "updown_15m_min_confidence": 40
+      },
+      "old": {
+        "updown_15m_momentum_gate": 0.2,
+        "updown_15m_min_confidence": 0.35
+      },
+      "reason": "Mejorar detección de sesgo bajista: rechazar UP débiles (gate 20%→10%) y aumentar exigencia de confianza (35%→40%) para DOWN de mayor calidad. Históricamente WR DOWN=49% vs UP=52.3%; esto obliga a más precisión antes de entrar.\"",
+      "ok": true
+    },
+    {
+      "ts": "2026-04-17T05:51:07Z",
+      "tool": "update_params",
+      "params": {
+        "updown_15m_min_confidence": 35,
+        "updown_15m_momentum_gate": 1.0,
+        "updown_stake_conf_min_pct": 35,
+        "updown_stake_conf_max_pct": 100
+      },
+      "old": {
+        "updown_15m_min_confidence": 0.35,
+        "updown_15m_momentum_gate": 0.2,
+        "updown_stake_conf_min_pct": 20.0,
+        "updown_stake_conf_max_pct": 65.0
+      },
+      "reason": "Aumentar selectividad: rechazar operaciones <35% confianza, gate momentum 1.0 (máximo filtro, solo TA+momentum alineados), stake proporcional a confianza real. Objetivo: eliminar ruido, subir WR >55%, habilitar Phantom REAL para generar ingresos.",
+      "ok": true
+    },
+    {
+      "ts": "2026-04-17T05:51:05Z",
+      "tool": "update_params",
+      "params": {
+        "updown_15m_min_confidence": 35,
+        "updown_15m_momentum_gate": "STRICT",
+        "updown_stake_conf_min_pct": 35,
+        "updown_stake_conf_max_pct": 100
+      },
+      "old": {
+        "updown_15m_min_confidence": 0.2,
+        "updown_15m_momentum_gate": 0.2,
+        "updown_stake_conf_min_pct": 20.0,
+        "updown_stake_conf_max_pct": 65.0
+      },
+      "reason": "Aumentar selectividad: rechazar operaciones <35% confianza, gate momentum STRICT (TA+momentum alineados), stake proporcional a confianza real. Objetivo: eliminar ruido, subir WR >55%, habilitar Phantom REAL para generar ingresos.",
+      "ok": false
+    }
+  ]
+}

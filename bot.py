@@ -570,10 +570,12 @@ def _execute_trade(opportunity: dict) -> bool:
             max_usdc = max(1.0, max_usdc)
             shares   = round(max_usdc / price, 2)
 
-            # Mínimo 5 shares
+            # Mínimo 5 shares — si el stake calculado no alcanza, ajustarlo en lugar de rechazar
             if shares < 5:
-                _log("WARN", f"UpDown | Shares mínimos (5) a precio {price:.3f} requieren ${5*price:.2f} > max ${max_usdc}")
-                return False
+                min_required = round(5 * price + 0.01, 2)
+                _log("INFO", f"UpDown | Stake ajustado a ${min_required:.2f} para cubrir 5 shares mínimos a ${price:.3f}")
+                max_usdc = min_required
+                shares   = round(max_usdc / price, 2)
         else:
             max_usdc = None
 
@@ -1962,6 +1964,8 @@ async def _scan_updown(interval_minutes: int):
 
         if not claude["approved"]:
             _log("WARN", f"UpDown {interval_minutes}m | Claude RECHAZA [{claude['confidence']}]: {claude['reason']}")
+            if claude.get("raw"):
+                _log("DEBUG", f"UpDown {interval_minutes}m | Claude RAW: {claude['raw'][:300]}")
             opp["claude_rejected"] = True
             return
 

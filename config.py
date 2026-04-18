@@ -81,6 +81,9 @@ class BotParams:
         self.bucket_btc_usdc: float = 0.0
         self.bucket_updown_5m_usdc: float = 0.0
         self.bucket_updown_15m_usdc: float = 0.0
+        # --- Circuit breaker (Risk Manager) ---
+        # False = desactivado (útil en desarrollo); True = activo, para cuando no estés presente
+        self.circuit_breaker_enabled: bool = False
         # --- Sistema de capital Phantom (Fase 10) ---
         # Cuando phantom_real_enabled=True el bot puede usar dinero real en trades phantom
         self.phantom_real_enabled: bool = False
@@ -150,6 +153,7 @@ class BotParams:
             "bucket_btc_usdc": self.bucket_btc_usdc,
             "bucket_updown_5m_usdc": self.bucket_updown_5m_usdc,
             "bucket_updown_15m_usdc": self.bucket_updown_15m_usdc,
+            "circuit_breaker_enabled": self.circuit_breaker_enabled,
             "phantom_real_enabled": self.phantom_real_enabled,
             "phantom_cash_libre_usdc": self.phantom_cash_libre_usdc,
             "phantom_pool_usdc": self.phantom_pool_usdc,

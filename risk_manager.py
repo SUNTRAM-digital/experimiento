@@ -125,8 +125,13 @@ class RiskManager:
                 self.circuit_breaker_active = False
                 self.circuit_breaker_reason = ""
 
-        # Verificar circuit breaker
-        if self.weekly_start_value > 0:
+        # Verificar circuit breaker (solo si está habilitado en config)
+        try:
+            from config import bot_params as _bp
+            _cb_enabled = _bp.circuit_breaker_enabled
+        except Exception:
+            _cb_enabled = True  # por seguridad, si no hay config → activo
+        if self.weekly_start_value > 0 and _cb_enabled:
             weekly_drawdown = (self.weekly_start_value - total_account_value) / self.weekly_start_value
             if weekly_drawdown >= MAX_WEEKLY_DRAWDOWN_PCT and not self.circuit_breaker_active:
                 self.circuit_breaker_active = True
@@ -134,6 +139,10 @@ class RiskManager:
                     f"Drawdown semanal {weekly_drawdown:.1%} >= {MAX_WEEKLY_DRAWDOWN_PCT:.0%} — "
                     f"bot pausado hasta nueva semana"
                 )
+        elif not _cb_enabled and self.circuit_breaker_active:
+            # Si el usuario desactiva el CB estando activo, limpiarlo
+            self.circuit_breaker_active = False
+            self.circuit_breaker_reason = ""
 
         self._save_state()
 

@@ -636,8 +636,20 @@
 
   <!-- CONTENT -->
   <div class="content">
-    <!-- Circuit Breaker Banner — visible cuando el risk manager pausa el bot -->
-    <div id="circuit-breaker-banner" style="display:none;background:#3d1a1a;border-bottom:2px solid #f85149;padding:10px 18px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
+    <!-- Circuit Breaker Toggle Bar — siempre visible -->
+    <div style="background:#161b22;border-bottom:1px solid #21262d;padding:5px 18px;display:flex;align-items:center;gap:12px">
+      <span style="color:#8b949e;font-size:.73rem">🛡️ Circuit Breaker:</span>
+      <span id="cb-status-label" style="font-size:.73rem;font-weight:700;color:#3fb950">DESACTIVADO</span>
+      <label style="display:flex;align-items:center;gap:0;cursor:pointer;margin:0;position:relative;width:34px;height:18px">
+        <input type="checkbox" id="cb-toggle" onchange="toggleCircuitBreaker(this.checked)"
+          style="opacity:0;width:0;height:0;position:absolute">
+        <span id="cb-toggle-track" style="position:absolute;inset:0;border-radius:20px;background:#30363d;transition:.2s;cursor:pointer"></span>
+        <span id="cb-toggle-thumb" style="position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:#8b949e;transition:.2s;pointer-events:none"></span>
+      </label>
+      <span style="color:#6e7681;font-size:.68rem">Actívalo cuando no estés presente para proteger el capital</span>
+    </div>
+    <!-- Circuit Breaker Banner — visible cuando está activo Y disparado -->
+    <div id="circuit-breaker-banner" style="display:none;background:#3d1a1a;border-bottom:2px solid #f85149;padding:10px 18px;align-items:center;gap:14px;flex-wrap:wrap">
       <span style="font-size:1.1rem">🛑</span>
       <div style="flex:1;min-width:200px">
         <div style="color:#f85149;font-weight:700;font-size:.85rem">BOT PAUSADO — Circuit Breaker activo</div>
@@ -645,7 +657,7 @@
       </div>
       <button onclick="resetCircuitBreaker()"
         style="background:#f85149;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
-        ✓ Desactivar y reanudar
+        ✓ Resetear y reanudar
       </button>
     </div>
     <div class="tabs">
@@ -4350,8 +4362,25 @@ async function checkCircuitBreaker() {
   try {
     const r = await fetch('/api/risk/status');
     const d = await r.json();
-    const banner = document.getElementById('circuit-breaker-banner');
+    const banner   = document.getElementById('circuit-breaker-banner');
     const reasonEl = document.getElementById('circuit-breaker-reason');
+    const toggle   = document.getElementById('cb-toggle');
+    const label    = document.getElementById('cb-status-label');
+    const track    = document.getElementById('cb-toggle-track');
+    const thumb    = document.getElementById('cb-toggle-thumb');
+    // Actualizar toggle de feature (enabled/disabled)
+    const enabled = !!d.circuit_breaker_enabled;
+    if (toggle) toggle.checked = enabled;
+    if (label) {
+      label.textContent = enabled ? 'ACTIVADO' : 'DESACTIVADO';
+      label.style.color = enabled ? '#f85149' : '#3fb950';
+    }
+    if (track) track.style.background = enabled ? '#f85149' : '#30363d';
+    if (thumb) {
+      thumb.style.background = enabled ? '#fff' : '#8b949e';
+      thumb.style.left = enabled ? '19px' : '3px';
+    }
+    // Banner de alerta solo si está habilitado Y disparado
     if (!banner) return;
     if (d.circuit_breaker_active) {
       banner.style.display = 'flex';
@@ -4362,10 +4391,38 @@ async function checkCircuitBreaker() {
   } catch(e) { /* silencioso */ }
 }
 
+async function toggleCircuitBreaker(enabled) {
+  const label = document.getElementById('cb-status-label');
+  const track = document.getElementById('cb-toggle-track');
+  const thumb = document.getElementById('cb-toggle-thumb');
+  try {
+    const r = await fetch('/api/risk/toggle-circuit-breaker', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ enabled })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      if (label) {
+        label.textContent = enabled ? 'ACTIVADO' : 'DESACTIVADO';
+        label.style.color = enabled ? '#f85149' : '#3fb950';
+      }
+      if (track) track.style.background = enabled ? '#f85149' : '#30363d';
+      if (thumb) {
+        thumb.style.background = enabled ? '#fff' : '#8b949e';
+        thumb.style.left = enabled ? '19px' : '3px';
+      }
+      if (!enabled) document.getElementById('circuit-breaker-banner').style.display = 'none';
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch(e) { alert('Error de red: ' + e.message); }
+}
+
 async function resetCircuitBreaker() {
   const btn = event.target;
   btn.disabled = true;
-  btn.textContent = 'Desactivando...';
+  btn.textContent = 'Reseteando...';
   try {
     const r  = await fetch('/api/risk/reset-circuit-breaker', { method: 'POST' });
     const d  = await r.json();

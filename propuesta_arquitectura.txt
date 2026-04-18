@@ -1,0 +1,625 @@
+================================================================================
+  PROPUESTA DE ARQUITECTURA — WeatherBot Polymarket
+  Versión del documento: 1.0  |  Fecha: 2026-04-16
+  Estado: PROPUESTA (sin cambios de código hasta aprobación)
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. DIAGNÓSTICO: POR QUÉ ES URGENTE REFACTORIZAR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Métricas actuales de deuda técnica:
+  - api.py:       2 817 líneas  → 1 archivo hace routing + lógica + persistencia
+  - bot.py:       2 837 líneas  → 1 archivo es orquestador + estrategia + estado
+  - index.html:   7 763 líneas  → 1 archivo es UI + lógica + estado + llamadas API
+  - 29 módulos Python en el raíz plano
+  - 26 tests en una sola carpeta sin jerarquía
+  - Estado global mutable (dicts en módulo) en updown_learner, phantom_learner,
+    phantom_optimizer, vps_experiment, risk_manager, etc.
+  - Acoplamiento fuerte: bot.py importa directamente 15+ módulos distintos
+  - Sin capa de abstracción de datos: JSON files accedidos directamente en cada
+    módulo (15 archivos JSON distintos, cada uno con su propio open/write)
+
+Síntomas concretos que ya ocurrieron:
+  - WR inconsistente entre secciones (hubo 4 fuentes de verdad distintas)
+  - Bug de substring "5m in ud15m" repetido en 3 archivos distintos
+  - Parámetros con unidades incorrectas (38.0 vs 0.38) sin validación
+  - Chat del cerebro respondía como bot equivocado
+  - Añadir una feature (optimizer) requirió tocar api.py + bot.py + index.html
+    al mismo tiempo
+
+Consecuencia si no se refactoriza:
+  Cada nueva fase duplica la superficie de bugs. Fase 10 añadió ~800 líneas
+  a api.py y ~600 a bot.py. Al ritmo actual, en 3 fases más ningún archivo
+  será mantenible.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. PRINCIPIOS DE DISEÑO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 Arquitectura en Capas (Layered / Clean Architecture)
+  Cada capa solo conoce a la capa inmediatamente inferior. Nunca sube.
+
+    ┌────────────────────────────────────────────┐
+    │  Capa de Presentación  (API + Frontend)    │
+    ├────────────────────────────────────────────┤
+    │  Capa de Aplicación    (Services / Cases)  │
+    ├────────────────────────────────────────────┤
+    │  Capa de Dominio       (Models + Logic)    │
+    ├────────────────────────────────────────────┤
+    │  Capa de Infraestructura (Repos + I/O)     │
+    └────────────────────────────────────────────┘
+
+2.2 Patrones de diseño a usar
+  - Repository Pattern       → abstrae toda persistencia (JSON → SQLite → DB)
+  - Service Layer            → orquesta casos de uso sin tocar HTTP ni archivos
+  - Event Bus (simple)       → desacopla resolución de trades de sus efectos
+  - Dependency Injection     → módulos reciben dependencias, no las importan
+  - Strategy Pattern         → estrategias de trading son objetos intercambiables
+  - Factory                  → construcción de bots/estrategias centralizada
+  - Singleton controlado     → estado compartido solo a través de repositorios
+
+2.3 Reglas de oro
+  a) Un módulo = una responsabilidad
+  b) Si necesitas importar más de 3 módulos del mismo proyecto, es una señal
+     de que falta una capa intermedia
+  c) Toda validación de parámetros ocurre en los modelos, no en las rutas
+  d) Toda persistencia ocurre en repositorios, no en servicios ni rutas
+  e) Los tests no deben necesitar levantar el servidor completo
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. ESTRUCTURA DE DIRECTORIOS PROPUESTA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+weatherbot/
+│
+├── app/                          ← Núcleo de la aplicación (backend)
+│   │
+│   ├── api/                      ← Capa de presentación HTTP
+│   │   ├── __init__.py
+│   │   ├── main.py               ← FastAPI app factory + lifespan
+│   │   ├── dependencies.py       ← Inyección de dependencias (get_db, get_service...)
+│   │   ├── middleware/
+│   │   │   ├── __init__.py
+│   │   │   ├── logging.py        ← Request/response logging
+│   │   │   ├── error_handler.py  ← Global exception → JSON response
+│   │   │   └── cors.py
+│   │   └── routes/
+│   │       ├── __init__.py
+│   │       ├── bots.py           ← /api/bots/* (stats, param-history, optimizer)
+│   │       ├── chat.py           ← /api/chat (advisor + brain chat)
+│   │       ├── updown.py         ← /api/updown/* (learn, dry-run, signal)
+│   │       ├── phantom.py        ← /api/phantom/* (trades, capital, autorule)
+│   │       ├── strategies.py     ← /api/strategies/* (performance, notes)
+│   │       ├── system.py         ← /api/system/* (logs, version, params, health)
+│   │       └── backtest.py       ← /api/backtest/*
+│   │
+│   ├── core/                     ← Dominio: lógica de negocio pura
+│   │   ├── __init__.py
+│   │   ├── models/               ← Pydantic models (validación + serialización)
+│   │   │   ├── __init__.py
+│   │   │   ├── params.py         ← BotParams con validadores por campo
+│   │   │   ├── trade.py          ← Trade, PhantomTrade, TradeResult
+│   │   │   ├── signal.py         ← Signal, UpDownSignal, BrainSignal
+│   │   │   ├── stats.py          ← BotStats, WinRateStats, StreakStats
+│   │   │   └── market.py         ← Market, Opportunity, MarketFilter
+│   │   │
+│   │   ├── strategies/           ← Strategy Pattern: cada estrategia es una clase
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py           ← BaseStrategy(ABC): evaluate(), name, params
+│   │   │   ├── updown.py         ← UpDownStrategy (actual strategy_updown.py)
+│   │   │   ├── weather.py        ← WeatherStrategy (actual strategy.py)
+│   │   │   ├── btc.py            ← BtcStrategy (actual strategy_btc.py)
+│   │   │   ├── nearzero.py       ← NearZeroStrategy
+│   │   │   └── registry.py       ← StrategyRegistry: get_strategy(name)
+│   │   │
+│   │   ├── learners/             ← ML / aprendizaje adaptativo
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py           ← BaseLearner(ABC): record(), get_stats()
+│   │   │   ├── updown_learner.py ← (actual updown_learner.py)
+│   │   │   ├── phantom_learner.py
+│   │   │   └── ensemble.py       ← Ensemble calibrador
+│   │   │
+│   │   ├── optimizer/            ← Optimizer autónomo
+│   │   │   ├── __init__.py
+│   │   │   ├── phantom_optimizer.py
+│   │   │   └── presets.py        ← STRATEGY_PRESETS separados del código
+│   │   │
+│   │   └── events/               ← Event Bus simple
+│   │       ├── __init__.py
+│   │       ├── bus.py            ← EventBus: publish(event), subscribe(type, handler)
+│   │       └── trade_events.py   ← TradeResolved, PhantomResolved, ParamChanged
+│   │
+│   ├── services/                 ← Casos de uso (orquestación)
+│   │   ├── __init__.py
+│   │   ├── bot_service.py        ← start/stop bots, get status
+│   │   ├── trade_service.py      ← ejecutar trade, resolver phantom
+│   │   ├── stats_service.py      ← WR canónico, historial, by_bot aggregation
+│   │   ├── param_service.py      ← update params con validación + historial
+│   │   ├── advisor_service.py    ← chat con Claude (sin lógica HTTP)
+│   │   ├── price_service.py      ← BTC price feed, caché
+│   │   └── optimizer_service.py  ← check_and_act, get_status
+│   │
+│   └── infrastructure/           ← Implementaciones de I/O
+│       ├── __init__.py
+│       ├── repositories/
+│       │   ├── __init__.py
+│       │   ├── base.py           ← BaseRepository(ABC): load(), save()
+│       │   ├── json_repo.py      ← JsonRepository: implementación genérica JSON
+│       │   ├── params_repo.py    ← ParamsRepository
+│       │   ├── stats_repo.py     ← StatsRepository (updown_stats.json)
+│       │   ├── trade_repo.py     ← TradeRepository (VPS + pending)
+│       │   ├── history_repo.py   ← ParamHistoryRepository
+│       │   └── optimizer_repo.py ← OptimizerStateRepository
+│       │
+│       ├── external/             ← Clientes de APIs externas
+│       │   ├── __init__.py
+│       │   ├── polymarket.py     ← CLOB client
+│       │   ├── noaa.py           ← NOAA weather API
+│       │   ├── openmeteo.py
+│       │   ├── binance.py        ← BTC price feed
+│       │   ├── telonex.py        ← On-chain data
+│       │   └── claude.py         ← Anthropic client wrapper
+│       │
+│       └── bot_runner/           ← Loops de trading (actual bot.py)
+│           ├── __init__.py
+│           ├── updown_runner.py  ← Loop 5m/15m phantom + real
+│           ├── btc_runner.py
+│           ├── weather_runner.py
+│           └── orchestrator.py   ← Arranca/para todos los runners
+│
+├── frontend/                     ← Frontend (actual index.html → componentes)
+│   ├── index.html                ← Shell HTML: solo estructura, sin lógica
+│   ├── js/
+│   │   ├── app.js                ← Entry point, router de tabs
+│   │   ├── api/
+│   │   │   ├── client.js         ← fetch wrapper con manejo de errores
+│   │   │   ├── bots.js           ← llamadas /api/bots/*
+│   │   │   ├── updown.js         ← llamadas /api/updown/*
+│   │   │   └── system.js         ← llamadas /api/system/*
+│   │   ├── components/
+│   │   │   ├── bot_brain.js      ← Panel cerebro (showBotBrain, renderBrain...)
+│   │   │   ├── bot_card.js       ← Tarjeta resumen de bot
+│   │   │   ├── chat.js           ← Chat principal + brain chat
+│   │   │   ├── phantom_panel.js  ← Tab phantom
+│   │   │   ├── strategies.js     ← Tab estrategias
+│   │   │   ├── backtest.js       ← Tab backtest
+│   │   │   └── system.js         ← Tab sistema (logs, params)
+│   │   └── utils/
+│   │       ├── format.js         ← pct(), escHtml(), formatDate()
+│   │       ├── dom.js            ← helpers DOM reutilizables
+│   │       └── sse.js            ← SSE client wrapper
+│   └── css/
+│       └── main.css              ← Variables CSS extraídas del HTML
+│
+├── tests/                        ← Tests organizados por capa
+│   ├── __init__.py
+│   ├── conftest.py               ← fixtures compartidos (db en memoria, mocks)
+│   ├── unit/                     ← Tests unitarios puros (sin I/O)
+│   │   ├── core/
+│   │   │   ├── test_models.py    ← validación de modelos Pydantic
+│   │   │   ├── test_strategies.py
+│   │   │   ├── test_learners.py
+│   │   │   └── test_optimizer.py
+│   │   └── services/
+│   │       ├── test_stats_service.py
+│   │       ├── test_param_service.py
+│   │       └── test_optimizer_service.py
+│   ├── integration/              ← Tests con I/O real (archivos tmp, repos)
+│   │   ├── test_repos.py         ← JsonRepository guarda/carga correctamente
+│   │   ├── test_trade_flow.py    ← trade completo desde signal → resolución
+│   │   └── test_optimizer_flow.py
+│   └── api/                      ← Tests de endpoints HTTP (TestClient)
+│       ├── test_bots_api.py
+│       ├── test_chat_api.py
+│       └── test_updown_api.py
+│
+├── data/                         ← Solo datos en runtime (gitignored)
+├── logs/                         ← Logs estructurados (gitignored)
+├── scripts/
+│   ├── migrate_json.py           ← Migración one-time JSON → nueva estructura
+│   └── validate_params.py        ← Script para verificar params.json integridad
+│
+├── pyproject.toml                ← Dependencias + config pytest + ruff
+├── .env.example
+└── version.py
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. DISEÑO DETALLADO POR CAPA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 MODELOS (app/core/models/)
+────────────────────────────────
+
+Todos los modelos usan Pydantic v2. La validación de unidades vive aquí,
+no en BotParams.update() ni en las rutas.
+
+  # params.py — ejemplo de cómo se previene el bug de 38.0 vs 0.38
+  class UpDownParams(BaseModel):
+      min_confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+      momentum_gate:  Annotated[float, Field(ge=0.0, le=1.0)]
+
+      @field_validator('min_confidence', 'momentum_gate', mode='before')
+      @classmethod
+      def normalize_fraction(cls, v):
+          """Si viene como porcentaje entero (ej 35), divide entre 100."""
+          if isinstance(v, (int, float)) and v > 1.0:
+              return v / 100.0
+          return v
+
+  # stats.py
+  class BotStats(BaseModel):
+      bot_id:    Literal['ud5m', 'ud15m', 'ph5m', 'ph15m']
+      total:     int = 0
+      wins:      int = 0
+      win_rate:  Optional[float] = None
+      recent_wr: Optional[float] = None
+
+      @computed_field
+      @property
+      def computed_win_rate(self) -> Optional[float]:
+          return self.wins / self.total if self.total > 0 else None
+
+Beneficio clave: una sola definición de "qué es un BotStats válido",
+usada tanto en el backend como en la validación del frontend via OpenAPI.
+
+4.2 REPOSITORIOS (app/infrastructure/repositories/)
+──────────────────────────────────────────────────────
+
+Abstracción completa de la persistencia. Ningún servicio sabe si los datos
+viven en JSON, SQLite o PostgreSQL.
+
+  # base.py
+  class BaseRepository(ABC):
+      @abstractmethod
+      def load(self) -> dict: ...
+      @abstractmethod
+      def save(self, data: dict) -> None: ...
+
+  # json_repo.py — implementación actual (JSON files)
+  class JsonRepository(BaseRepository):
+      def __init__(self, path: Path):
+          self._path = path
+
+      def load(self) -> dict:
+          if self._path.exists():
+              return json.loads(self._path.read_text())
+          return {}
+
+      def save(self, data: dict) -> None:
+          self._path.parent.mkdir(exist_ok=True)
+          self._path.write_text(json.dumps(data, indent=2))
+
+  # stats_repo.py — repositorio específico con métodos de dominio
+  class StatsRepository(JsonRepository):
+      def get_phantom_wr(self, interval: Literal['5', '15']) -> Optional[float]:
+          data = self.load()
+          ph = data.get(interval, {}).get('phantom', {})
+          total = ph.get('total', 0)
+          return ph['wins'] / total if total > 0 else None
+
+      def record_result(self, interval, won: bool, metadata: dict) -> None:
+          ...
+
+Cuando se quiera migrar a SQLite, solo se reescribe stats_repo.py.
+El resto del código no cambia nada.
+
+4.3 EVENT BUS (app/core/events/)
+──────────────────────────────────
+
+Desacopla la resolución de trades de sus efectos secundarios.
+Actualmente bot.py llama directamente a updown_learner, phantom_learner,
+vps_experiment, phantom_optimizer, risk_manager — 5+ imports distintos.
+
+  # bus.py
+  class EventBus:
+      _handlers: dict[type, list[Callable]] = defaultdict(list)
+
+      def subscribe(self, event_type: type, handler: Callable) -> None:
+          self._handlers[event_type].append(handler)
+
+      def publish(self, event) -> None:
+          for handler in self._handlers[type(event)]:
+              handler(event)
+
+  event_bus = EventBus()  # singleton
+
+  # trade_events.py
+  @dataclass
+  class PhantomTradeResolved:
+      interval: int
+      slug: str
+      won: bool
+      confidence: float
+      metadata: dict
+
+  # En updown_runner.py (actual bot.py):
+  # ANTES:
+  #   _rph(interval, pending, ph_won)       # updown_learner
+  #   _ph_rec(interval, {...}, ph_won)      # phantom_learner
+  #   _check_phantom_autorule()             # autorule
+  #   _opt_act(interval, ph_won)            # optimizer
+  #   _vps_res(slug, btc_end, ph_won)       # vps
+  #
+  # DESPUÉS:
+  #   event_bus.publish(PhantomTradeResolved(interval, slug, ph_won, conf, meta))
+  #
+  # Cada módulo se suscribe a su propio evento en su __init__:
+  #   event_bus.subscribe(PhantomTradeResolved, updown_learner.on_trade_resolved)
+  #   event_bus.subscribe(PhantomTradeResolved, phantom_optimizer.on_trade_resolved)
+  #   event_bus.subscribe(PhantomTradeResolved, vps_experiment.on_trade_resolved)
+
+Beneficio: añadir un nuevo efecto (ej. notificación Telegram) = 1 línea
+de subscribe(), sin tocar bot.py.
+
+4.4 SERVICIOS (app/services/)
+───────────────────────────────
+
+Orquestan casos de uso. No saben nada de HTTP ni de archivos.
+
+  # stats_service.py
+  class StatsService:
+      def __init__(self, stats_repo: StatsRepository):
+          self._repo = stats_repo
+
+      def get_bots_stats(self) -> dict[str, BotStats]:
+          """Fuente única de verdad para WR de los 4 bots."""
+          ...
+
+  # param_service.py
+  class ParamService:
+      def __init__(self, params_repo: ParamsRepository,
+                         history_repo: HistoryRepository):
+          ...
+
+      def update(self, bot_id: str, changes: dict, reason: str) -> UpdateResult:
+          """Valida, aplica, guarda en historial."""
+          ...
+
+  # advisor_service.py
+  class AdvisorService:
+      def __init__(self, claude_client: ClaudeClient,
+                         stats_service: StatsService,
+                         param_service: ParamService):
+          ...
+
+      async def stream_response(self, message: str, bot_id: Optional[str],
+                                 context: dict) -> AsyncIterator[str]:
+          """Sin lógica HTTP — solo lógica de conversación."""
+          ...
+
+4.5 RUTAS (app/api/routes/)
+─────────────────────────────
+
+Solo HTTP: parsear request → llamar servicio → serializar response.
+Sin lógica de negocio.
+
+  # bots.py
+  router = APIRouter(prefix="/api/bots", tags=["bots"])
+
+  @router.get("/stats", response_model=dict[str, BotStats])
+  async def get_stats(svc: StatsService = Depends(get_stats_service)):
+      return await svc.get_bots_stats()
+
+  @router.get("/optimizer-status")
+  async def optimizer_status(svc: OptimizerService = Depends(get_optimizer_service)):
+      return await svc.get_status_all()
+
+  # chat.py
+  router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+  @router.post("/")
+  async def chat(req: ChatRequest,
+                 svc: AdvisorService = Depends(get_advisor_service)):
+      return StreamingResponse(svc.stream_response(req.message, req.bot_id, ...))
+
+4.6 MIDDLEWARE (app/api/middleware/)
+──────────────────────────────────────
+
+  # error_handler.py — convierte CUALQUIER excepción en JSON válido
+  # (elimina el bug "Internal Server Error is not valid JSON" que había antes)
+  @app.exception_handler(Exception)
+  async def global_handler(request, exc):
+      return JSONResponse({"error": str(exc), "type": type(exc).__name__}, 500)
+
+  # logging.py — log estructurado de cada request
+  # cors.py — CORS centralizado (ahora está inline en api.py)
+
+4.7 FRONTEND (frontend/)
+─────────────────────────
+
+El index.html de 7 763 líneas se divide en componentes JS.
+No requiere framework — sigue siendo Vanilla JS, solo organizado.
+
+  # app.js — punto de entrada
+  import { initBots }       from './components/bot_card.js';
+  import { initBrainPanel } from './components/bot_brain.js';
+  import { initChat }       from './components/chat.js';
+
+  window.addEventListener('DOMContentLoaded', () => {
+    initBots();
+    initBrainPanel();
+    initChat();
+  });
+
+  # api/client.js — wrapper reutilizable (elimina el try/catch de resp.json()
+  #                 disperso en 20 funciones distintas)
+  export async function apiFetch(url, options = {}) {
+    const resp = await fetch(url, options);
+    if (!resp.ok) {
+      let err;
+      try { err = await resp.json(); }
+      catch { err = { error: await resp.text() }; }
+      throw new ApiError(resp.status, err);
+    }
+    return resp.json();
+  }
+
+  # utils/format.js — pct(), escHtml(), etc. en un solo lugar
+  export const pct = v => v == null ? '—' : (v * 100).toFixed(0) + '%';
+  export const escHtml = s => s.replace(/&/g,'&amp;')...
+
+4.8 TESTING (tests/)
+──────────────────────
+
+  Tres niveles:
+
+  UNIT (sin I/O):
+    - Testean modelos, estrategias, learners, optimizer
+    - Usan mocks/fakes para repos
+    - Deben correr en < 1 segundo total
+    - Ejemplo: test que updown_15m_min_confidence=38 → se normaliza a 0.38
+
+  INTEGRATION (con I/O en tmp):
+    - conftest.py provee tmp_path con repos reales en directorio temporal
+    - Testean flujo completo: signal → trade → resolución → stats actualizados
+    - Sin servidor HTTP
+
+  API (TestClient):
+    - Montan la app FastAPI con dependencias inyectadas reemplazadas por mocks
+    - Testean status codes, schemas de respuesta, SSE format
+    - Sin estado real de producción
+
+  # conftest.py — ejemplo
+  @pytest.fixture
+  def fake_stats_repo(tmp_path):
+      return StatsRepository(tmp_path / "updown_stats.json")
+
+  @pytest.fixture
+  def stats_service(fake_stats_repo):
+      return StatsService(fake_stats_repo)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. PLAN DE MIGRACIÓN (sin big bang — incremental)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La migración se hace en fases. En cada fase el bot sigue funcionando.
+Nunca hay un corte total.
+
+FASE A — Fundamentos (no rompe nada, solo añade estructura)
+  Duración estimada: 1 sesión de trabajo
+  1. Crear carpeta app/ con __init__.py vacíos
+  2. Crear app/core/models/ con BotParams, BotStats, Trade en Pydantic v2
+  3. Crear app/infrastructure/repositories/ con JsonRepository genérico
+     y StatsRepository, ParamsRepository que envuelven los JSON actuales
+  4. Mover validadores de fracción de config.py a los modelos Pydantic
+  5. Tests: unit/core/test_models.py verifica normalizaciones
+  Resultado: nueva estructura existe en paralelo, código viejo no tocado
+
+FASE B — Servicios (extrae lógica de api.py)
+  Duración estimada: 2 sesiones
+  1. Crear StatsService y que /api/bots/stats lo use
+  2. Crear ParamService y que /api/params lo use
+  3. Crear AdvisorService con la lógica de chat extraída de api.py
+  4. api.py pierde ~800 líneas, solo quedan rutas
+  5. Tests: integration/test_stats_service.py, test_param_service.py
+  Resultado: api.py < 1 200 líneas, toda lógica testeable sin HTTP
+
+FASE C — Event Bus (desacopla bot.py)
+  Duración estimada: 1 sesión
+  1. Crear EventBus y PhantomTradeResolved
+  2. En bot.py: reemplazar los 5 imports directos en resolución phantom
+     por event_bus.publish(PhantomTradeResolved(...))
+  3. Cada módulo (learner, optimizer, vps) se suscribe en su __init__
+  4. bot.py pierde ~400 líneas de "efectos secundarios"
+  5. Tests: unit/services/test_trade_flow.py con bus de test
+  Resultado: bot.py < 1 800 líneas, añadir efectos = 1 línea
+
+FASE D — Repositories completos (desacopla persistencia)
+  Duración estimada: 1 sesión
+  1. Todos los open()/json.load() del proyecto → vía repositorios
+  2. updown_learner, phantom_optimizer, risk_manager, vps_experiment
+     reciben su repo por constructor (no hardcodean paths)
+  3. Tests de integración usan tmp_path → cero contaminación de datos reales
+  Resultado: migrar a SQLite luego = solo reescribir json_repo.py
+
+FASE E — Frontend (divide index.html)
+  Duración estimada: 2 sesiones
+  1. Extraer utils (format.js, dom.js, api/client.js)
+  2. Extraer componente bot_brain.js (el más grande y más cambiado)
+  3. Extraer chat.js
+  4. Extraer components restantes uno por uno
+  5. index.html queda como shell de < 200 líneas
+  Resultado: añadir feature UI = tocar 1 archivo JS, no index.html completo
+
+FASE F — Runners y Orchestrator (limpia bot.py)
+  Duración estimada: 1 sesión
+  1. Extraer updown_runner.py, btc_runner.py, weather_runner.py de bot.py
+  2. Crear orchestrator.py que los arranca/para
+  3. bot.py desaparece o queda como stub de compatibilidad
+  Resultado: bot.py reemplazado por runners < 400 líneas cada uno
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. NUEVAS FEATURES QUE SE DESBLOQUEAN CON ESTA ARQUITECTURA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Con la arquitectura actual, implementar estas features costaría semanas
+y generaría más deuda. Con la nueva arquitectura propuesta, costarían horas:
+
+  1. NOTIFICACIONES (Telegram / email)
+     → Nuevo handler que se suscribe a PhantomTradeResolved, RealTradeExecuted
+     → No toca bot.py ni api.py
+
+  2. MIGRACIÓN A SQLITE
+     → Solo reescribir JsonRepository → SqliteRepository
+     → El resto del sistema no cambia
+
+  3. MÚLTIPLES ESTRATEGIAS EN PARALELO (A/B testing de presets)
+     → StrategyRegistry permite instanciar dos UpDownStrategy con params distintos
+     → OptimizerService los compara por BotStats.win_rate
+
+  4. AUTENTICACIÓN / MULTI-USUARIO
+     → Middleware de auth en app/api/middleware/auth.py
+     → Los servicios reciben user_id, los repos particionan por usuario
+
+  5. API VERSIONING
+     → /api/v1/ y /api/v2/ como routers separados
+     → Servicios compartidos entre versiones
+
+  6. MÉTRICAS / OBSERVABILIDAD
+     → Middleware que mide duración de requests y la publica al EventBus
+     → Sin tocar lógica de negocio
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. RESUMEN EJECUTIVO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Problema central:
+    La plataforma creció 9 fases con arquitectura "flat file". Cada feature
+    nueva toca los mismos 3 archivos gigantes. Los bugs se repiten porque
+    la misma lógica existe en 3 lugares distintos.
+
+  Solución:
+    Arquitectura en capas (Clean Architecture light) con:
+    - Modelos Pydantic v2 como única fuente de verdad de validación
+    - Repositorios que abstraen toda persistencia
+    - Servicios que concentran la lógica de negocio
+    - Event Bus que desacopla efectos secundarios
+    - Rutas HTTP que solo parsean y delegan
+    - Frontend dividido en componentes JS reutilizables
+    - Tests en 3 niveles (unit / integration / api)
+
+  Método de migración:
+    Incremental en 6 fases (A→F). El bot nunca se detiene.
+    Cada fase produce valor inmediato y tests que lo verifican.
+    Sin big bang. Sin riesgo de romper producción.
+
+  Archivos actuales → nuevo destino:
+    api.py         → app/api/routes/* + app/services/*
+    bot.py         → app/infrastructure/bot_runner/* + eventos
+    config.py      → app/core/models/params.py + app/infrastructure/repositories/
+    updown_learner → app/core/learners/ + app/infrastructure/repositories/
+    phantom_opt.   → app/core/optimizer/ + app/services/optimizer_service.py
+    index.html     → frontend/index.html (shell) + frontend/js/components/*
+    tests/         → tests/unit/ + tests/integration/ + tests/api/
+
+================================================================================
+  FIN DEL DOCUMENTO — pendiente de aprobación antes de implementar
+================================================================================
