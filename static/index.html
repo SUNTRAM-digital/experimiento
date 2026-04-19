@@ -1243,6 +1243,8 @@
                 <th style="white-space:nowrap">Lado<span class="help-btn" onclick="showHelp('col_lado',event)">?</span></th>
                 <th style="white-space:nowrap">Conf%<span class="help-btn" onclick="showHelp('col_conf',event)">?</span></th>
                 <th style="white-space:nowrap">Tier<span class="help-btn" onclick="showHelp('col_tier',event)">?</span></th>
+                <th style="white-space:nowrap">BTC Inicio</th>
+                <th style="white-space:nowrap">BTC Cierre</th>
                 <th style="white-space:nowrap">Size VPS<span class="help-btn" onclick="showHelp('col_size_vps',event)">?</span></th>
                 <th style="white-space:nowrap">Fixed<span class="help-btn" onclick="showHelp('col_fixed',event)">?</span></th>
                 <th style="white-space:nowrap">Resultado<span class="help-btn" onclick="showHelp('col_resultado',event)">?</span></th>
@@ -1250,7 +1252,7 @@
                 <th style="white-space:nowrap">P&L Fixed<span class="help-btn" onclick="showHelp('col_pnl_fixed',event)">?</span></th>
                 <th style="white-space:nowrap">Δ<span class="help-btn" onclick="showHelp('col_delta',event)">?</span></th>
               </tr></thead>
-              <tbody id="tbl-vps-trades"><tr><td colspan="11" class="empty">Sin datos aún</td></tr></tbody>
+              <tbody id="tbl-vps-trades"><tr><td colspan="13" class="empty">Sin datos aún</td></tr></tbody>
             </table>
             <div id="vps-trades-loader" style="display:none;text-align:center;padding:8px;font-size:.72rem;color:var(--muted)">Cargando más...</div>
           </div>
@@ -1606,13 +1608,15 @@
                   <th style="padding:6px 8px">Lado</th>
                   <th style="padding:6px 8px">Conf%</th>
                   <th style="padding:6px 8px">Tier</th>
+                  <th style="padding:6px 8px">BTC Inicio</th>
+                  <th style="padding:6px 8px">BTC Cierre</th>
                   <th style="padding:6px 8px">Dinero</th>
                   <th style="padding:6px 8px">Resultado</th>
                   <th style="padding:6px 8px">PnL</th>
                 </tr>
               </thead>
               <tbody id="ph-table-body">
-                <tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">Cargando…</td></tr>
+                <tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted)">Cargando…</td></tr>
               </tbody>
             </table>
           </div>
@@ -6448,12 +6452,30 @@ function _vpsTradeRow(t) {
   const diffColor = t.pnl_difference != null ? (t.pnl_difference >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
   const tc = ({aggressive:'#22c55e',high:'#84cc16',moderate:'#f59e0b',low_moderate:'#f97316',minimal:'#ef4444'})[t.confidence_tier] || 'var(--muted)';
   const ts = (t.timestamp || '').substring(0,19).replace('T',' ');
+
+  // BTC inicio / cierre — usar precios Chainlink (Polymarket) si disponibles, sino Binance
+  const bs = t.btc_price_to_beat  ?? t.btc_start_price;
+  const be = t.btc_final_price    ?? t.btc_end_price;
+  let btcStartCell = bs != null ? `$${bs.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+  let btcEndCell   = '—';
+  if (be != null && bs != null) {
+    const delta  = be - bs;
+    const pct    = (delta / bs * 100).toFixed(3);
+    const dir    = delta >= 0 ? '▲' : '▼';
+    const color  = delta >= 0 ? 'var(--green)' : 'var(--red)';
+    btcEndCell = `<span style="color:${color}">${dir} $${be.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} <span style="font-size:.65rem">(${delta>=0?'+':''}${pct}%)</span></span>`;
+  } else if (be != null) {
+    btcEndCell = `$${be.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  }
+
   return `<tr>
     <td style="white-space:nowrap;font-size:.68rem">${ts}</td>
     <td>${t.market||'—'}</td>
     <td style="color:${t.signal==='UP'?'var(--green)':'var(--red)'};font-weight:600">${t.signal||'—'}</td>
     <td>${t.confidence_pct ?? '—'}%</td>
     <td style="color:${tc};font-size:.68rem">${t.confidence_tier||'—'}</td>
+    <td style="font-family:monospace;font-size:.68rem;color:var(--muted)">${btcStartCell}</td>
+    <td style="font-family:monospace;font-size:.68rem">${btcEndCell}</td>
     <td style="color:#a78bfa;font-weight:600">$${t.position_size_vps ?? '—'}</td>
     <td style="color:var(--muted)">$${t.position_size_fixed ?? '—'}</td>
     <td style="color:${resColor};font-weight:600">${t.result||'PEND.'}</td>
@@ -6484,7 +6506,7 @@ async function _loadVpsTradesPage() {
     const tbody = document.getElementById('tbl-vps-trades');
     if (tbody) {
       if (_vpsTradesPage === 0 && !d.trades?.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty">Sin trades phantom aún</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="empty">Sin trades phantom aún</td></tr>';
       } else {
         tbody.insertAdjacentHTML('beforeend', (d.trades || []).map(_vpsTradeRow).join(''));
       }
@@ -7766,7 +7788,7 @@ async function loadPhantomTrades(page = 0) {
 
     const tbody = document.getElementById('ph-table-body');
     if (!trades.length) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">Sin operaciones registradas</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted)">Sin operaciones registradas</td></tr>';
     } else {
       tbody.innerHTML = trades.map(t => {
         const res = t.result || 'PENDING';
@@ -7777,6 +7799,18 @@ async function loadPhantomTrades(page = 0) {
           ? '<span style="background:#451a03;color:#fbbf24;border-radius:4px;padding:1px 5px;font-size:.7rem">REAL</span>'
           : '<span style="background:#1f2937;color:#9ca3af;border-radius:4px;padding:1px 5px;font-size:.7rem">FICTICIO</span>';
         const ts = t.timestamp ? t.timestamp.replace('T',' ').slice(0,16) : '—';
+        // BTC inicio / cierre — usar precios Chainlink (Polymarket) si disponibles, sino Binance
+        const bs = t.btc_price_to_beat ?? t.btc_start_price;
+        const be = t.btc_final_price   ?? t.btc_end_price;
+        const fmtBtc = v => v != null ? '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+        let btcEndCell = '—';
+        if (be != null && bs != null) {
+          const delta = be - bs;
+          const pct   = (delta / bs * 100).toFixed(3);
+          const dir   = delta >= 0 ? '▲' : '▼';
+          const col   = delta >= 0 ? 'var(--green)' : '#f87171';
+          btcEndCell  = `<span style="color:${col}">${dir} ${fmtBtc(be)} <span style="font-size:.65rem">(${delta>=0?'+':''}${pct}%)</span></span>`;
+        } else if (be != null) { btcEndCell = fmtBtc(be); }
         return `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:5px 8px;color:var(--muted)">${t.trade_id}</td>
           <td style="padding:5px 8px;font-family:monospace;font-size:.72rem">${ts}</td>
@@ -7784,6 +7818,8 @@ async function loadPhantomTrades(page = 0) {
           <td style="padding:5px 8px;font-weight:600;color:${t.signal==='UP'?'var(--green)':'#f87171'}">${t.signal||'—'}</td>
           <td style="padding:5px 8px">${(t.confidence_pct||0).toFixed(0)}%</td>
           <td style="padding:5px 8px;color:var(--muted)">${t.confidence_tier||'—'}</td>
+          <td style="padding:5px 8px;font-family:monospace;font-size:.7rem;color:var(--muted)">${fmtBtc(bs)}</td>
+          <td style="padding:5px 8px;font-family:monospace;font-size:.7rem">${btcEndCell}</td>
           <td style="padding:5px 8px">${moneyBadge}</td>
           <td style="padding:5px 8px;font-weight:600;color:${resColor}">${res}</td>
           <td style="padding:5px 8px;font-family:monospace;color:${pnlColor}">${pnl}</td>

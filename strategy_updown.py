@@ -697,6 +697,20 @@ def evaluate_updown_market(
         if ta_cons < 0.25 and displacement < _disp_lo_15:
             combined = max(-1.0, min(1.0, combined * 0.65))
 
+        # ── Penalización por momentum extremo (data-driven, 652 trades) ─────
+        # WR por rango de |momentum|:
+        #   <0.05  → WR=55.3% (mejor zona: mercado sin dirección → señal limpia)
+        #   0.05-0.10 → WR=48.2%
+        #   0.10-0.15 → WR=44.2% (zona conflictiva)
+        #   0.15-0.20 → WR=36.4% (peor zona: movimiento a medio camino)
+        #   >0.20  → WR=50.3% (breakeven: movimiento ya consumado, precio ajustado)
+        # La zona 0.10-0.20 es la más peligrosa: BTC en movimiento pero sin definir.
+        mom_magnitude = abs(sig.get("momentum", 0.0))
+        if 0.15 <= mom_magnitude <= 0.20:
+            combined = max(-1.0, min(1.0, combined * 0.50))   # -50%: peor zona (WR=36%)
+        elif 0.10 <= mom_magnitude < 0.15:
+            combined = max(-1.0, min(1.0, combined * 0.70))   # -30%: zona mala (WR=44%)
+
         sig["combined"]     = round(combined, 4)
         sig["direction"]    = "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL")
         sig["confidence"]   = round(abs(combined) * 100, 1)
@@ -708,7 +722,21 @@ def evaluate_updown_market(
         sig["combined"]  = combined
         sig["direction"] = "UP" if combined > 0 else ("DOWN" if combined < 0 else "NEUTRAL")
 
-    # ── PASO 3: Gate de momentum ──────────────────────────────────────────────
+    # ── PASO 3a: Filtro horario Asia ─────────────────────────────────────────
+    # Data histórica (652 trades): horas Asia (00-07h UTC) WR=43.2% vs
+    # Americas (13-22h UTC) WR=55.8%. Los indicadores TA son menos confiables
+    # con baja liquidez. Solo bloquear si la señal no es genuinamente fuerte.
+    if interval_min >= 15:
+        from datetime import datetime as _dt, timezone as _tz
+        _hour_utc = _dt.now(_tz.utc).hour
+        if 0 <= _hour_utc <= 6:
+            if abs(combined) < 0.45:
+                return None, (
+                    f"Filtro Asia: hora {_hour_utc:02d}h UTC — WR histórico 43% en baja liquidez "
+                    f"(señal {abs(combined)*100:.1f}% < 45% umbral Asia)"
+                )
+
+    # ── PASO 3b: Gate de momentum ─────────────────────────────────────────────
     # En 5m usamos mean-reversion por lo que el gate de momentum estándar no
     # aplica (ya invertimos el momentum en el combined). Solo aplicamos gate en 15m.
     #
@@ -782,6 +810,18 @@ def evaluate_updown_market(
         return None, "Learner: lado DOWN bloqueado por bajo win rate histórico"
     if side == "UP" and adaptive_params.get("block_up"):
         return None, "Learner: lado UP bloqueado por bajo win rate histórico"
+
+    # ── Gate de sesgo DOWN (data-driven: 652 trades) ─────────────────────────
+    # Histórico: UP=53% WR vs DOWN=43% WR en 15m (diferencia de 10pp).
+    # Los indicadores TA tienen sesgo alcista estructural; las señales DOWN
+    # son intrínsecamente más débiles. Requerir mayor convicción para DOWN.
+    if side == "DOWN" and interval_min >= 15:
+        _down_threshold = min_confidence * 1.35  # 35% más exigente que UP
+        if confidence < _down_threshold:
+            return None, (
+                f"Gate DOWN: confianza {confidence*100:.1f}% < umbral DOWN "
+                f"{_down_threshold*100:.1f}% (sesgo bajista históricamente -10pp vs UP)"
+            )
 
     # ── Gate de entrada tardía con precio extremo ────────────────────────────
     # Si el mercado tiene <2min restantes Y el precio del lado elegido ya está

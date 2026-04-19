@@ -1800,6 +1800,11 @@ async def _scan_updown(interval_minutes: int):
                 "ta_rsi":          _sig.get("rsi"),
                 "window_momentum": _sig["momentum"],
                 "elapsed_minutes": market.get("elapsed_minutes", 0),
+                # Token IDs de Polymarket — usados para leer el resultado real del CLOB
+                "up_token":          market.get("up_token"),
+                "down_token":        market.get("down_token"),
+                # Precio referencia Chainlink al inicio de la ventana
+                "btc_price_to_beat": market.get("btc_price_to_beat"),
             }
             _updown_phantom_slugs.add(slug)
             _log(
@@ -1889,6 +1894,9 @@ async def _scan_updown(interval_minutes: int):
                     },
                     entry_price=opp["entry_price"] if opp else 0.50,
                     used_real_money=_ph_used_real,
+                    up_token=market.get("up_token"),
+                    down_token=market.get("down_token"),
+                    btc_price_to_beat=market.get("btc_price_to_beat"),
                 )
             except Exception as _vps_err:
                 _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
@@ -2428,37 +2436,65 @@ async def _resolve_pending_updown_outcomes():
         interval  = pending.get("interval", 5)
         slug      = pending.get("slug", "")
 
-        # Obtener precio BTC al cierre de la ventana
-        btc_end = await _get_btc_price_at_ts(end_ts)
-        if not btc_end:
-            # Fallback: usar precio live si han pasado más de 30s desde el cierre
-            if now_ts > end_ts + 30:
-                btc_end = state.btc_price or await get_btc_price()
-                if btc_end:
-                    _log("INFO", f"UpDown | Usando precio live ${btc_end:.0f} para resolver {slug} (kline no disponible)")
-                else:
-                    _log("WARN", f"UpDown | Sin precio BTC para resolver {slug}")
-                    if now_ts > end_ts + interval * 60 * 2:
-                        resolved_tokens.append(token_id)  # descartar después de 2 ventanas
-                    continue
+        # ── Fuente primaria: precio del token en CLOB de Polymarket ─────────
+        # Más confiable que recalcular desde BTC: si el token vale ~$1.00 ganamos,
+        # si vale ~$0.00 perdimos. Elimina discrepancias con el oracle Chainlink de Poly.
+        token_price = None
+        if now_ts > end_ts + 30:  # solo consultar tras suficiente tiempo post-cierre
+            try:
+                token_price = await get_live_price(token_id)
+            except Exception:
+                pass
+
+        if token_price is not None:
+            if token_price >= 0.95:
+                won = True
+                resolution_src = f"token=${token_price:.3f} (Polymarket oracle)"
+            elif token_price <= 0.05:
+                won = False
+                resolution_src = f"token=${token_price:.3f} (Polymarket oracle)"
             else:
-                continue  # esperar más tiempo
+                # Precio intermedio: mercado aún no resolvió del todo, esperar
+                if now_ts < end_ts + interval * 60:
+                    continue  # esperar más
+                # Si ya pasó demasiado tiempo, fallback a BTC
+                token_price = None
 
-        if not (btc_start and btc_start > 0):
-            # Sin precio de inicio no podemos determinar WIN/LOSS — contar como LOSS conservadoramente
-            _log("WARN", f"UpDown | Sin btc_start para {slug} — contando como LOSS")
-            _update_updown_loss_streak(interval, False, None)
-            resolved_tokens.append(token_id)
-            continue
+        if token_price is None:
+            # ── Fallback: comparar precios BTC ───────────────────────────────
+            btc_end = await _get_btc_price_at_ts(end_ts)
+            if not btc_end:
+                if now_ts > end_ts + 30:
+                    btc_end = state.btc_price or await get_btc_price()
+                    if btc_end:
+                        _log("INFO", f"UpDown | Usando precio live ${btc_end:.0f} para resolver {slug} (kline no disponible)")
+                    else:
+                        _log("WARN", f"UpDown | Sin precio BTC para resolver {slug}")
+                        if now_ts > end_ts + interval * 60 * 2:
+                            resolved_tokens.append(token_id)
+                        continue
+                else:
+                    continue
 
-        btc_went_up = btc_end >= btc_start
-        won = (side == "UP") == btc_went_up
-        direction = "SUBIO" if btc_went_up else "BAJO"
-        _log(
-            "INFO" if won else "WARN",
-            f"UpDown {interval}m | {'WIN ✓' if won else 'LOSS ✗'} — BTC {direction} "
-            f"${btc_start:.0f}→${btc_end:.0f} | apostamos {side}",
-        )
+            if not (btc_start and btc_start > 0):
+                _log("WARN", f"UpDown | Sin btc_start para {slug} — contando como LOSS")
+                _update_updown_loss_streak(interval, False, None)
+                resolved_tokens.append(token_id)
+                continue
+
+            btc_went_up = btc_end >= btc_start
+            won = (side == "UP") == btc_went_up
+            direction = "SUBIO" if btc_went_up else "BAJO"
+            resolution_src = f"BTC ${btc_start:.0f}→${btc_end:.0f} (fallback)"
+            _log(
+                "INFO" if won else "WARN",
+                f"UpDown {interval}m | {'WIN ✓' if won else 'LOSS ✗'} — BTC {direction} | {resolution_src} | apostamos {side}",
+            )
+        else:
+            _log(
+                "INFO" if won else "WARN",
+                f"UpDown {interval}m | {'WIN ✓' if won else 'LOSS ✗'} — {resolution_src} | apostamos {side}",
+            )
 
         _update_updown_loss_streak(interval, won, None)
         resolved_tokens.append(token_id)
@@ -2479,31 +2515,58 @@ async def _resolve_pending_updown_outcomes():
         side      = pending.get("side", "UP")
         btc_start = pending.get("btc_start", 0.0)
         interval  = pending.get("interval", 5)
+        up_token   = pending.get("up_token")
+        down_token = pending.get("down_token")
 
-        btc_end = await _get_btc_price_at_ts(end_ts)
-        if not btc_end:
-            if now_ts > end_ts + 30:
-                btc_end = state.btc_price or await get_btc_price()
-                if not btc_end:
-                    if now_ts > end_ts + interval * 60 * 2:
-                        resolved_phantoms.append(ph_slug)
+        # ── Fuente primaria: token UP en CLOB de Polymarket ─────────────────
+        # Después del cierre, UP token ~$1.00 = UP ganó, ~$0.00 = DOWN ganó.
+        # Es la misma fuente que Polymarket usa para resolver — elimina
+        # discrepancias con nuestros precios BTC de múltiples exchanges.
+        ph_won = None
+        btc_end = None
+        resolution_src = "btc_prices"
+
+        if up_token and now_ts > end_ts + 30:
+            try:
+                up_price = await get_live_price(up_token)
+                if up_price is not None:
+                    if up_price >= 0.95:
+                        ph_won = True
+                        resolution_src = f"polymarket_clob (UP token=${up_price:.3f})"
+                    elif up_price <= 0.05:
+                        ph_won = False
+                        resolution_src = f"polymarket_clob (UP token=${up_price:.3f})"
+                    # else: precio intermedio, mercado aún resolviendo — esperar
+            except Exception:
+                pass
+
+        # ── Fallback: comparar precios BTC ───────────────────────────────────
+        if ph_won is None:
+            btc_end = await _get_btc_price_at_ts(end_ts)
+            if not btc_end:
+                if now_ts > end_ts + 30:
+                    btc_end = state.btc_price or await get_btc_price()
+                    if not btc_end:
+                        if now_ts > end_ts + interval * 60 * 2:
+                            resolved_phantoms.append(ph_slug)
+                        continue
+                else:
                     continue
-            else:
+
+            if not (btc_start and btc_start > 0):
+                resolved_phantoms.append(ph_slug)
                 continue
 
-        if not (btc_start and btc_start > 0):
-            resolved_phantoms.append(ph_slug)
-            continue
+            btc_went_up = btc_end >= btc_start
+            ph_won      = (side == "UP") == btc_went_up
+            resolution_src = f"btc_prices (${btc_start:.0f}→${btc_end:.0f})"
 
-        btc_went_up = btc_end >= btc_start
-        ph_won      = (side == "UP") == btc_went_up
-        direction   = "SUBIO" if btc_went_up else "BAJO"
-
+        direction = "SUBIO" if (btc_end and btc_end >= btc_start) else ("BAJO" if btc_end else "?")
+        btc_info  = f"${btc_start:.0f}→${btc_end:.0f}" if btc_end else f"inicio=${btc_start:.0f}"
         _log(
             "INFO" if ph_won else "WARN",
             f"UpDown {interval}m | [PHANTOM] {'✓ HUBIERA GANADO' if ph_won else '✗ HUBIERA PERDIDO'} — "
-            f"apostaba {side} | BTC {direction} ${btc_start:.0f}→${btc_end:.0f} "
-            f"({(btc_end-btc_start)/btc_start*100:+.3f}%) | "
+            f"apostaba {side} | {btc_info} | src={resolution_src} | "
             f"conf={pending.get('confidence',0):.0f}% | skip={pending.get('skip_reason','?')[:40]}",
         )
 
@@ -2554,9 +2617,32 @@ async def _resolve_pending_updown_outcomes():
                 _log("INFO", f"[PHANTOM-REAL] LOSS — ${_ph_real_size} perdidos del bucket (cash libre sin cambio)")
 
         # ── Experimento VPS-Confianza: resolver trade ────────────────────────
+        # Si resolvimos por CLOB (btc_end=None), intentar obtener precio de cierre
+        # solo para el registro visual — no afecta el resultado ya determinado.
+        if btc_end is None:
+            try:
+                btc_end = await _get_btc_price_at_ts(end_ts) or state.btc_price or 0.0
+            except Exception:
+                btc_end = 0.0
+        # Obtener precio de cierre Chainlink desde eventMetadata (para display correcto)
+        _btc_final_price = None
+        try:
+            import httpx as _hx
+            _gamma_url = f"https://gamma-api.polymarket.com/events?slug={ph_slug}"
+            async with _hx.AsyncClient() as _hcli:
+                _gr = await _hcli.get(_gamma_url, timeout=6)
+                if _gr.status_code == 200:
+                    _gd = _gr.json()
+                    if _gd:
+                        _meta = _gd[0].get("eventMetadata") or {}
+                        _fp = _meta.get("finalPrice")
+                        if _fp is not None:
+                            _btc_final_price = float(_fp)
+        except Exception:
+            pass
         try:
             from vps_experiment import resolve_phantom_vps as _vps_res
-            _vps_res(slug=ph_slug, btc_end=btc_end, won=ph_won)
+            _vps_res(slug=ph_slug, btc_end=btc_end or 0.0, won=ph_won, btc_final_price=_btc_final_price)
         except Exception as _vps_err:
             _log("WARN", f"[VPS] Error resolviendo phantom: {_vps_err}")
 

@@ -341,6 +341,10 @@ async def fetch_updown_market(interval_minutes: int) -> Optional[dict]:
                 f"elapsed={elapsed_minutes:.1f}min remaining={minutes_to_close:.1f}min"
             )
 
+            # Precio referencia Chainlink al inicio de la ventana (si disponible)
+            event_meta    = event.get("eventMetadata") or {}
+            price_to_beat = event_meta.get("priceToBeat")
+
             result = {
                 "slug":              event_slug,
                 "poly_url":          poly_url,
@@ -361,6 +365,8 @@ async def fetch_updown_market(interval_minutes: int) -> Optional[dict]:
                 "best_bid":    best_bid,
                 "best_ask":    best_ask,
                 "spread_pct":  round(spread, 4),
+                # Precio referencia Chainlink (precio a superar, según Polymarket)
+                "btc_price_to_beat": round(float(price_to_beat), 2) if price_to_beat else None,
                 # Calidad
                 "liquidity":   float(event.get("liquidity") or m.get("liquidityNum") or 0),
                 "volume_24h":  float(event.get("volume24hr") or 0),
