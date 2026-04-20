@@ -1115,149 +1115,6 @@
       </div>
       <div id="updown-learn-panel" style="margin-top:12px;padding:0 4px"></div>
 
-      <!-- ── Experimento VPS-Confianza ── -->
-      <div style="background:var(--bg2);border:1px solid #7c3aed44;border-radius:8px;padding:14px;margin-top:12px" id="vps-experiment-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:.72rem;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px;font-weight:700">
-            🧪 Experimento VPS-Confianza <span style="font-weight:400;color:var(--muted)">(phantom · sin dinero real)</span><span class="help-btn" onclick="showHelp('vps_experiment',event)">?</span>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button onclick="loadVpsExperiment()" style="font-size:.7rem;background:transparent;border:1px solid #7c3aed;color:#a78bfa;border-radius:4px;padding:2px 8px;cursor:pointer">↻ Actualizar</button>
-            <button onclick="requestVpsDailySummary()" style="font-size:.7rem;background:transparent;border:1px solid #374151;color:#6b7280;border-radius:4px;padding:2px 8px;cursor:pointer">Resumen hoy</button>
-          </div>
-        </div>
-
-        <!-- Status bar -->
-        <div id="vps-status-bar" style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Cargando...</div>
-
-        <!-- Stake dinámico por confianza (item 29) -->
-        <div style="background:var(--bg3);border:1px solid #4b5563;border-radius:6px;padding:10px 12px;margin-bottom:10px">
-          <div style="font-size:.68rem;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">
-            Stake Dinámico por Confianza<span class="help-btn" onclick="showHelp('stake_dinamico',event)">?</span>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-            <div>
-              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Min stake (USDC)</div>
-              <input id="ud-stake-min" type="number" min="1" max="100" step="0.5" value="3"
-                style="width:72px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
-                title="Stake mínimo cuando confianza ≤ umbral mínimo">
-            </div>
-            <div>
-              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Max stake (USDC)</div>
-              <input id="ud-stake-max" type="number" min="1" max="100" step="0.5" value="15"
-                style="width:72px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
-                title="Stake máximo cuando confianza ≥ umbral máximo">
-            </div>
-            <div>
-              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Conf. mín (%)</div>
-              <input id="ud-stake-conf-min" type="number" min="0" max="99" step="1" value="20"
-                style="width:60px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
-                title="% de confianza que mapea al stake mínimo">
-            </div>
-            <div>
-              <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Conf. máx (%)</div>
-              <input id="ud-stake-conf-max" type="number" min="1" max="100" step="1" value="65"
-                style="width:60px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
-                title="% de confianza que mapea al stake máximo">
-            </div>
-            <button onclick="saveStakeDinamico()" style="padding:5px 12px;background:#7c3aed;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">
-              Guardar
-            </button>
-          </div>
-          <div id="stake-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
-        </div>
-
-        <!-- Señal de desplazamiento 5m (item 1) -->
-        <div style="background:var(--bg3);border:1px solid #4b5563;border-radius:6px;padding:10px 12px;margin-bottom:10px">
-          <div style="font-size:.68rem;color:#f59e0b;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">
-            Estrategia 5m — Desplazamiento BTC<span class="help-btn" onclick="showHelp('estrategia_5m',event)">?</span>
-          </div>
-          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px">
-            Umbral (% de movimiento BTC en la ventana) que determina si el bot sigue la tendencia o hace mean-reversion
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-            <div>
-              <div style="font-size:.68rem;color:#4ade80;margin-bottom:3px">Umbral alto → seguir tendencia (%)</div>
-              <input id="ud-disp-hi" type="number" min="0.01" max="5" step="0.01" value="0.20"
-                style="width:80px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
-                title="Si BTC se movió más de este % desde el inicio de la ventana → el bot sigue la tendencia (no invierte)">
-            </div>
-            <div>
-              <div style="font-size:.68rem;color:#fbbf24;margin-bottom:3px">Umbral bajo → neutro (%)</div>
-              <input id="ud-disp-lo" type="number" min="0.01" max="5" step="0.01" value="0.10"
-                style="width:80px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
-                title="Entre este % y el umbral alto → señal neutral. Por debajo → mean-reversion">
-            </div>
-            <button onclick="saveDisplacementParams()" style="padding:5px 12px;background:#f59e0b;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">
-              Guardar
-            </button>
-          </div>
-          <div id="disp-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
-        </div>
-
-        <!-- Saldo virtual -->
-        <div id="vps-virtual-balance" style="display:flex;gap:12px;margin-bottom:10px;font-size:.75rem">
-          <!-- inyectado por JS -->
-        </div>
-
-        <!-- Desglose por mercado -->
-        <div id="vps-market-breakdown" style="display:flex;gap:8px;margin-bottom:10px;font-size:.72rem">
-          <!-- inyectado por JS -->
-        </div>
-
-        <!-- Comparativa principal VPS vs Fixed -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px" id="vps-cards">
-          <!-- inyectado por JS -->
-        </div>
-
-        <!-- Tier breakdown -->
-        <div style="margin-bottom:10px">
-          <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Win rate por nivel de confianza<span class="help-btn" onclick="showHelp('vps_tier_breakdown',event)">?</span></div>
-          <div id="vps-tiers" style="display:flex;flex-direction:column;gap:4px"><!-- inyectado --></div>
-        </div>
-
-        <!-- Aprendizaje adaptativo del phantom -->
-        <div id="vps-phantom-learn" style="margin-bottom:10px;display:none"></div>
-
-        <!-- Análisis de patrones phantom -->
-        <details style="margin-top:8px" id="phantom-analysis-details">
-          <summary style="font-size:.7rem;color:#f59e0b;cursor:pointer;user-select:none" onclick="loadPhantomAnalysis()">
-            ⚗️ Análisis de patrones — ¿por qué alta confianza pierde?
-          </summary>
-          <div id="phantom-analysis-content" style="margin-top:8px;font-size:.72rem;color:var(--muted)">
-            Haz clic para cargar análisis...
-          </div>
-        </details>
-
-        <!-- Historial completo de trades (con scroll infinito) -->
-        <details id="vps-trades-details" style="margin-top:4px" onToggle="if(this.open)_initVpsTrades()">
-          <summary style="font-size:.7rem;color:var(--muted);cursor:pointer;user-select:none">
-            Historial de trades phantom
-            <span id="vps-trades-count" style="color:var(--blue);margin-left:6px"></span>
-          </summary>
-          <div id="vps-trades-scroll" style="margin-top:6px;max-height:320px;overflow-y:auto;border-radius:4px" onscroll="_onVpsTradesScroll(this)">
-            <table style="min-width:100%;font-size:.72rem">
-              <thead><tr>
-                <th style="padding:3px 6px;white-space:nowrap">Hora<span class="help-btn" onclick="showHelp('col_hora',event)">?</span></th>
-                <th style="white-space:nowrap">Mercado<span class="help-btn" onclick="showHelp('col_mercado',event)">?</span></th>
-                <th style="white-space:nowrap">Lado<span class="help-btn" onclick="showHelp('col_lado',event)">?</span></th>
-                <th style="white-space:nowrap">Conf%<span class="help-btn" onclick="showHelp('col_conf',event)">?</span></th>
-                <th style="white-space:nowrap">Tier<span class="help-btn" onclick="showHelp('col_tier',event)">?</span></th>
-                <th style="white-space:nowrap">BTC Inicio</th>
-                <th style="white-space:nowrap">BTC Cierre</th>
-                <th style="white-space:nowrap">Size VPS<span class="help-btn" onclick="showHelp('col_size_vps',event)">?</span></th>
-                <th style="white-space:nowrap">Fixed<span class="help-btn" onclick="showHelp('col_fixed',event)">?</span></th>
-                <th style="white-space:nowrap">Resultado<span class="help-btn" onclick="showHelp('col_resultado',event)">?</span></th>
-                <th style="white-space:nowrap">P&L VPS<span class="help-btn" onclick="showHelp('col_pnl_vps',event)">?</span></th>
-                <th style="white-space:nowrap">P&L Fixed<span class="help-btn" onclick="showHelp('col_pnl_fixed',event)">?</span></th>
-                <th style="white-space:nowrap">Δ<span class="help-btn" onclick="showHelp('col_delta',event)">?</span></th>
-              </tr></thead>
-              <tbody id="tbl-vps-trades"><tr><td colspan="13" class="empty">Sin datos aún</td></tr></tbody>
-            </table>
-            <div id="vps-trades-loader" style="display:none;text-align:center;padding:8px;font-size:.72rem;color:var(--muted)">Cargando más...</div>
-          </div>
-        </details>
-      </div>
     </div>
 
     <!-- TAB ESTRATEGIAS -->
@@ -1456,6 +1313,150 @@
     <!-- PHANTOM TAB -->
     <div id="tab-phantom" class="tab-content">
       <div style="max-width:900px;margin:0 auto">
+
+        <!-- ── Experimento VPS-Confianza ── -->
+        <div style="background:var(--bg2);border:1px solid #7c3aed44;border-radius:8px;padding:14px;margin-bottom:16px" id="vps-experiment-panel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:.72rem;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px;font-weight:700">
+              🧪 Experimento VPS-Confianza <span style="font-weight:400;color:var(--muted)">(phantom · sin dinero real)</span><span class="help-btn" onclick="showHelp('vps_experiment',event)">?</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button onclick="loadVpsExperiment()" style="font-size:.7rem;background:transparent;border:1px solid #7c3aed;color:#a78bfa;border-radius:4px;padding:2px 8px;cursor:pointer">↻ Actualizar</button>
+              <button onclick="requestVpsDailySummary()" style="font-size:.7rem;background:transparent;border:1px solid #374151;color:#6b7280;border-radius:4px;padding:2px 8px;cursor:pointer">Resumen hoy</button>
+            </div>
+          </div>
+
+          <!-- Status bar -->
+          <div id="vps-status-bar" style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Cargando...</div>
+
+          <!-- Stake dinámico por confianza (item 29) -->
+          <div style="background:var(--bg3);border:1px solid #4b5563;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+            <div style="font-size:.68rem;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">
+              Stake Dinámico por Confianza<span class="help-btn" onclick="showHelp('stake_dinamico',event)">?</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Min stake (USDC)</div>
+                <input id="ud-stake-min" type="number" min="1" max="100" step="0.5" value="3"
+                  style="width:72px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                  title="Stake mínimo cuando confianza ≤ umbral mínimo">
+              </div>
+              <div>
+                <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Max stake (USDC)</div>
+                <input id="ud-stake-max" type="number" min="1" max="100" step="0.5" value="15"
+                  style="width:72px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                  title="Stake máximo cuando confianza ≥ umbral máximo">
+              </div>
+              <div>
+                <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Conf. mín (%)</div>
+                <input id="ud-stake-conf-min" type="number" min="0" max="99" step="1" value="20"
+                  style="width:60px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                  title="% de confianza que mapea al stake mínimo">
+              </div>
+              <div>
+                <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Conf. máx (%)</div>
+                <input id="ud-stake-conf-max" type="number" min="1" max="100" step="1" value="65"
+                  style="width:60px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                  title="% de confianza que mapea al stake máximo">
+              </div>
+              <button onclick="saveStakeDinamico()" style="padding:5px 12px;background:#7c3aed;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">
+                Guardar
+              </button>
+            </div>
+            <div id="stake-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
+          </div>
+
+          <!-- Señal de desplazamiento 5m (item 1) -->
+          <div style="background:var(--bg3);border:1px solid #4b5563;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+            <div style="font-size:.68rem;color:#f59e0b;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">
+              Estrategia 5m — Desplazamiento BTC<span class="help-btn" onclick="showHelp('estrategia_5m',event)">?</span>
+            </div>
+            <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px">
+              Umbral (% de movimiento BTC en la ventana) que determina si el bot sigue la tendencia o hace mean-reversion
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <div style="font-size:.68rem;color:#4ade80;margin-bottom:3px">Umbral alto → seguir tendencia (%)</div>
+                <input id="ud-disp-hi" type="number" min="0.01" max="5" step="0.01" value="0.20"
+                  style="width:80px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                  title="Si BTC se movió más de este % desde el inicio de la ventana → el bot sigue la tendencia (no invierte)">
+              </div>
+              <div>
+                <div style="font-size:.68rem;color:#fbbf24;margin-bottom:3px">Umbral bajo → neutro (%)</div>
+                <input id="ud-disp-lo" type="number" min="0.01" max="5" step="0.01" value="0.10"
+                  style="width:80px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"
+                  title="Entre este % y el umbral alto → señal neutral. Por debajo → mean-reversion">
+              </div>
+              <button onclick="saveDisplacementParams()" style="padding:5px 12px;background:#f59e0b;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">
+                Guardar
+              </button>
+            </div>
+            <div id="disp-preview" style="margin-top:6px;font-size:.68rem;color:var(--muted)"></div>
+          </div>
+
+          <!-- Saldo virtual -->
+          <div id="vps-virtual-balance" style="display:flex;gap:12px;margin-bottom:10px;font-size:.75rem">
+            <!-- inyectado por JS -->
+          </div>
+
+          <!-- Desglose por mercado -->
+          <div id="vps-market-breakdown" style="display:flex;gap:8px;margin-bottom:10px;font-size:.72rem">
+            <!-- inyectado por JS -->
+          </div>
+
+          <!-- Comparativa principal VPS vs Fixed -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px" id="vps-cards">
+            <!-- inyectado por JS -->
+          </div>
+
+          <!-- Tier breakdown -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Win rate por nivel de confianza<span class="help-btn" onclick="showHelp('vps_tier_breakdown',event)">?</span></div>
+            <div id="vps-tiers" style="display:flex;flex-direction:column;gap:4px"><!-- inyectado --></div>
+          </div>
+
+          <!-- Aprendizaje adaptativo del phantom -->
+          <div id="vps-phantom-learn" style="margin-bottom:10px;display:none"></div>
+
+          <!-- Análisis de patrones phantom -->
+          <details style="margin-top:8px" id="phantom-analysis-details">
+            <summary style="font-size:.7rem;color:#f59e0b;cursor:pointer;user-select:none" onclick="loadPhantomAnalysis()">
+              ⚗️ Análisis de patrones — ¿por qué alta confianza pierde?
+            </summary>
+            <div id="phantom-analysis-content" style="margin-top:8px;font-size:.72rem;color:var(--muted)">
+              Haz clic para cargar análisis...
+            </div>
+          </details>
+
+          <!-- Historial completo de trades (con scroll infinito) -->
+          <details id="vps-trades-details" style="margin-top:4px" onToggle="if(this.open)_initVpsTrades()">
+            <summary style="font-size:.7rem;color:var(--muted);cursor:pointer;user-select:none">
+              Historial de trades phantom
+              <span id="vps-trades-count" style="color:var(--blue);margin-left:6px"></span>
+            </summary>
+            <div id="vps-trades-scroll" style="margin-top:6px;max-height:320px;overflow-y:auto;border-radius:4px" onscroll="_onVpsTradesScroll(this)">
+              <table style="min-width:100%;font-size:.72rem">
+                <thead><tr>
+                  <th style="padding:3px 6px;white-space:nowrap">Hora<span class="help-btn" onclick="showHelp('col_hora',event)">?</span></th>
+                  <th style="white-space:nowrap">Mercado<span class="help-btn" onclick="showHelp('col_mercado',event)">?</span></th>
+                  <th style="white-space:nowrap">Lado<span class="help-btn" onclick="showHelp('col_lado',event)">?</span></th>
+                  <th style="white-space:nowrap">Conf%<span class="help-btn" onclick="showHelp('col_conf',event)">?</span></th>
+                  <th style="white-space:nowrap">Tier<span class="help-btn" onclick="showHelp('col_tier',event)">?</span></th>
+                  <th style="white-space:nowrap">BTC Inicio</th>
+                  <th style="white-space:nowrap">BTC Cierre</th>
+                  <th style="white-space:nowrap">Size VPS<span class="help-btn" onclick="showHelp('col_size_vps',event)">?</span></th>
+                  <th style="white-space:nowrap">Fixed<span class="help-btn" onclick="showHelp('col_fixed',event)">?</span></th>
+                  <th style="white-space:nowrap">Resultado<span class="help-btn" onclick="showHelp('col_resultado',event)">?</span></th>
+                  <th style="white-space:nowrap">P&L VPS<span class="help-btn" onclick="showHelp('col_pnl_vps',event)">?</span></th>
+                  <th style="white-space:nowrap">P&L Fixed<span class="help-btn" onclick="showHelp('col_pnl_fixed',event)">?</span></th>
+                  <th style="white-space:nowrap">Δ<span class="help-btn" onclick="showHelp('col_delta',event)">?</span></th>
+                </tr></thead>
+                <tbody id="tbl-vps-trades"><tr><td colspan="13" class="empty">Sin datos aún</td></tr></tbody>
+              </table>
+              <div id="vps-trades-loader" style="display:none;text-align:center;padding:8px;font-size:.72rem;color:var(--muted)">Cargando más...</div>
+            </div>
+          </details>
+        </div>
 
         <!-- Toggle principal -->
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:16px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
@@ -3479,7 +3480,7 @@ function _restoreTab() {
         }
       });
       if (saved === 'tab-dashboard') fetchDashboard();
-      if (saved === 'tab-updown') { loadVpsExperiment(); }
+      if (saved === 'tab-phantom') { loadVpsExperiment(); }
     }
   } catch(e) {}
 }
@@ -5977,7 +5978,7 @@ showTab = function(id) {
   _origShowTabTx(id);
   if (id === 'tab-telonex') loadTelonex();
   if (id === 'tab-capital') { loadCapital(true); }
-  if (id === 'tab-updown')  { loadVpsExperiment(); }
+  if (id === 'tab-phantom') { loadVpsExperiment(); }
 };
 
 // ── Capital Buckets ────────────────────────────────────────────────────────
