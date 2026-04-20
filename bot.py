@@ -2624,8 +2624,11 @@ async def _resolve_pending_updown_outcomes():
                 btc_end = await _get_btc_price_at_ts(end_ts) or state.btc_price or 0.0
             except Exception:
                 btc_end = 0.0
-        # Obtener precio de cierre Chainlink desde eventMetadata (para display correcto)
-        _btc_final_price = None
+        # Obtener precios Chainlink desde eventMetadata al resolver
+        # priceToBeat y finalPrice solo están disponibles DESPUÉS de que el mercado resuelve.
+        # Durante la ventana activa el Gamma API devuelve eventMetadata={}.
+        _btc_final_price   = None
+        _btc_price_to_beat = None
         try:
             import httpx as _hx
             _gamma_url = f"https://gamma-api.polymarket.com/events?slug={ph_slug}"
@@ -2635,14 +2638,19 @@ async def _resolve_pending_updown_outcomes():
                     _gd = _gr.json()
                     if _gd:
                         _meta = _gd[0].get("eventMetadata") or {}
-                        _fp = _meta.get("finalPrice")
-                        if _fp is not None:
-                            _btc_final_price = float(_fp)
+                        _fp  = _meta.get("finalPrice")
+                        _ptb = _meta.get("priceToBeat")
+                        if _fp  is not None: _btc_final_price   = float(_fp)
+                        if _ptb is not None: _btc_price_to_beat = float(_ptb)
         except Exception:
             pass
         try:
             from vps_experiment import resolve_phantom_vps as _vps_res
-            _vps_res(slug=ph_slug, btc_end=btc_end or 0.0, won=ph_won, btc_final_price=_btc_final_price)
+            _vps_res(
+                slug=ph_slug, btc_end=btc_end or 0.0, won=ph_won,
+                btc_final_price=_btc_final_price,
+                btc_price_to_beat=_btc_price_to_beat,
+            )
         except Exception as _vps_err:
             _log("WARN", f"[VPS] Error resolviendo phantom: {_vps_err}")
 

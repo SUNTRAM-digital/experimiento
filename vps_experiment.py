@@ -265,7 +265,7 @@ def get_stale_pending() -> list[dict]:
     ]
 
 
-def resolve_phantom_vps(slug: str, btc_end: float, won: bool, btc_final_price: Optional[float] = None) -> None:
+def resolve_phantom_vps(slug: str, btc_end: float, won: bool, btc_final_price: Optional[float] = None, btc_price_to_beat: Optional[float] = None) -> None:
     """
     Resuelve un trade phantom con el resultado real.
     Llamar desde bot.py cuando el mercado phantom cierra.
@@ -286,7 +286,9 @@ def resolve_phantom_vps(slug: str, btc_end: float, won: bool, btc_final_price: O
     trade["result_timestamp"] = _now_utc()
     trade["btc_end_price"]    = round(btc_end, 2)
     if btc_final_price is not None:
-        trade["btc_final_price"] = round(btc_final_price, 2)
+        trade["btc_final_price"]   = round(btc_final_price,   2)
+    if btc_price_to_beat is not None:
+        trade["btc_price_to_beat"] = round(btc_price_to_beat, 2)
     trade["pnl_vps"]          = pnl_vps
     trade["pnl_fixed"]        = pnl_fixed
     trade["pnl_difference"]   = round(pnl_vps - pnl_fixed, 4)
