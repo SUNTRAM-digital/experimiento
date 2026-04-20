@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 3
-PATCH = 69
+PATCH = 70
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Reset all phantom stats — WR, optimizer state, learner"
+PHASE_NAME = "Fix priceToBeat live: fetch finalPrice del mercado anterior"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

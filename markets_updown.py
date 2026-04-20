@@ -30,13 +30,16 @@ _market_cache: dict = {}
 
 
 def _get_cached_market(interval_minutes: int, now_ts: int) -> Optional[dict]:
-    """Retorna el resultado cacheado si la ventana sigue activa."""
+    """Retorna el resultado cacheado si la ventana sigue activa y tiene priceToBeat."""
     entry = _market_cache.get(interval_minutes)
     if not entry:
         return None
-    # La ventana sigue activa si still has > 1min to close
     if entry["end_ts"] - now_ts > 60:
-        return entry["result"]
+        result = entry["result"]
+        # Si no tiene priceToBeat, forzar re-fetch para obtenerlo vía mercado anterior
+        if result and result.get("btc_price_to_beat") is None:
+            return None
+        return result
     return None
 
 
@@ -75,6 +78,37 @@ async def _get_events_by_slug(client: httpx.AsyncClient, slug: str) -> list:
     except Exception as e:
         logger.warning(f"UpDown | Error fetching {slug}: {e}")
         return []
+
+
+async def _fetch_prev_final_price(client: httpx.AsyncClient, current_slug: str, interval_seconds: int) -> Optional[float]:
+    """
+    priceToBeat del mercado actual = finalPrice del mercado anterior.
+    El slug del mercado anterior tiene el timestamp (current_ts - interval_seconds).
+    Sólo funciona si el mercado anterior ya resolvió (tiene eventMetadata.finalPrice).
+    """
+    import re as _re
+    m = _re.search(r"-(\d{9,11})$", current_slug)
+    if not m:
+        return None
+    current_ts = int(m.group(1))
+    prev_ts = current_ts - interval_seconds
+    prefix_match = _re.match(r"(btc-updown|btc-up-or-down|btc-up-down)-(\d+m)", current_slug)
+    if not prefix_match:
+        return None
+    prefix = prefix_match.group(1)
+    interval_str = prefix_match.group(2)
+    prev_slug = f"{prefix}-{interval_str}-{prev_ts}"
+    events = await _get_events_by_slug(client, prev_slug)
+    if not events:
+        return None
+    meta = (events[0].get("eventMetadata") or {})
+    fp = meta.get("finalPrice")
+    if fp is not None:
+        try:
+            return round(float(fp), 2)
+        except Exception:
+            pass
+    return None
 
 
 async def _search_updown_by_markets(client: httpx.AsyncClient, interval_minutes: int) -> list:
@@ -341,9 +375,13 @@ async def fetch_updown_market(interval_minutes: int) -> Optional[dict]:
                 f"elapsed={elapsed_minutes:.1f}min remaining={minutes_to_close:.1f}min"
             )
 
-            # Precio referencia Chainlink al inicio de la ventana (si disponible)
+            # Precio referencia Chainlink al inicio de la ventana
+            # Durante mercado activo, priceToBeat es null en Gamma API.
+            # Solución: priceToBeat[N] = finalPrice[N-1] (encadenamiento Chainlink confirmado)
             event_meta    = event.get("eventMetadata") or {}
             price_to_beat = event_meta.get("priceToBeat")
+            if not price_to_beat:
+                price_to_beat = await _fetch_prev_final_price(client, event_slug, interval_seconds)
 
             result = {
                 "slug":              event_slug,
