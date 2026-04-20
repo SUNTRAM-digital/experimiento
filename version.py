@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 3
-PATCH = 70
+PATCH = 71
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Fix priceToBeat live: fetch finalPrice del mercado anterior"
+PHASE_NAME = "Use Chainlink priceToBeat as btc_ref_price for direction + displacement"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

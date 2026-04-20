@@ -1687,10 +1687,18 @@ async def _scan_updown(interval_minutes: int):
     btc_price_now   = state.btc_price or await get_btc_price()
     btc_price_start = await _get_btc_price_at_ts(market["window_start_ts"])
 
+    # Chainlink priceToBeat es el precio real que Polymarket usa para resolver.
+    # Es más exacto que Binance klines para calcular dirección en la ventana.
+    btc_price_chainlink = market.get("btc_price_to_beat")
+    btc_ref_price = btc_price_chainlink or btc_price_start
+
     # Sin precio base no podemos analizar dirección — no operar
-    if not btc_price_start or btc_price_start <= 0:
+    if not btc_ref_price or btc_ref_price <= 0:
         _log("WARN", f"UpDown {interval_minutes}m | Sin precio BTC al inicio de ventana — cancelando")
         return
+
+    _ref_src = "Chainlink" if btc_price_chainlink else "Binance"
+    _log("INFO", f"UpDown {interval_minutes}m | Precio referencia: ${btc_ref_price:.2f} ({_ref_src})")
 
     # CMC data para señal de tendencia macro 1h
     cmc_data = state.btc_cmc if state.btc_cmc else None
@@ -1699,7 +1707,7 @@ async def _scan_updown(interval_minutes: int):
     telonex_signals = None
     if bot_params.telonex_enabled:
         try:
-            telonex_signals = await telonex_data.get_updown_signals(market, btc_price_start)
+            telonex_signals = await telonex_data.get_updown_signals(market, btc_ref_price)
         except Exception as _tx_err:
             _log("WARN", f"UpDown {interval_minutes}m | Telonex error: {_tx_err}")
 
@@ -1716,7 +1724,7 @@ async def _scan_updown(interval_minutes: int):
         market=market,
         ta_data=ta_data,
         btc_price=btc_price_now or 0,
-        btc_price_window_start=btc_price_start,
+        btc_price_window_start=btc_ref_price,
         cmc_data=cmc_data,
         telonex_signals=telonex_signals,
         adaptive_params=_ap,
@@ -1736,7 +1744,7 @@ async def _scan_updown(interval_minutes: int):
         "ta_signal":  round(ta_data.get("signal", 0), 2) if ta_data.get("signal") is not None else 0,
         "ta_rsi":     round(ta_data["rsi"], 1) if ta_data.get("rsi") else None,
         "btc_price":  btc_price_now,
-        "btc_start":  btc_price_start,
+        "btc_start":  btc_ref_price,
         "opp":        opp,  # None si no hay señal suficiente
     }
     if is_5m:
@@ -1751,13 +1759,13 @@ async def _scan_updown(interval_minutes: int):
         from strategy_updown import build_btc_direction_signal as _bds
         _sig = _bds(
             ta_data=ta_data, btc_price=btc_price_now or 0,
-            btc_price_window_start=btc_price_start, cmc_data=cmc_data,
+            btc_price_window_start=btc_ref_price, cmc_data=cmc_data,
             market=market, telonex_signals=telonex_signals,
             ta_multi=ta_multi, funding_data=funding_data,
         )
     _log("INFO",
          f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
-         f"| BTC inicio=${btc_price_start:.0f} ahora=${btc_price_now:.0f} ({_sig.get('window_pct',0):+.3f}%) "
+         f"| BTC ref=${btc_ref_price:.0f} ({_ref_src}) ahora=${btc_price_now:.0f} ({_sig.get('window_pct',0):+.3f}%) "
          f"| cierra en {market['minutes_to_close']:.1f}min | Régimen:{_sig.get('regime','?')} ADX:{_sig.get('adx','?')}")
     _tx_str = (
         f" RealOFI:{_sig.get('real_ofi',0):+.3f} SmartBias:{_sig.get('smart_bias',0):+.3f}"
@@ -1790,7 +1798,7 @@ async def _scan_updown(interval_minutes: int):
             _updown_phantom_pending[slug] = {
                 "interval":        interval_minutes,
                 "side":            phantom_dir,
-                "btc_start":       btc_price_start or 0,
+                "btc_start":       btc_ref_price or 0,
                 "end_ts":          end_ts,
                 "slug":            slug,
                 "skip_reason":     _ph_reason,
@@ -1879,7 +1887,7 @@ async def _scan_updown(interval_minutes: int):
                     interval=interval_minutes,
                     side=phantom_dir,
                     confidence_pct=phantom_conf,
-                    btc_start=btc_price_start or 0,
+                    btc_start=btc_ref_price or 0,
                     end_ts=end_ts,
                     ta_scores={
                         "combined":  _sig.get("combined", 0),
@@ -2024,7 +2032,7 @@ async def _scan_updown(interval_minutes: int):
             "window_momentum": opp.get("window_momentum", 0),
             "elapsed_minutes": opp.get("elapsed_minutes", 0),
             "btc_price":       btc_price_now,
-            "btc_start":       btc_price_start,
+            "btc_start":       btc_ref_price,
             "end_ts":          end_ts,
             # Claude review
             "claude_reason":     opp.get("claude_reason", "AUTO-TRADE"),
@@ -2047,7 +2055,7 @@ async def _scan_updown(interval_minutes: int):
         _updown_pending_outcomes[opp["token_id"]] = {
             "interval": interval_minutes,
             "side":     opp["side"],
-            "btc_start": btc_price_start or 0,
+            "btc_start": btc_ref_price or 0,
             "end_ts":   end_ts,
             "slug":     slug,
         }
