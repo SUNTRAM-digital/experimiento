@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 3
-PATCH = 68
+PATCH = 69
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "VPS panel moved to Phantom tab"
+PHASE_NAME = "Reset all phantom stats — WR, optimizer state, learner"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
