@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 4
-PATCH = 0
+PATCH = 1
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Trading Mode: buy cheap / sell target, exit before close (skeleton)"
+PHASE_NAME = "Trading Mode wired in bot.py (phantom active, real TODO)"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

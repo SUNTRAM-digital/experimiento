@@ -100,6 +100,16 @@ class BotParams:
         self.updown_stake_max_usdc: float = 15.0     # stake máximo (en conf ≥ conf_max_pct)
         self.updown_stake_conf_min_pct: float = 20.0 # % confianza que mapea al stake mínimo
         self.updown_stake_conf_max_pct: float = 65.0 # % confianza que mapea al stake máximo
+        # --- Trading Mode (v9.4) — compra barato, vende target ---
+        self.trading_mode_enabled: bool = True       # usar trading mode en vez de prediction
+        self.trading_real_enabled: bool = False      # False = solo phantom; True = phantom + real
+        self.trading_entry_threshold: float = 0.35   # comprar si token <= este precio
+        self.trading_profit_offset: float = 0.20     # vender en entry + offset
+        self.trading_exit_deadline_min: float = 3.0  # forzar salida a T-X min del cierre
+        self.trading_min_entry_minutes_left: float = 6.0  # no abrir si quedan menos minutos
+        self.trading_max_entries_per_market: int = 3
+        self.trading_max_open_per_side: int = 2
+        self.trading_stake_usdc: float = 5.0         # USDC por entrada
         # Cargar valores guardados previamente (sobreescriben los defaults)
         self._load()
 
@@ -165,6 +175,15 @@ class BotParams:
             "updown_stake_max_usdc":      self.updown_stake_max_usdc,
             "updown_stake_conf_min_pct":  self.updown_stake_conf_min_pct,
             "updown_stake_conf_max_pct":  self.updown_stake_conf_max_pct,
+            "trading_mode_enabled":            self.trading_mode_enabled,
+            "trading_real_enabled":            self.trading_real_enabled,
+            "trading_entry_threshold":         self.trading_entry_threshold,
+            "trading_profit_offset":           self.trading_profit_offset,
+            "trading_exit_deadline_min":       self.trading_exit_deadline_min,
+            "trading_min_entry_minutes_left":  self.trading_min_entry_minutes_left,
+            "trading_max_entries_per_market":  self.trading_max_entries_per_market,
+            "trading_max_open_per_side":       self.trading_max_open_per_side,
+            "trading_stake_usdc":              self.trading_stake_usdc,
         }
 
     def _load(self):

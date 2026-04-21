@@ -1632,6 +1632,25 @@ async def _scan_updown(interval_minutes: int):
     else:
         state.updown_last_market_15m = market
 
+    # ── TRADING MODE (v9.4) — buy cheap / sell target ──────────────────
+    # Si trading_mode_enabled está activo, se reemplaza la lógica de predicción
+    # por trading de volatilidad. No marca _updown_traded_slugs porque permite
+    # múltiples entradas por mercado.
+    if getattr(bot_params, "trading_mode_enabled", False):
+        try:
+            from trading_runner import run_cycle as _trading_cycle
+            _tres = await _trading_cycle(market, bot_params)
+            _ph_op = _tres.get("phantom", {}).get("opened") if isinstance(_tres, dict) else None
+            _ph_cl = len(_tres.get("phantom", {}).get("closed", []) or []) if isinstance(_tres, dict) else 0
+            if _ph_op or _ph_cl:
+                _log("INFO",
+                     f"UpDown {interval_minutes}m | TRADING phantom: "
+                     f"{'OPEN ' + _ph_op['side'] + ' @' + str(round(_ph_op['entry_price'],3)) if _ph_op else ''} "
+                     f"{'closed=' + str(_ph_cl) if _ph_cl else ''}".strip())
+        except Exception as _te:
+            _log("WARN", f"UpDown {interval_minutes}m | Trading runner error: {_te}")
+        return  # trading mode: no cae a la lógica antigua de predicción
+
     # No operar dos veces en el mismo ciclo de mercado
     if slug in _updown_traded_slugs:
         _log("INFO", f"UpDown {interval_minutes}m | Ya operado en este ciclo — esperando el siguiente")
@@ -2666,6 +2685,16 @@ async def _resolve_pending_updown_outcomes():
 
     for ph_slug in resolved_phantoms:
         _updown_phantom_pending.pop(ph_slug, None)
+
+    # ── TRADING MODE: resolver posiciones stale (mercado cerró sin vender) ─────
+    if getattr(bot_params, "trading_mode_enabled", False):
+        try:
+            from trading_runner import resolve_stale_positions as _trading_resolve
+            await _trading_resolve(is_real=False)
+            if getattr(bot_params, "trading_real_enabled", False):
+                await _trading_resolve(is_real=True)
+        except Exception as _tr_err:
+            _log("WARN", f"[TRADING] Error resolviendo stale positions: {_tr_err}")
 
 
 # ── BTC Auto-trading loop ──────────────────────────────────────────────────
