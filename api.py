@@ -2836,6 +2836,91 @@ async def reset_vps_experiment():
         return {"ok": False, "error": str(e)}
 
 
+# ── Trading Mode (v9.4) ────────────────────────────────────────────────────
+
+@app.get("/api/trading/state")
+async def get_trading_state():
+    """
+    Estado completo del trading mode: params, stats, posiciones abiertas,
+    historial reciente. Usado por el panel UI.
+    """
+    try:
+        import trading_positions as tp
+        is_real_enabled = bool(getattr(bot_params, "trading_real_enabled", False))
+        return {
+            "enabled":      bool(getattr(bot_params, "trading_mode_enabled", False)),
+            "real_enabled": is_real_enabled,
+            "params": {
+                "entry_threshold":         getattr(bot_params, "trading_entry_threshold", 0.35),
+                "profit_offset":           getattr(bot_params, "trading_profit_offset", 0.20),
+                "exit_deadline_min":       getattr(bot_params, "trading_exit_deadline_min", 3.0),
+                "min_entry_minutes_left":  getattr(bot_params, "trading_min_entry_minutes_left", 6.0),
+                "max_entries_per_market":  getattr(bot_params, "trading_max_entries_per_market", 3),
+                "max_open_per_side":       getattr(bot_params, "trading_max_open_per_side", 2),
+                "stake_usdc":              getattr(bot_params, "trading_stake_usdc", 5.0),
+            },
+            "phantom": {
+                "stats": tp.stats_summary(is_real=False),
+                "open":  tp.all_open_positions(is_real=False),
+                "history": tp.get_all_positions_flat(is_real=False, limit=100),
+            },
+            "real": {
+                "stats": tp.stats_summary(is_real=True) if is_real_enabled else None,
+                "open":  tp.all_open_positions(is_real=True) if is_real_enabled else [],
+                "history": tp.get_all_positions_flat(is_real=True, limit=100) if is_real_enabled else [],
+            },
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/trading/params")
+async def set_trading_params(body: dict):
+    """Actualiza parámetros de trading en caliente."""
+    try:
+        mapping = {
+            "trading_mode_enabled":           bool,
+            "trading_real_enabled":           bool,
+            "trading_entry_threshold":        float,
+            "trading_profit_offset":          float,
+            "trading_exit_deadline_min":      float,
+            "trading_min_entry_minutes_left": float,
+            "trading_max_entries_per_market": int,
+            "trading_max_open_per_side":      int,
+            "trading_stake_usdc":             float,
+        }
+        changed = {}
+        for key, caster in mapping.items():
+            if key in body:
+                try:
+                    val = caster(body[key])
+                    setattr(bot_params, key, val)
+                    changed[key] = val
+                except Exception:
+                    pass
+        try:
+            bot_params.save()
+        except Exception:
+            pass
+        return {"ok": True, "changed": changed}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trading/reset-phantom")
+async def reset_trading_phantom(body: dict = None):
+    """Reinicia el balance y posiciones phantom."""
+    try:
+        import trading_positions as tp
+        new_balance = 50.0
+        if body and "balance" in body:
+            new_balance = float(body["balance"])
+        tp.reset_phantom(new_balance=new_balance)
+        return {"ok": True, "balance": new_balance}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── WebSocket ──────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")

@@ -1314,6 +1314,105 @@
     <div id="tab-phantom" class="tab-content">
       <div style="max-width:900px;margin:0 auto">
 
+        <!-- ── Trading Mode (v9.4): buy cheap, sell target ── -->
+        <div id="trading-panel" style="background:var(--bg2);border:1px solid #10b98144;border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:.8rem;color:#34d399;text-transform:uppercase;letter-spacing:.5px;font-weight:700">
+              💹 Trading Mode <span style="font-weight:400;color:var(--muted)">— comprar barato, vender caro</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="trading-enabled-chk" onchange="saveTradingToggle('trading_mode_enabled', this.checked)">
+                Phantom ON
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:#fbbf24;cursor:pointer">
+                <input type="checkbox" id="trading-real-chk" onchange="saveTradingToggle('trading_real_enabled', this.checked)">
+                Real $$$
+              </label>
+              <button onclick="loadTradingState()" style="font-size:.7rem;background:transparent;border:1px solid #10b981;color:#34d399;border-radius:4px;padding:2px 8px;cursor:pointer">↻</button>
+              <button onclick="resetTradingPhantom()" style="font-size:.7rem;background:transparent;border:1px solid #6b7280;color:#9ca3af;border-radius:4px;padding:2px 8px;cursor:pointer">Reset phantom</button>
+            </div>
+          </div>
+
+          <!-- Stats cards -->
+          <div id="trading-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px">
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Balance phantom</div>
+              <div id="td-balance" style="font-size:1.1rem;font-weight:700;color:#34d399">$—</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">PnL realizado</div>
+              <div id="td-pnl" style="font-size:1.1rem;font-weight:700">$—</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Win rate</div>
+              <div id="td-wr" style="font-size:1.1rem;font-weight:700">—%</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Abiertas / Total</div>
+              <div id="td-counts" style="font-size:1.1rem;font-weight:700">—</div>
+            </div>
+          </div>
+
+          <!-- Params editables -->
+          <details style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px 12px;margin-bottom:10px">
+            <summary style="font-size:.72rem;color:#34d399;cursor:pointer;user-select:none;font-weight:700">⚙️ Parámetros</summary>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Entry threshold</div>
+                <input id="td-entry" type="number" min="0.05" max="0.5" step="0.01" value="0.35" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Profit offset</div>
+                <input id="td-offset" type="number" min="0.05" max="0.70" step="0.01" value="0.20" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Exit T-min</div>
+                <input id="td-exit-min" type="number" min="0.5" max="10" step="0.5" value="3" style="width:60px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Min entry min</div>
+                <input id="td-min-entry" type="number" min="1" max="14" step="0.5" value="6" style="width:60px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Max entries</div>
+                <input id="td-max-entries" type="number" min="1" max="10" step="1" value="3" style="width:50px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Stake USDC</div>
+                <input id="td-stake" type="number" min="1" max="100" step="0.5" value="5" style="width:60px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <button onclick="saveTradingParams()" style="padding:5px 14px;background:#10b981;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">Guardar</button>
+            </div>
+          </details>
+
+          <!-- Posiciones abiertas -->
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Posiciones abiertas</div>
+          <div style="overflow-x:auto;margin-bottom:12px">
+            <table style="min-width:100%;font-size:.72rem">
+              <thead><tr style="text-align:left;color:var(--muted)">
+                <th style="padding:3px 6px">Mercado</th>
+                <th>Lado</th>
+                <th>Entry</th>
+                <th>Target</th>
+                <th>Stake</th>
+                <th>Edad</th>
+                <th>Modo</th>
+              </tr></thead>
+              <tbody id="tbl-trading-open"><tr><td colspan="7" class="empty">Sin posiciones abiertas</td></tr></tbody>
+            </table>
+          </div>
+
+          <!-- Historial reciente -->
+          <details>
+            <summary style="font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none">Historial de trades (últimos 100)</summary>
+            <div style="overflow-x:auto;margin-top:8px;max-height:340px;overflow-y:auto">
+              <table style="min-width:100%;font-size:.7rem">
+                <thead><tr style="text-align:left;color:var(--muted);position:sticky;top:0;background:var(--bg2)">
+                  <th style="padding:3px 6px">Mercado</th>
+                  <th>Lado</th>
+                  <th>Entry</th>
+                  <th>Exit</th>
+                  <th>Target</th>
+                  <th>Stake</th>
+                  <th>PnL</th>
+                  <th>Estado</th>
+                  <th>Modo</th>
+                </tr></thead>
+                <tbody id="tbl-trading-hist"><tr><td colspan="9" class="empty">Sin historial aún</td></tr></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+
         <!-- ── Experimento VPS-Confianza ── -->
         <div style="background:var(--bg2);border:1px solid #7c3aed44;border-radius:8px;padding:14px;margin-bottom:16px" id="vps-experiment-panel">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -6191,6 +6290,168 @@ async function checkClaudeStatus() {
     if (dot) dot.style.background = '#6b7280';
   }
 }
+
+// ── Trading Mode (v9.4) ───────────────────────────────────────────────────
+
+async function loadTradingState() {
+  try {
+    const d = await fetch('/api/trading/state').then(r => r.json());
+    if (d.error) { console.warn('trading/state error:', d.error); return; }
+    _renderTradingState(d);
+  } catch (e) { console.warn('loadTradingState error:', e); }
+}
+
+function _fmtTsAge(ts) {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h';
+}
+
+function _slugShort(s) { return (s || '').replace('btc-updown-', '').replace('btc-up-or-down-', ''); }
+
+function _statusBadge(st) {
+  const colors = {
+    OPEN:          {bg:'#fbbf2422', fg:'#fbbf24'},
+    TARGET_HIT:    {bg:'#10b98122', fg:'#34d399'},
+    FORCED_EXIT:   {bg:'#6b728022', fg:'#9ca3af'},
+    RESOLVED_WIN:  {bg:'#10b98144', fg:'#10b981'},
+    RESOLVED_LOSS: {bg:'#ef444444', fg:'#ef4444'},
+  };
+  const c = colors[st] || {bg:'#37415122', fg:'#6b7280'};
+  return `<span style="background:${c.bg};color:${c.fg};padding:1px 6px;border-radius:3px;font-size:.65rem;font-weight:700">${st}</span>`;
+}
+
+function _renderTradingState(d) {
+  // Toggles
+  const chkEnabled = document.getElementById('trading-enabled-chk');
+  const chkReal = document.getElementById('trading-real-chk');
+  if (chkEnabled) chkEnabled.checked = !!d.enabled;
+  if (chkReal) chkReal.checked = !!d.real_enabled;
+
+  // Params
+  const p = d.params || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  setVal('td-entry', p.entry_threshold);
+  setVal('td-offset', p.profit_offset);
+  setVal('td-exit-min', p.exit_deadline_min);
+  setVal('td-min-entry', p.min_entry_minutes_left);
+  setVal('td-max-entries', p.max_entries_per_market);
+  setVal('td-stake', p.stake_usdc);
+
+  // Stats combinados phantom + real (si real activo)
+  const ph = d.phantom || {stats:{}};
+  const rl = d.real || {stats:null};
+  const s = ph.stats || {};
+  const setText = (id, t, color) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = t; if (color) el.style.color = color; }
+  };
+  setText('td-balance', `$${(s.phantom_balance ?? 0).toFixed(2)}`);
+  const pnl = s.realized_pnl ?? 0;
+  setText('td-pnl', `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl >= 0 ? '#34d399' : '#ef4444');
+  setText('td-wr', `${s.win_rate ?? 0}%`, (s.win_rate ?? 0) >= 50 ? '#34d399' : '#ef4444');
+  setText('td-counts', `${s.open ?? 0} / ${s.total_positions ?? 0}`);
+
+  // Open positions table
+  const openAll = (ph.open || []).map(p => ({...p, _mode:'PH'}))
+    .concat((rl.open || []).map(p => ({...p, _mode:'RL'})));
+  const openTb = document.getElementById('tbl-trading-open');
+  if (openTb) {
+    if (openAll.length === 0) {
+      openTb.innerHTML = '<tr><td colspan="7" class="empty">Sin posiciones abiertas</td></tr>';
+    } else {
+      openTb.innerHTML = openAll.map(p => `
+        <tr>
+          <td style="padding:3px 6px;font-family:monospace">${_slugShort(p.slug)}</td>
+          <td style="color:${p.side === 'UP' ? '#34d399' : '#ef4444'};font-weight:700">${p.side}</td>
+          <td>${(p.entry_price ?? 0).toFixed(3)}</td>
+          <td style="color:#fbbf24">${(p.target_price ?? 0).toFixed(3)}</td>
+          <td>$${(p.stake_usdc ?? 0).toFixed(2)}</td>
+          <td>${_fmtTsAge(p.entry_ts)}</td>
+          <td style="color:${p._mode === 'RL' ? '#fbbf24' : '#9ca3af'}">${p._mode}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // History
+  const histAll = (ph.history || []).map(p => ({...p, _mode:'PH'}))
+    .concat((rl.history || []).map(p => ({...p, _mode:'RL'})))
+    .sort((a,b) => (b.entry_ts || 0) - (a.entry_ts || 0))
+    .slice(0, 100);
+  const histTb = document.getElementById('tbl-trading-hist');
+  if (histTb) {
+    if (histAll.length === 0) {
+      histTb.innerHTML = '<tr><td colspan="9" class="empty">Sin historial aún</td></tr>';
+    } else {
+      histTb.innerHTML = histAll.map(p => {
+        const pn = p.pnl_usdc ?? 0;
+        const pnc = pn > 0 ? '#34d399' : (pn < 0 ? '#ef4444' : 'var(--muted)');
+        return `<tr>
+          <td style="padding:3px 6px;font-family:monospace">${_slugShort(p.slug)}</td>
+          <td style="color:${p.side === 'UP' ? '#34d399' : '#ef4444'};font-weight:700">${p.side}</td>
+          <td>${(p.entry_price ?? 0).toFixed(3)}</td>
+          <td>${p.exit_price != null ? p.exit_price.toFixed(3) : '—'}</td>
+          <td>${(p.target_price ?? 0).toFixed(3)}</td>
+          <td>$${(p.stake_usdc ?? 0).toFixed(2)}</td>
+          <td style="color:${pnc};font-weight:700">${pn >= 0 ? '+' : ''}$${pn.toFixed(2)}</td>
+          <td>${_statusBadge(p.status)}</td>
+          <td style="color:${p._mode === 'RL' ? '#fbbf24' : '#9ca3af'}">${p._mode}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+}
+
+async function saveTradingToggle(key, val) {
+  try {
+    await fetch('/api/trading/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[key]: val}),
+    });
+    setTimeout(loadTradingState, 300);
+  } catch(e) { console.warn('saveTradingToggle:', e); }
+}
+
+async function saveTradingParams() {
+  try {
+    const body = {
+      trading_entry_threshold:        parseFloat(document.getElementById('td-entry').value),
+      trading_profit_offset:          parseFloat(document.getElementById('td-offset').value),
+      trading_exit_deadline_min:      parseFloat(document.getElementById('td-exit-min').value),
+      trading_min_entry_minutes_left: parseFloat(document.getElementById('td-min-entry').value),
+      trading_max_entries_per_market: parseInt(document.getElementById('td-max-entries').value),
+      trading_stake_usdc:             parseFloat(document.getElementById('td-stake').value),
+    };
+    const r = await fetch('/api/trading/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    }).then(r => r.json());
+    if (r.ok) { loadTradingState(); }
+    else alert('Error: ' + (r.error || '?'));
+  } catch(e) { alert('Error: ' + e); }
+}
+
+async function resetTradingPhantom() {
+  if (!confirm('¿Reiniciar balance phantom a $50 y borrar posiciones phantom?')) return;
+  try {
+    const r = await fetch('/api/trading/reset-phantom', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({balance: 50.0}),
+    }).then(r => r.json());
+    if (r.ok) loadTradingState();
+  } catch(e) { alert('Error: ' + e); }
+}
+
+// Auto-refresh cada 10s
+loadTradingState();
+setInterval(loadTradingState, 10000);
+
 
 // ── Experimento VPS-Confianza ─────────────────────────────────────────────
 

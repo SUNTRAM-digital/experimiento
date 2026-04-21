@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 4
-PATCH = 1
+PATCH = 2
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Trading Mode wired in bot.py (phantom active, real TODO)"
+PHASE_NAME = "Trading Mode UI + API — panel en Phantom tab, tresholds más permisivos"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

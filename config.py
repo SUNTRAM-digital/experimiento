@@ -103,11 +103,11 @@ class BotParams:
         # --- Trading Mode (v9.4) — compra barato, vende target ---
         self.trading_mode_enabled: bool = True       # usar trading mode en vez de prediction
         self.trading_real_enabled: bool = False      # False = solo phantom; True = phantom + real
-        self.trading_entry_threshold: float = 0.35   # comprar si token <= este precio
-        self.trading_profit_offset: float = 0.20     # vender en entry + offset
-        self.trading_exit_deadline_min: float = 3.0  # forzar salida a T-X min del cierre
-        self.trading_min_entry_minutes_left: float = 6.0  # no abrir si quedan menos minutos
-        self.trading_max_entries_per_market: int = 3
+        self.trading_entry_threshold: float = 0.42   # comprar si token <= este precio
+        self.trading_profit_offset: float = 0.15     # vender en entry + offset (0.42 -> 0.57)
+        self.trading_exit_deadline_min: float = 2.0  # forzar salida a T-X min del cierre
+        self.trading_min_entry_minutes_left: float = 3.0  # no abrir si quedan menos minutos
+        self.trading_max_entries_per_market: int = 4
         self.trading_max_open_per_side: int = 2
         self.trading_stake_usdc: float = 5.0         # USDC por entrada
         # Cargar valores guardados previamente (sobreescriben los defaults)
