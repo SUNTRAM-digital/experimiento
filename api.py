@@ -2310,6 +2310,8 @@ async def _execute_chat_tool(name: str, inputs: dict, bot_id: str | None = None)
             "trading_paper_required_days", "trading_paper_required_trades",
             "trading_paper_required_wr", "trading_paper_gate_override",
             "trading_max_price_age_sec",
+            # Punto 2 v9.5.1 — phantom per-interval toggles
+            "phantom_5m_enabled", "phantom_15m_enabled", "phantom_1d_enabled",
         }
         invalid = [k for k in params if k not in valid_keys]
         if invalid:
@@ -2838,6 +2840,9 @@ async def phantom_status():
             "phantom_bucket_15m_pct":  bot_params.phantom_bucket_15m_pct,
             "phantom_bucket_5m_usdc":  b5m,
             "phantom_bucket_15m_usdc": b15m,
+            "phantom_5m_enabled":      bool(getattr(bot_params, "phantom_5m_enabled", True)),
+            "phantom_15m_enabled":     bool(getattr(bot_params, "phantom_15m_enabled", True)),
+            "phantom_1d_enabled":      bool(getattr(bot_params, "phantom_1d_enabled", False)),
             "in_bets":     max(0.0, in_bets),
             "total_trades":  total_trades,
             "wins":          wins,
@@ -2871,6 +2876,24 @@ async def phantom_toggle(body: dict):
         bot_params.save()
         mode = "REAL+FICTICIO" if enabled else "SOLO FICTICIO"
         return {"ok": True, "phantom_real_enabled": enabled, "mode": mode}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/phantom/interval_toggle")
+async def phantom_interval_toggle(body: dict):
+    """Toggle phantom por intervalo (5m/15m/1d). body: {interval: '5m'|'15m'|'1d', enabled: bool}"""
+    try:
+        from bot import bot_params
+        interval = str(body.get("interval", "")).lower()
+        enabled  = bool(body.get("enabled", False))
+        attr_map = {"5m": "phantom_5m_enabled", "15m": "phantom_15m_enabled", "1d": "phantom_1d_enabled"}
+        attr = attr_map.get(interval)
+        if not attr:
+            return {"ok": False, "error": f"interval inválido: {interval}"}
+        setattr(bot_params, attr, enabled)
+        bot_params.save()
+        return {"ok": True, "interval": interval, "enabled": enabled}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

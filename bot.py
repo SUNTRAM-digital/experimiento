@@ -1805,7 +1805,15 @@ async def _scan_updown(interval_minutes: int):
     # Se registra para CADA mercado escaneado — si hubo trade real la
     # skip_reason será "traded_real", si no "no_signal" u otro filtro.
     # Así acumulamos datos continuos para el learner.
-    if slug not in _updown_phantom_slugs:
+    # Punto 2 — toggles phantom por intervalo: si el intervalo está desactivado
+    # en phantom, no registrar phantom (pero sí seguir con trade real si aplica).
+    _phantom_attr = (
+        "phantom_5m_enabled"  if interval_minutes <= 5 else
+        "phantom_1d_enabled"  if interval_minutes >= 1440 else
+        "phantom_15m_enabled"
+    )
+    _phantom_on = bool(getattr(bot_params, _phantom_attr, True))
+    if _phantom_on and slug not in _updown_phantom_slugs:
         # Phantom usa la MISMA señal que el bot real — ya incluye
         # lógica de desplazamiento, régimen y mean-reversion correcta.
         phantom_dir  = _sig["direction"]
@@ -2956,11 +2964,13 @@ async def _run_updown_loop():
             if not bot_params.updown_enabled:
                 _log("INFO", "UpDown | updown_enabled=False — loop pausado")
             else:
-                if bot_params.updown_5m_enabled:
+                # Scan si updown real O phantom está habilitado para ese intervalo
+                # (permite que phantom opere solo aunque el real esté apagado)
+                if bot_params.updown_5m_enabled or getattr(bot_params, "phantom_5m_enabled", False):
                     await _scan_updown(5)
-                if bot_params.updown_15m_enabled:
+                if bot_params.updown_15m_enabled or getattr(bot_params, "phantom_15m_enabled", False):
                     await _scan_updown(15)
-                if getattr(bot_params, "updown_1d_enabled", False):
+                if getattr(bot_params, "updown_1d_enabled", False) or getattr(bot_params, "phantom_1d_enabled", False):
                     await _scan_updown(1440)
         except Exception as e:
             _log("ERROR", f"UpDown loop error: {e}")

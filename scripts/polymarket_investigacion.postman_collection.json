@@ -1,0 +1,181 @@
+{
+  "info": {
+    "name": "Polymarket BTC UpDown — Investigación precios",
+    "description": "Colección para investigar qué valor usa Polymarket como 'precio a superar' en mercados BTC Up/Down. Objetivo: encontrar el campo exacto que muestra la UI de Polymarket.",
+    "_postman_id": "polymarket-btc-investigation-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "slug_15m",
+      "value": "btc-updown-15m-1776469500",
+      "description": "Slug de mercado 15m ya resuelto — cambiar por el que quieras investigar"
+    },
+    {
+      "key": "slug_reciente",
+      "value": "btc-updown-15m-1776528900",
+      "description": "Slug más reciente del historial"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. GAMMA API — Evento completo por slug",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?slug={{slug_15m}}",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [{ "key": "slug", "value": "{{slug_15m}}" }]
+        },
+        "description": "Respuesta completa del evento. Buscar: eventMetadata.priceToBeat, eventMetadata.finalPrice, markets[0].question, markets[0].description"
+      }
+    },
+    {
+      "name": "2. GAMMA API — Solo eventMetadata (campos de precio)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?slug={{slug_15m}}",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [{ "key": "slug", "value": "{{slug_15m}}" }]
+        },
+        "description": "Mismo request — en Tests tab puedes correr este script para ver solo los campos de precio:\n\nvar r = pm.response.json()[0];\nvar meta = r.eventMetadata || {};\nvar m = r.markets[0];\nconsole.log('priceToBeat:', meta.priceToBeat);\nconsole.log('finalPrice:', meta.finalPrice);\nconsole.log('startDate:', r.startDate);\nconsole.log('endDate:', r.endDate);\nconsole.log('startTime:', r.startTime);\nconsole.log('question:', m.question);\nconsole.log('outcomePrices:', m.outcomePrices);\nconsole.log('bestBid:', m.bestBid);\nconsole.log('bestAsk:', m.bestAsk);\nconsole.log('lastTradePrice:', m.lastTradePrice);\nconsole.log('oneDayPriceChange:', m.oneDayPriceChange);"
+      }
+    },
+    {
+      "name": "3. GAMMA API — Buscar mercado activo ahora (sin slug)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?tag=btc&active=true&limit=5",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [
+            { "key": "tag", "value": "btc" },
+            { "key": "active", "value": "true" },
+            { "key": "limit", "value": "5" }
+          ]
+        },
+        "description": "Mercados BTC activos ahora. Ver si eventMetadata.priceToBeat ya está disponible ANTES de que cierre el mercado."
+      }
+    },
+    {
+      "name": "4. GAMMA API — Mercados BTC updown activos (serie)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?seriesSlug=btc-updown-15m&active=true&limit=3",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [
+            { "key": "seriesSlug", "value": "btc-updown-15m" },
+            { "key": "active", "value": "true" },
+            { "key": "limit", "value": "3" }
+          ]
+        },
+        "description": "Todos los mercados 15m activos de la serie. Útil para ver el priceToBeat del mercado actual."
+      }
+    },
+    {
+      "name": "5. GAMMA API — Dos mercados consecutivos (para comparar cadena de precios)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?slug=btc-updown-15m-1776469500",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [{ "key": "slug", "value": "btc-updown-15m-1776469500" }]
+        },
+        "description": "Trade #1 de la cadena. Datos: priceToBeat=77061.01, finalPrice=77097.64.\nLuego corre la Request 6 para ver que btc-updown-15m-1776470400 tiene priceToBeat=77097.64 (= finalPrice anterior).\nAsí confirmas que Polymarket encadena los mercados."
+      }
+    },
+    {
+      "name": "6. GAMMA API — Trade consecutivo (verificar encadenamiento)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?slug=btc-updown-15m-1776470400",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [{ "key": "slug", "value": "btc-updown-15m-1776470400" }]
+        },
+        "description": "Trade #2. priceToBeat debería ser 77097.64 = finalPrice del trade anterior.\nEsto confirma: priceToBeat[N] = finalPrice[N-1] = precio Chainlink al cierre de la ventana anterior."
+      }
+    },
+    {
+      "name": "7. CLOB API — Precio live del token UP",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://clob.polymarket.com/price?token_id=PONER_UP_TOKEN_ID_AQUI&side=BUY",
+          "protocol": "https",
+          "host": ["clob", "polymarket", "com"],
+          "path": ["price"],
+          "query": [
+            { "key": "token_id", "value": "PONER_UP_TOKEN_ID_AQUI" },
+            { "key": "side", "value": "BUY" }
+          ]
+        },
+        "description": "Precio live del token UP en el CLOB. Cerca de 1.0 = UP ganó, cerca de 0.0 = DOWN ganó.\nEl token_id sale de: events[0].markets[0].clobTokenIds[0] (índice 0 = Up, índice 1 = Down)"
+      }
+    },
+    {
+      "name": "8. CLOB API — Order book del mercado",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://clob.polymarket.com/book?token_id=PONER_UP_TOKEN_ID_AQUI",
+          "protocol": "https",
+          "host": ["clob", "polymarket", "com"],
+          "path": ["book"],
+          "query": [
+            { "key": "token_id", "value": "PONER_UP_TOKEN_ID_AQUI" }
+          ]
+        },
+        "description": "Order book completo. Muestra bids/asks actuales del token UP."
+      }
+    },
+    {
+      "name": "9. GAMMA API — Campos de precio de un mercado (inspección completa)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/markets?conditionId=PONER_CONDITION_ID_AQUI",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["markets"],
+          "query": [
+            { "key": "conditionId", "value": "PONER_CONDITION_ID_AQUI" }
+          ]
+        },
+        "description": "Endpoint /markets directo por conditionId. A veces tiene campos extra no disponibles en /events.\nconditionId sale de: events[0].markets[0].conditionId"
+      }
+    },
+    {
+      "name": "10. GAMMA API — Serie completa btc-updown-15m",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "https://gamma-api.polymarket.com/events?seriesSlug=btc-updown-15m&limit=10&closed=true",
+          "protocol": "https",
+          "host": ["gamma-api", "polymarket", "com"],
+          "path": ["events"],
+          "query": [
+            { "key": "seriesSlug", "value": "btc-updown-15m" },
+            { "key": "limit", "value": "10" },
+            { "key": "closed", "value": "true" }
+          ]
+        },
+        "description": "Últimos 10 mercados cerrados de la serie 15m. Ver si todos tienen eventMetadata con priceToBeat y finalPrice."
+      }
+    }
+  ]
+}

@@ -6,9 +6,9 @@
     "trades_in_preset": 0
   },
   "15": {
-    "consec_wins": 0,
+    "consec_wins": 5,
     "consec_losses": 0,
-    "preset_idx": 0,
-    "trades_in_preset": 0
+    "preset_idx": 1,
+    "trades_in_preset": 21
   }
 }

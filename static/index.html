@@ -1799,6 +1799,19 @@
           </button>
         </div>
 
+        <!-- Toggles de intervalos phantom (5m / 15m / 1d) -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:3px">Intervalos Phantom</div>
+            <div style="font-size:.78rem;color:var(--muted)">Habilita/deshabilita cada intervalo para phantom. Independiente del bot real.</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button id="ph-iv-5m"  onclick="togglePhantomInterval('5m')"  style="padding:7px 14px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer">5m: —</button>
+            <button id="ph-iv-15m" onclick="togglePhantomInterval('15m')" style="padding:7px 14px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer">15m: —</button>
+            <button id="ph-iv-1d"  onclick="togglePhantomInterval('1d')"  style="padding:7px 14px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer">1d: —</button>
+          </div>
+        </div>
+
         <!-- Auto-regla de win rate -->
         <div id="ph-autorule-banner" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <div style="flex:1;min-width:200px">
@@ -8667,6 +8680,20 @@ async function loadPhantom() {
       desc.style.color = 'var(--muted)';
     }
 
+    // Toggles por intervalo (5m / 15m / 1d)
+    const _renderIvBtn = (id, label, on) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.dataset.on = on ? '1' : '0';
+      el.textContent = label + ': ' + (on ? 'ON' : 'OFF');
+      el.style.cssText = on
+        ? 'padding:7px 14px;border-radius:6px;border:2px solid #15803d;background:#052e16;color:#4ade80;font-weight:700;font-size:.78rem;cursor:pointer'
+        : 'padding:7px 14px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer';
+    };
+    _renderIvBtn('ph-iv-5m',  '5m',  !!s.phantom_5m_enabled);
+    _renderIvBtn('ph-iv-15m', '15m', !!s.phantom_15m_enabled);
+    _renderIvBtn('ph-iv-1d',  '1d',  !!s.phantom_1d_enabled);
+
     // Capital cards
     document.getElementById('ph-cash').textContent = '$' + (s.phantom_cash_libre_usdc||0).toFixed(2);
     const poolActivo = s.phantom_pool_usdc || 0;
@@ -8838,6 +8865,23 @@ async function loadPhantomTrades(page = 0) {
                cursor:pointer;font-size:.75rem">${i+1}</button>`
     ).join('');
   } catch(e) { console.warn('[Phantom] trades error', e); }
+}
+
+async function togglePhantomInterval(interval) {
+  const btnId = 'ph-iv-' + interval;
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const currentlyOn = btn.dataset.on === '1';
+  const newState = !currentlyOn;
+  try {
+    const r = await fetch('/api/phantom/interval_toggle', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({interval: interval, enabled: newState})
+    }).then(r => r.json());
+    if (r.ok) loadPhantom();
+    else alert('Error: ' + (r.error||'desconocido'));
+  } catch(e) { alert('Error de red: ' + e); }
 }
 
 async function togglePhantomReal() {

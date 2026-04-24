@@ -1,0 +1,58 @@
+{
+  "phantom": {},
+  "real": {
+    "z": [
+      {
+        "id": "e3d5a67dfe7c",
+        "slug": "z",
+        "interval": 5,
+        "end_ts": 9999999999,
+        "side": "UP",
+        "token_id": "t1",
+        "entry_price": 0.5,
+        "target_price": 0.8,
+        "stake_usdc": 5.0,
+        "entry_ts": 1777061434,
+        "entry_hms": "14:10:34",
+        "entry_iso": "2026-04-24 14:10:34",
+        "status": "TARGET_HIT",
+        "exit_price": 0.8,
+        "exit_ts": 1777061434,
+        "exit_hms": "14:10:34",
+        "exit_iso": "2026-04-24 14:10:34",
+        "exit_reason": "TARGET_HIT",
+        "pnl_usdc": 10.0,
+        "is_real": true,
+        "duration_secs": 0
+      },
+      {
+        "id": "5050e8b7cc0b",
+        "slug": "z",
+        "interval": 5,
+        "end_ts": 9999999999,
+        "side": "UP",
+        "token_id": "t2",
+        "entry_price": 0.5,
+        "target_price": 0.8,
+        "stake_usdc": 5.0,
+        "entry_ts": 1777061434,
+        "entry_hms": "14:10:34",
+        "entry_iso": "2026-04-24 14:10:34",
+        "status": "STOP_LOSS",
+        "exit_price": 0.1,
+        "exit_ts": 1777061434,
+        "exit_hms": "14:10:34",
+        "exit_iso": "2026-04-24 14:10:34",
+        "exit_reason": "STOP_LOSS",
+        "pnl_usdc": -5.0,
+        "is_real": true,
+        "duration_secs": 0
+      }
+    ]
+  },
+  "meta": {
+    "phantom_balance": 50.0,
+    "realized_pnl_phantom": 0.0,
+    "realized_pnl_real": 5.0
+  }
+}

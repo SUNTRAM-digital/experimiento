@@ -94,6 +94,10 @@ class BotParams:
         self.phantom_bucket_15m_pct: float = 0.70    # % del pool para trades 15m
         self.phantom_bucket_5m_usdc: float = 0.0     # saldo actual bucket phantom 5m
         self.phantom_bucket_15m_usdc: float = 0.0    # saldo actual bucket phantom 15m
+        # Toggles por intervalo — registrar/operar phantom independiente del bot real (punto 2)
+        self.phantom_5m_enabled: bool = True
+        self.phantom_15m_enabled: bool = True
+        self.phantom_1d_enabled: bool = False
         # Stake dinámico UpDown por nivel de confianza (item 29)
         # Stake = min_stake + (max_stake - min_stake) * (conf - conf_min) / (conf_max - conf_min)
         # clipped to [min_stake, max_stake]
@@ -203,6 +207,9 @@ class BotParams:
             "phantom_bucket_15m_pct": self.phantom_bucket_15m_pct,
             "phantom_bucket_5m_usdc": self.phantom_bucket_5m_usdc,
             "phantom_bucket_15m_usdc": self.phantom_bucket_15m_usdc,
+            "phantom_5m_enabled":  self.phantom_5m_enabled,
+            "phantom_15m_enabled": self.phantom_15m_enabled,
+            "phantom_1d_enabled":  self.phantom_1d_enabled,
             "updown_stake_min_usdc":      self.updown_stake_min_usdc,
             "updown_stake_max_usdc":      self.updown_stake_max_usdc,
             "updown_stake_conf_min_pct":  self.updown_stake_conf_min_pct,
