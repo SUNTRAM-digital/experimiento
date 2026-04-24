@@ -1633,10 +1633,12 @@ async def _scan_updown(interval_minutes: int):
         state.updown_last_market_15m = market
 
     # ── TRADING MODE (v9.4) — buy cheap / sell target ──────────────────
-    # Si trading_mode_enabled está activo, se reemplaza la lógica de predicción
-    # por trading de volatilidad. No marca _updown_traded_slugs porque permite
-    # múltiples entradas por mercado.
-    if getattr(bot_params, "trading_mode_enabled", False):
+    # Si trading_mode_enabled está activo, se ejecuta el trading runner
+    # PERO ya NO se hace return (v9.5.2): la lógica de predicción legacy
+    # sigue corriendo para registrar el phantom (vps_experiment + learner)
+    # — sin abrir trade real legacy (se bloquea más abajo).
+    _trading_mode_active = bool(getattr(bot_params, "trading_mode_enabled", False))
+    if _trading_mode_active:
         try:
             from trading_runner import run_cycle as _trading_cycle
             _tres = await _trading_cycle(market, bot_params)
@@ -1649,7 +1651,7 @@ async def _scan_updown(interval_minutes: int):
                      f"{'closed=' + str(_ph_cl) if _ph_cl else ''}".strip())
         except Exception as _te:
             _log("WARN", f"UpDown {interval_minutes}m | Trading runner error: {_te}")
-        return  # trading mode: no cae a la lógica antigua de predicción
+        # NO return — caer a la lógica legacy para registrar phantom.
 
     # No operar dos veces en el mismo ciclo de mercado
     if slug in _updown_traded_slugs:
@@ -1949,6 +1951,9 @@ async def _scan_updown(interval_minutes: int):
             "INFO",
             f"UpDown {interval_minutes}m | [PHANTOM] ⟳ ya registrado para este slug — esperando resolución",
         )
+
+    if _trading_mode_active:
+        return  # trading mode maneja entradas reales vía trading_runner
 
     if stopped:
         return  # circuit breaker: phantom ya registrado arriba, no ejecutar trade real

@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 5
-PATCH = 1
+PATCH = 2
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom per-interval toggles (5m/15m/1d) independiente del bot real"
+PHASE_NAME = "Phantom legacy registration restaurado en trading_mode (no más short-circuit)"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
