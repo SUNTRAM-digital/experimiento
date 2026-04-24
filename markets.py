@@ -325,6 +325,77 @@ async def get_order_book_depth(token_id: str, side: str, up_to_price: float) -> 
         return {"depth_shares": 0, "depth_usdc": 0, "levels": 0}
 
 
+async def get_full_order_book(token_id: str) -> dict:
+    """
+    Devuelve snapshot completo del order book en tiempo real.
+    Retorna:
+      {
+        best_bid, best_ask, mid, spread,
+        bids: [(price, size), ...] top-5,
+        asks: [(price, size), ...] top-5,
+        bid_total_shares, ask_total_shares,
+        bid_usdc_depth, ask_usdc_depth,
+        pressure  (>1 = buy pressure, <1 = sell pressure),
+      }
+    """
+    default = {
+        "best_bid": None, "best_ask": None, "mid": None, "spread": None,
+        "bids": [], "asks": [],
+        "bid_total_shares": 0.0, "ask_total_shares": 0.0,
+        "bid_usdc_depth": 0.0, "ask_usdc_depth": 0.0,
+        "pressure": 1.0,
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{CLOB_BASE}/book",
+                params={"token_id": token_id},
+                headers=HEADERS,
+                timeout=8,
+            )
+            if resp.status_code != 200:
+                return default
+            book = resp.json()
+        raw_bids = book.get("bids", []) or []
+        raw_asks = book.get("asks", []) or []
+        # Polymarket: bids ASC price (peor primero), asks DESC. Normalizar.
+        bids = sorted(
+            [(float(l.get("price", 0)), float(l.get("size", 0))) for l in raw_bids],
+            key=lambda x: -x[0],
+        )
+        asks = sorted(
+            [(float(l.get("price", 0)), float(l.get("size", 0))) for l in raw_asks],
+            key=lambda x: x[0],
+        )
+        best_bid = bids[0][0] if bids else None
+        best_ask = asks[0][0] if asks else None
+        mid = None
+        spread = None
+        if best_bid is not None and best_ask is not None:
+            mid = round((best_bid + best_ask) / 2, 4)
+            spread = round(best_ask - best_bid, 4)
+        bid_shares = sum(s for _, s in bids[:10])
+        ask_shares = sum(s for _, s in asks[:10])
+        bid_usdc = sum(p * s for p, s in bids[:10])
+        ask_usdc = sum(p * s for p, s in asks[:10])
+        pressure = (bid_shares / ask_shares) if ask_shares > 0 else 1.0
+        return {
+            "best_bid": best_bid,
+            "best_ask": best_ask,
+            "mid": mid,
+            "spread": spread,
+            "bids": bids[:5],
+            "asks": asks[:5],
+            "bid_total_shares": round(bid_shares, 2),
+            "ask_total_shares": round(ask_shares, 2),
+            "bid_usdc_depth": round(bid_usdc, 2),
+            "ask_usdc_depth": round(ask_usdc, 2),
+            "pressure": round(pressure, 3),
+        }
+    except Exception:
+        return default
+
+
 async def get_live_price(token_id: str) -> Optional[float]:
     """Obtiene el precio actual de un token desde el CLOB."""
     try:

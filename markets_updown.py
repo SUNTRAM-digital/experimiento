@@ -117,7 +117,7 @@ async def _search_updown_by_markets(client: httpx.AsyncClient, interval_minutes:
     Filtra por título que contenga "up" y "down" y el intervalo.
     Luego agrupa por eventId para reconstruir el evento.
     """
-    label = f"{interval_minutes}m"
+    label = "1d" if interval_minutes == 1440 else f"{interval_minutes}m"
     try:
         import json as _json
         async with client.stream(
@@ -195,7 +195,7 @@ async def _search_updown_by_markets(client: httpx.AsyncClient, interval_minutes:
 
 async def _search_updown_events_keyword(client: httpx.AsyncClient, interval_minutes: int) -> list:
     """Búsqueda por keyword en endpoint /events (más amplia, 500 eventos)."""
-    label = f"{interval_minutes}m"
+    label = "1d" if interval_minutes == 1440 else f"{interval_minutes}m"
     try:
         import json as _json
         async with client.stream(
@@ -271,11 +271,12 @@ async def fetch_updown_market(interval_minutes: int) -> Optional[dict]:
     async with httpx.AsyncClient() as client:
         # ── Fase 1: slug exacto ──────────────────────────────────────────────
         candidate_events: list = []
+        slug_label = "1d" if interval_minutes == 1440 else f"{interval_minutes}m"
         for ts in slug_timestamps:
             if candidate_events:
                 break
             for prefix in slug_prefixes:
-                slug = f"{prefix}-{interval_minutes}m-{ts}"
+                slug = f"{prefix}-{slug_label}-{ts}"
                 events = await _get_events_by_slug(client, slug)
                 if events:
                     logger.info(f"UpDown {interval_minutes}m | Slug encontrado: {slug}")

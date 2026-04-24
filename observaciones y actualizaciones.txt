@@ -1,7 +1,26 @@
 0. Este documento es para listarte los puntos a tratar. cuando resuelvas cualquiera le pones (hecho) al inicio, si alguno de los puntos dice (hecho) entonces lo ignoras y sigues con el siguiente que no tenga esa marca. al finalizar sube los cambios a github y corre el proyecto con la version mas actual. Todo cambio debe tener sus test propios para asegurte de que funciona correctamente antes de subir cambios
-(hecho) 1. Sigo viendo que wl WR es diferente en cada seccion, de phantom de 15 min por ejemplo, en bot dice 70%, el cerebro dice 45%, la seccion de phantom dice 50%, en updown dice 46%, en estrategias dice 49%, debes entralizar las estaditicas para que a lo largo de la plataforma todas las estadisticas de todo sea consistente. Asi no sirve y el bot tiene datos erroneos
-(hecho) 2. El chat de la derecha no funciona correctamente, da el error
-(hecho) 3. Al entrar a acada uno de los cerebros de los bots, en el chat pasan dos cosas
-    A: Señal en Vivo da este error: Error: Unexpected token 'I', "Internal S"... is not valid JSON
-    B: el chat no parece ser un chat especifico de ese bot, le escribo y me habla como si fuera otro bot, le escribo al de 15min y me responde como si fuera 5min, o me da datos generales de todo. quiero que cada bot tenga su chat especifico para modificar el bot unicamente, no el resto de la paltaforma, para eso esta el chat de la derecha
-(hecho) 4. Optimizer autónomo phantom: phantom_optimizer.py creado con presets de estrategia (6 presets por intervalo), tracking de rachas consecutivas, reglas WR≥75% o 7+ wins→activar dinero real; WR<50% o 3+ losses→desactivar; rotación de preset cuando WR<50% tras 20 trades. Hooked en bot.py reemplazando _check_phantom_autorule. Panel en cerebro del bot muestra WR, racha, preset actual, progreso de prueba. /api/bots/optimizer-status endpoint. 15 tests nuevos.
+
+1. (hecho) quiero que todo lo de trading mode lo muevas a una nueva seccion que se llame trading mode. quiero que sea un bot independiente al resto de la paltaforma
+1.25. (hecho) Quiero que las operaciones de phantom y de real sean las mismas en trading-mode, osea que lo que haga phantom lo haga exactamente igual que con el dinero real, porque el bot de real solo ha perdido, como que no aprende de phantom
+1.5. (hecho) Agrega el mercado de 1 dia de updown de btc, para que este el mercado de 5min de 15min y de 1 dia de btc
+2. (hecho) el bot de trading mode tiene que tambien estar aprendiendo y mejorando con el tiempo, hay que asegurarnos de tener un espacion para estar entrenando al bot phantom para trading mode, hay que agregar su bot como en la seccion de bots con su cerebro y todos los datos de entrenamiento, mejora, cambios etc que tiene el bot
+3. (hecho) separa el wr de trading bot entre el de 15min y el de 5min
+4. (hecho) la tabla de posiciones abiertas de trading mode, quiero poder filtrar las operaciones de 15min de 5min, poder ordenar cuales son win cuanles son loss, etc..
+5. (hecho) el pnl de trading bot tambien quiero verlo por separado entre el de 5min y el de 15min y el total de ambos en trading bot
+6. (hecho) quiero que el balance phantom virtual den trding bot poder modificarlo manualmente para hacer experimiento
+7. (hecho) el exposure tambien quiero poder resetaerlo manualmente
+8. (hecho) el max consec losses quiero que solo afecte a dinero real al igual que el real daily loss
+9. (hecho) agrega un dashboard en trading mode que este mostrando todo acerca del trading mode
+10. (hecho) veo que por cada loss hay que al menos tener 4 wins para recuperar, que ajustes en los aprametros tendia que poner para que ese valor sea mas bien que por cada win tenga al menos que haber 2 loss para perder realmente capital
+11. (hecho) Agrega que en cada registro de trading-mode se agregue en que minuto segundo se hizo la compra y que imnuto segundo se vendió
+12. (hecho) necesitamos una estrategia cuando el bot compra en una posicion por ejemplo de .20 y en lugar de subir a .40 para vender el mercado se va a .05. Algo debe hacerse para recuperar o evitar perder toda la posiciones, dame opciones e ideas, algo que se me ocurre es poner algo asi como un valor limite y tiempo limite. Ejemplo se compra en .50 y cae a .20 si me mantiene 5 min y no llega a .50 minimo entonces se busca vender al valor de la posicion inicial / 2 osea seria a .25 minimo, pero si el precio cae a .05 entonces tambien se busca vender a un tercio del valor de la posiciones inicial para no perder todo o mucho. 
+13. (hecho) claude debe tener acceso a todo el sistema, dele acceso a todo, tambien al trading mode para que pueda aprender y analizar y tener mejor prediccion en los trades
+14. (hecho) como te puedes dar cuenta el bot compra up para que suba de precio y vender a un precio esperado, pero el valor se va al otro lado, osea no puede predecir, la idea es que en ese mercado en lugar de comprar up, compre down, el bot no debe comprar el mercado mas barato debe comprar el mercado mas probable, para tener ganancia en lugar de perdidas, por eso es entrar y salir rapido, es comprar, vender ganar y repetir, y que compre el mercado que no va a suceder hace que solo se pierda
+15. (hecho) asegurate de subir todo a github, hacer los test de todo, etiquetar la version correctamente y dejar la version local
+16. (hecho) Quiero poder seleccionar el modelo de claude en el chat de la plataforma
+17. (hecho) asegurate que claude en la paltaforma puede modificar los parametros de Trading-mode y los pueda cambiar cuando yo lo pida
+18. (hecho) agregue unas imagenes a la carpeta de base de conocimiento en la carpeta de operacion, analizalas
+19. (hecho) basado en lo que tenemos y las imagenes que analizaste en el punto anterior, haz la implementación
+20. (hecho) Asegurate de tener tests, probarlos, que todo pase correctamente, subir todo a github
+21. (hecho) Generame un md que tenga todo el proyecto de phantom bot, para hacer una nueva plataforma de solo el phantom bot, que incluya 1. el bot de trading -mode tanto de 5min como de 15min, el phantom bot de opciones de 5 min y de 15 min, con todo lo que corresponde a esos, el bot y cerebro, el dashboard, las metricas por bot, los logs, las tablas de registro de operaciones, quiero que detalles al bot y claude, como operan, los aprametros, la parte de ml, los algoritmos, como esntrenarlo, como opera, como mejorarlo.
+

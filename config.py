@@ -44,6 +44,7 @@ class BotParams:
         self.updown_enabled: bool = os.getenv("UPDOWN_ENABLED", "true").lower() == "true"  # kill switch global
         self.updown_5m_enabled: bool = os.getenv("UPDOWN_5M_ENABLED", "true").lower() == "true"
         self.updown_15m_enabled: bool = os.getenv("UPDOWN_15M_ENABLED", "true").lower() == "true"
+        self.updown_1d_enabled: bool = os.getenv("UPDOWN_1D_ENABLED", "false").lower() == "true"  # mercado diario BTC
         self.updown_max_usdc: float = float(os.getenv("UPDOWN_MAX_USDC", 1.0))
         self.updown_max_consecutive_losses: int = int(os.getenv("UPDOWN_MAX_CONSECUTIVE_LOSSES", 5))
         # Umbrales configurables por el asesor (0 = usar el valor adaptativo del learner)
@@ -103,13 +104,43 @@ class BotParams:
         # --- Trading Mode (v9.4) — compra barato, vende target ---
         self.trading_mode_enabled: bool = True       # usar trading mode en vez de prediction
         self.trading_real_enabled: bool = False      # False = solo phantom; True = phantom + real
-        self.trading_entry_threshold: float = 0.42   # comprar si token <= este precio
-        self.trading_profit_offset: float = 0.15     # vender en entry + offset (0.42 -> 0.57)
-        self.trading_exit_deadline_min: float = 2.0  # forzar salida a T-X min del cierre
-        self.trading_min_entry_minutes_left: float = 3.0  # no abrir si quedan menos minutos
-        self.trading_max_entries_per_market: int = 4
-        self.trading_max_open_per_side: int = 2
+        self.trading_entry_threshold: float = 0.55   # comprar si token <= este precio
+        self.trading_min_entry_price: float = 0.10   # floor: no comprar si token < este (mercado muerto)
+        self.trading_max_entry_price: float = 0.30   # ceiling (punto 10): solo comprar barato → R:R favorable
+        self.trading_trend_prefer_winning: bool = True  # preferir lado trending vs cheapest
+        self.trading_profit_offset: float = 0.30     # vender en entry + offset (punto 10: 0.12→0.30 para R:R≥2:1)
+        self.trading_exit_deadline_min: float = 1.0  # forzar salida a T-X min del cierre
+        self.trading_min_entry_minutes_left: float = 1.0  # entrar desde el inicio
+        self.trading_max_entries_per_market: int = 8 # con one-open-at-a-time, permite muchos ciclos
+        self.trading_max_open_per_side: int = 1      # con one-open, solo 1 a la vez
         self.trading_stake_usdc: float = 5.0         # USDC por entrada
+        self.trading_one_open_at_a_time: bool = True # vender antes de volver a comprar
+        # --- Safety caps para trading real (v9.4.4) ---
+        self.trading_real_max_exposure_usdc: float = 20.0   # exposure máximo vivo en real (suma stakes OPEN)
+        self.trading_real_daily_loss_limit_usdc: float = 5.0  # stop diario (|pnl negativo| día hoy)
+        self.trading_real_max_consec_losses: int = 3        # kill-switch tras N pérdidas seguidas
+        self.trading_real_killed: bool = False              # flag activado por kill-switch; reset manual
+        # --- Modo "comprar el más probable" (punto 14) ---
+        self.trading_buy_probable: bool = True
+        self.trading_probable_min_price: float = 0.55
+        self.trading_probable_max_price: float = 0.85
+        self.trading_probable_profit_offset: float = 0.08
+        # --- Stop-loss escalonado (punto 12, enfoque A) ---
+        self.trading_sl_enabled: bool = True
+        self.trading_sl_trigger_drop: float = 0.50           # caída 50% vs entry arma SL
+        self.trading_sl_wait_min: float = 3.0                # esperar N min tras trigger
+        self.trading_sl_min_recover_factor: float = 0.50     # vender si bid >= entry/2
+        self.trading_panic_trigger_drop: float = 0.80        # caída 80% → panic
+        self.trading_panic_min_recover_factor: float = 0.33  # vender si bid >= entry/3
+        # --- Punto 19A — drawdown kill switch (-40% desde ATH de cumulative real PnL) ---
+        self.trading_real_drawdown_halt_pct: float = 0.40
+        # --- Punto 19B — paper-to-live gate ---
+        self.trading_paper_required_days: float = 7.0
+        self.trading_paper_required_trades: int = 200
+        self.trading_paper_required_wr: float = 0.75
+        self.trading_paper_gate_override: bool = False
+        # --- Punto 19C — stale price check ---
+        self.trading_max_price_age_sec: float = 10.0
         # Cargar valores guardados previamente (sobreescriben los defaults)
         self._load()
 
@@ -136,6 +167,7 @@ class BotParams:
             "updown_enabled": self.updown_enabled,
             "updown_5m_enabled": self.updown_5m_enabled,
             "updown_15m_enabled": self.updown_15m_enabled,
+            "updown_1d_enabled": self.updown_1d_enabled,
             "updown_max_usdc": self.updown_max_usdc,
             "updown_max_consecutive_losses": self.updown_max_consecutive_losses,
             "updown_15m_min_confidence": self.updown_15m_min_confidence,
@@ -178,12 +210,36 @@ class BotParams:
             "trading_mode_enabled":            self.trading_mode_enabled,
             "trading_real_enabled":            self.trading_real_enabled,
             "trading_entry_threshold":         self.trading_entry_threshold,
+            "trading_min_entry_price":         self.trading_min_entry_price,
+            "trading_max_entry_price":         self.trading_max_entry_price,
+            "trading_trend_prefer_winning":    self.trading_trend_prefer_winning,
             "trading_profit_offset":           self.trading_profit_offset,
             "trading_exit_deadline_min":       self.trading_exit_deadline_min,
             "trading_min_entry_minutes_left":  self.trading_min_entry_minutes_left,
             "trading_max_entries_per_market":  self.trading_max_entries_per_market,
             "trading_max_open_per_side":       self.trading_max_open_per_side,
             "trading_stake_usdc":              self.trading_stake_usdc,
+            "trading_one_open_at_a_time":      self.trading_one_open_at_a_time,
+            "trading_real_max_exposure_usdc":      self.trading_real_max_exposure_usdc,
+            "trading_real_daily_loss_limit_usdc":  self.trading_real_daily_loss_limit_usdc,
+            "trading_real_max_consec_losses":      self.trading_real_max_consec_losses,
+            "trading_real_killed":                 self.trading_real_killed,
+            "trading_sl_enabled":                  self.trading_sl_enabled,
+            "trading_sl_trigger_drop":             self.trading_sl_trigger_drop,
+            "trading_sl_wait_min":                 self.trading_sl_wait_min,
+            "trading_sl_min_recover_factor":       self.trading_sl_min_recover_factor,
+            "trading_panic_trigger_drop":          self.trading_panic_trigger_drop,
+            "trading_panic_min_recover_factor":    self.trading_panic_min_recover_factor,
+            "trading_buy_probable":                self.trading_buy_probable,
+            "trading_probable_min_price":          self.trading_probable_min_price,
+            "trading_probable_max_price":          self.trading_probable_max_price,
+            "trading_probable_profit_offset":      self.trading_probable_profit_offset,
+            "trading_real_drawdown_halt_pct":      self.trading_real_drawdown_halt_pct,
+            "trading_paper_required_days":         self.trading_paper_required_days,
+            "trading_paper_required_trades":       self.trading_paper_required_trades,
+            "trading_paper_required_wr":           self.trading_paper_required_wr,
+            "trading_paper_gate_override":         self.trading_paper_gate_override,
+            "trading_max_price_age_sec":           self.trading_max_price_age_sec,
         }
 
     def _load(self):

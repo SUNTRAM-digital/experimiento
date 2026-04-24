@@ -2960,9 +2960,14 @@ async def _run_updown_loop():
                     await _scan_updown(5)
                 if bot_params.updown_15m_enabled:
                     await _scan_updown(15)
+                if getattr(bot_params, "updown_1d_enabled", False):
+                    await _scan_updown(1440)
         except Exception as e:
             _log("ERROR", f"UpDown loop error: {e}")
-        await asyncio.sleep(60)
+        # Trading mode activo: loop rápido (15s) para rotación buy/sell constante.
+        # Sin trading mode: loop estándar 60s.
+        _loop_sleep = 15 if getattr(bot_params, "trading_mode_enabled", False) else 60
+        await asyncio.sleep(_loop_sleep)
 
 
 def start():

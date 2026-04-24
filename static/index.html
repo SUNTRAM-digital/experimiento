@@ -508,6 +508,14 @@
             Activado
           </button>
         </div>
+        <!-- UpDown 1d -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-radius:6px;padding:7px 10px">
+          <span style="font-size:.82rem;font-weight:600;color:#a78bfa">⚡ UpDown 1d</span>
+          <button id="btn-trade-updown1d" onclick="toggleTradeType('updown_1d')"
+            style="padding:3px 12px;font-size:.75rem;border-radius:5px;border:1px solid #4b5563;background:#1f2937;color:#86efac;cursor:pointer;min-width:80px">
+            Desactivado
+          </button>
+        </div>
       </div>
     </div>
 
@@ -669,6 +677,7 @@
       <div class="tab" onclick="showTab('tab-logs')">Logs</div>
       <div class="tab" onclick="showTab('tab-btc')">₿ Bitcoin <span id="badge-btc" style="background:#d29922;color:#000;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
       <div class="tab" onclick="showTab('tab-updown')">⚡ UpDown <span id="badge-updown" style="background:#7c3aed;color:#fff;border-radius:9px;padding:1px 6px;font-size:.7rem;display:none"></span></div>
+      <div class="tab" onclick="showTab('tab-trading')">💹 Trading Mode</div>
       <div class="tab" onclick="showTab('tab-phantom')">🎭 Phantom</div>
       <div class="tab" onclick="showTab('tab-capital')">💰 Capital</div>
       <div class="tab" onclick="showTab('tab-strategies')">🧠 Estrategias</div>
@@ -1310,47 +1319,153 @@
       </div>
     </div>
 
-    <!-- PHANTOM TAB -->
-    <div id="tab-phantom" class="tab-content">
-      <div style="max-width:900px;margin:0 auto">
+    <!-- TRADING MODE TAB (bot independiente) -->
+    <div id="tab-trading" class="tab-content">
+      <div style="max-width:1100px;margin:0 auto">
+
+        <!-- ── Dashboard Trading Mode (punto 9) ── -->
+        <div id="trading-dashboard" style="background:linear-gradient(135deg,#0b1220,#0f1729);border:1px solid #10b98144;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:.8rem;color:#34d399;text-transform:uppercase;letter-spacing:.5px;font-weight:700">📊 Dashboard Trading Mode</div>
+            <div style="font-size:.65rem;color:#6b7280">Hoy + acumulado · phantom + real · breakdown por TF</div>
+          </div>
+          <!-- Top KPI cards -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
+            <div style="background:#10b98111;border:1px solid #10b98144;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#34d399;text-transform:uppercase">Phantom Balance</div>
+              <div id="dash-ph-balance" style="font-size:1.3rem;font-weight:700;color:#34d399">$—</div>
+            </div>
+            <div style="background:#10b98111;border:1px solid #10b98144;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#34d399;text-transform:uppercase">PnL Hoy (Phantom)</div>
+              <div id="dash-ph-pnl-today" style="font-size:1.3rem;font-weight:700">$—</div>
+              <div id="dash-ph-trades-today" style="font-size:.6rem;color:#9ca3af">— trades</div>
+            </div>
+            <div style="background:#10b98111;border:1px solid #10b98144;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#34d399;text-transform:uppercase">WR Hoy (Phantom)</div>
+              <div id="dash-ph-wr-today" style="font-size:1.3rem;font-weight:700">—%</div>
+              <div id="dash-ph-wl-today" style="font-size:.6rem;color:#9ca3af">— W / — L</div>
+            </div>
+            <div style="background:#fbbf2411;border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#fbbf24;text-transform:uppercase">Real Exposure</div>
+              <div id="dash-rl-exposure" style="font-size:1.3rem;font-weight:700;color:#fbbf24">$—</div>
+              <div id="dash-rl-open" style="font-size:.6rem;color:#9ca3af">— abiertas</div>
+            </div>
+            <div style="background:#fbbf2411;border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#fbbf24;text-transform:uppercase">PnL Hoy (Real)</div>
+              <div id="dash-rl-pnl-today" style="font-size:1.3rem;font-weight:700">$—</div>
+              <div id="dash-rl-trades-today" style="font-size:.6rem;color:#9ca3af">— trades</div>
+            </div>
+            <div style="background:#7c3aed11;border:1px solid #7c3aed44;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#a78bfa;text-transform:uppercase">PnL Total Phantom</div>
+              <div id="dash-ph-pnl-all" style="font-size:1.3rem;font-weight:700">$—</div>
+              <div id="dash-ph-wr-all" style="font-size:.6rem;color:#9ca3af">WR —% · — trades</div>
+            </div>
+          </div>
+          <!-- Best/worst TF -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+            <div style="background:#0f1729;border:1px solid #34d39944;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#34d399;text-transform:uppercase">🏆 Mejor TF (WR)</div>
+              <div id="dash-best-tf" style="font-size:.85rem;font-weight:700">—</div>
+            </div>
+            <div style="background:#0f1729;border:1px solid #ef444444;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#ef4444;text-transform:uppercase">⚠ Peor TF (WR)</div>
+              <div id="dash-worst-tf" style="font-size:.85rem;font-weight:700">—</div>
+            </div>
+            <div style="background:#0f1729;border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#fbbf24;text-transform:uppercase">💰 Más rentable (PnL)</div>
+              <div id="dash-most-tf" style="font-size:.85rem;font-weight:700">—</div>
+            </div>
+            <div style="background:#0f1729;border:1px solid #6b728044;border-radius:6px;padding:8px">
+              <div style="font-size:.6rem;color:#9ca3af;text-transform:uppercase">Estado</div>
+              <div id="dash-state" style="font-size:.85rem;font-weight:700">—</div>
+            </div>
+          </div>
+        </div>
 
         <!-- ── Trading Mode (v9.4): buy cheap, sell target ── -->
         <div id="trading-panel" style="background:var(--bg2);border:1px solid #10b98144;border-radius:8px;padding:14px;margin-bottom:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
             <div style="font-size:.8rem;color:#34d399;text-transform:uppercase;letter-spacing:.5px;font-weight:700">
-              💹 Trading Mode <span style="font-weight:400;color:var(--muted)">— comprar barato, vender caro</span>
+              💹 Trading Mode<span class="help-btn" onclick="showHelp('trading_mode',event)">?</span> <span style="font-weight:400;color:var(--muted)">— comprar barato, vender caro</span>
             </div>
             <div style="display:flex;gap:6px">
               <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:var(--muted);cursor:pointer">
                 <input type="checkbox" id="trading-enabled-chk" onchange="saveTradingToggle('trading_mode_enabled', this.checked)">
-                Phantom ON
+                Phantom ON<span class="help-btn" onclick="showHelp('td_phantom_chk',event)">?</span>
               </label>
               <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:#fbbf24;cursor:pointer">
                 <input type="checkbox" id="trading-real-chk" onchange="saveTradingToggle('trading_real_enabled', this.checked)">
-                Real $$$
+                Real $$$<span class="help-btn" onclick="showHelp('td_real_chk',event)">?</span>
               </label>
               <button onclick="loadTradingState()" style="font-size:.7rem;background:transparent;border:1px solid #10b981;color:#34d399;border-radius:4px;padding:2px 8px;cursor:pointer">↻</button>
-              <button onclick="resetTradingPhantom()" style="font-size:.7rem;background:transparent;border:1px solid #6b7280;color:#9ca3af;border-radius:4px;padding:2px 8px;cursor:pointer">Reset phantom</button>
+              <button onclick="resetTradingPhantom()" style="font-size:.7rem;background:transparent;border:1px solid #6b7280;color:#9ca3af;border-radius:4px;padding:2px 8px;cursor:pointer">Reset phantom<span class="help-btn" onclick="showHelp('td_reset_phantom',event)">?</span></button>
             </div>
           </div>
 
-          <!-- Stats cards -->
-          <div id="trading-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px">
+          <!-- Stats cards: Phantom -->
+          <div style="font-size:.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">PHANTOM (virtual)</div>
+          <div id="trading-stats-phantom" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px">
             <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
-              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Balance phantom</div>
-              <div id="td-balance" style="font-size:1.1rem;font-weight:700;color:#34d399">$—</div>
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Balance<span class="help-btn" onclick="showHelp('td_balance_card',event)">?</span></div>
+              <div id="td-balance" style="font-size:1.1rem;font-weight:700;color:#34d399;cursor:pointer" title="Click para editar manualmente" onclick="editPhantomBalance()">$—</div>
             </div>
             <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
-              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">PnL realizado</div>
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">PnL realizado<span class="help-btn" onclick="showHelp('td_pnl_card',event)">?</span></div>
               <div id="td-pnl" style="font-size:1.1rem;font-weight:700">$—</div>
             </div>
             <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
-              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Win rate</div>
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Win rate<span class="help-btn" onclick="showHelp('td_wr_card',event)">?</span></div>
               <div id="td-wr" style="font-size:1.1rem;font-weight:700">—%</div>
             </div>
             <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
-              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Abiertas / Total</div>
+              <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Abiertas / Total<span class="help-btn" onclick="showHelp('td_counts_card',event)">?</span></div>
               <div id="td-counts" style="font-size:1.1rem;font-weight:700">—</div>
+            </div>
+          </div>
+
+          <!-- Breakdown por interval (5m / 15m / 1d): WR + PnL separados (puntos 3 y 5) -->
+          <div style="font-size:.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">PHANTOM POR TIMEFRAME</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:#60a5fa;text-transform:uppercase;font-weight:700">5m</div>
+              <div style="font-size:.7rem;color:var(--muted)">WR <span id="td-wr-5m" style="color:var(--text);font-weight:700">—%</span></div>
+              <div style="font-size:.7rem;color:var(--muted)">PnL <span id="td-pnl-5m" style="font-weight:700">$—</span></div>
+              <div style="font-size:.65rem;color:#6b7280" id="td-counts-5m">— trades</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:#a78bfa;text-transform:uppercase;font-weight:700">15m</div>
+              <div style="font-size:.7rem;color:var(--muted)">WR <span id="td-wr-15m" style="color:var(--text);font-weight:700">—%</span></div>
+              <div style="font-size:.7rem;color:var(--muted)">PnL <span id="td-pnl-15m" style="font-weight:700">$—</span></div>
+              <div style="font-size:.65rem;color:#6b7280" id="td-counts-15m">— trades</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px">
+              <div style="font-size:.65rem;color:#fbbf24;text-transform:uppercase;font-weight:700">1d</div>
+              <div style="font-size:.7rem;color:var(--muted)">WR <span id="td-wr-1d" style="color:var(--text);font-weight:700">—%</span></div>
+              <div style="font-size:.7rem;color:var(--muted)">PnL <span id="td-pnl-1d" style="font-weight:700">$—</span></div>
+              <div style="font-size:.65rem;color:#6b7280" id="td-counts-1d">— trades</div>
+            </div>
+          </div>
+
+          <!-- Stats cards: Real (solo si activo) -->
+          <div id="trading-stats-real-wrap" style="display:none;margin-bottom:10px">
+            <div style="font-size:.65rem;color:#fbbf24;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">REAL ($$$)</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+              <div style="background:var(--bg3);border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+                <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Wallet USDC<span class="help-btn" onclick="showHelp('td_r_balance',event)">?</span></div>
+                <div id="td-r-balance" style="font-size:1.1rem;font-weight:700;color:#fbbf24">$—</div>
+              </div>
+              <div style="background:var(--bg3);border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+                <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">PnL realizado<span class="help-btn" onclick="showHelp('td_r_pnl',event)">?</span></div>
+                <div id="td-r-pnl" style="font-size:1.1rem;font-weight:700">$—</div>
+              </div>
+              <div style="background:var(--bg3);border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+                <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Win rate<span class="help-btn" onclick="showHelp('td_r_wr',event)">?</span></div>
+                <div id="td-r-wr" style="font-size:1.1rem;font-weight:700">—%</div>
+              </div>
+              <div style="background:var(--bg3);border:1px solid #fbbf2444;border-radius:6px;padding:8px">
+                <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Abiertas / Total<span class="help-btn" onclick="showHelp('td_r_counts',event)">?</span></div>
+                <div id="td-r-counts" style="font-size:1.1rem;font-weight:700">—</div>
+              </div>
             </div>
           </div>
 
@@ -1358,60 +1473,175 @@
           <details style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:8px 12px;margin-bottom:10px">
             <summary style="font-size:.72rem;color:#34d399;cursor:pointer;user-select:none;font-weight:700">⚙️ Parámetros</summary>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
-              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Entry threshold</div>
-                <input id="td-entry" type="number" min="0.05" max="0.5" step="0.01" value="0.35" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
-              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Profit offset</div>
-                <input id="td-offset" type="number" min="0.05" max="0.70" step="0.01" value="0.20" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
-              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Exit T-min</div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Entry threshold<span class="help-btn" onclick="showHelp('td_param_entry',event)">?</span></div>
+                <input id="td-entry" type="number" min="0.05" max="0.8" step="0.01" value="0.55" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Min entry price<span class="help-btn" onclick="showHelp('td_param_min_price',event)">?</span></div>
+                <input id="td-min-price" type="number" min="0.0" max="0.5" step="0.01" value="0.10" oninput="updateRRHint()" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Max entry price<span class="help-btn" onclick="showHelp('td_param_max_price',event)">?</span></div>
+                <input id="td-max-price" type="number" min="0.05" max="0.80" step="0.01" value="0.30" oninput="updateRRHint()" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Profit offset<span class="help-btn" onclick="showHelp('td_param_offset',event)">?</span></div>
+                <input id="td-offset" type="number" min="0.05" max="0.70" step="0.01" value="0.30" oninput="updateRRHint()" style="width:72px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <div style="font-size:.65rem;color:#9ca3af;align-self:flex-end">R:R <span id="td-rr-hint" style="font-weight:700;color:#34d399">—</span></div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Exit T-min<span class="help-btn" onclick="showHelp('td_param_exit_min',event)">?</span></div>
                 <input id="td-exit-min" type="number" min="0.5" max="10" step="0.5" value="3" style="width:60px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
-              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Min entry min</div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Min entry min<span class="help-btn" onclick="showHelp('td_param_min_entry',event)">?</span></div>
                 <input id="td-min-entry" type="number" min="1" max="14" step="0.5" value="6" style="width:60px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
-              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Max entries</div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Max entries<span class="help-btn" onclick="showHelp('td_param_max_entries',event)">?</span></div>
                 <input id="td-max-entries" type="number" min="1" max="10" step="1" value="3" style="width:50px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
-              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Stake USDC</div>
+              <div><div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Stake USDC<span class="help-btn" onclick="showHelp('td_param_stake',event)">?</span></div>
                 <input id="td-stake" type="number" min="1" max="100" step="0.5" value="5" style="width:60px;padding:4px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:#34d399;cursor:pointer">
+                <input id="td-one-open" type="checkbox" checked>
+                Una a la vez<span class="help-btn" onclick="showHelp('td_one_open',event)">?</span>
+              </label>
+              <div style="border-left:1px solid #374151;padding-left:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <div><div style="font-size:.65rem;color:#fbbf24;margin-bottom:3px">Real cap exposure<span class="help-btn" onclick="showHelp('td_real_exp',event)">?</span></div>
+                  <input id="td-real-exp" type="number" min="0" max="500" step="1" value="20" style="width:64px;padding:4px;background:var(--bg);border:1px solid #fbbf2444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#fbbf24;margin-bottom:3px">Real daily loss<span class="help-btn" onclick="showHelp('td_real_dloss',event)">?</span></div>
+                  <input id="td-real-dloss" type="number" min="0" max="200" step="0.5" value="5" style="width:60px;padding:4px;background:var(--bg);border:1px solid #fbbf2444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#fbbf24;margin-bottom:3px">Max consec losses<span class="help-btn" onclick="showHelp('td_real_consec',event)">?</span></div>
+                  <input id="td-real-consec" type="number" min="1" max="20" step="1" value="3" style="width:50px;padding:4px;background:var(--bg);border:1px solid #fbbf2444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              </div>
+              <div style="border-left:1px solid #374151;padding-left:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:#60a5fa;cursor:pointer" title="Modo probable: compra el lado favorito (precio alto), vende con offset pequeño. Off = cheapest.">
+                  <input id="td-buy-probable" type="checkbox" checked>
+                  Buy probable
+                </label>
+                <div><div style="font-size:.65rem;color:#60a5fa;margin-bottom:3px">Prob min price</div>
+                  <input id="td-prob-min" type="number" min="0.30" max="0.80" step="0.01" value="0.55" style="width:64px;padding:4px;background:var(--bg);border:1px solid #60a5fa44;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#60a5fa;margin-bottom:3px">Prob max price</div>
+                  <input id="td-prob-max" type="number" min="0.50" max="0.95" step="0.01" value="0.85" style="width:64px;padding:4px;background:var(--bg);border:1px solid #60a5fa44;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#60a5fa;margin-bottom:3px">Prob offset</div>
+                  <input id="td-prob-offset" type="number" min="0.02" max="0.30" step="0.01" value="0.08" style="width:64px;padding:4px;background:var(--bg);border:1px solid #60a5fa44;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              </div>
+              <div style="border-left:1px solid #374151;padding-left:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <label style="display:flex;align-items:center;gap:4px;font-size:.7rem;color:#fca5a5;cursor:pointer">
+                  <input id="td-sl-enabled" type="checkbox" checked>
+                  Stop-loss
+                </label>
+                <div><div style="font-size:.65rem;color:#fca5a5;margin-bottom:3px">SL trigger (drop)</div>
+                  <input id="td-sl-trigger" type="number" min="0.10" max="0.90" step="0.05" value="0.50" style="width:64px;padding:4px;background:var(--bg);border:1px solid #ef444444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#fca5a5;margin-bottom:3px">SL espera min</div>
+                  <input id="td-sl-wait" type="number" min="0.5" max="15" step="0.5" value="3" style="width:56px;padding:4px;background:var(--bg);border:1px solid #ef444444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#fca5a5;margin-bottom:3px">SL recover (entry×)</div>
+                  <input id="td-sl-recover" type="number" min="0.10" max="0.90" step="0.05" value="0.50" style="width:64px;padding:4px;background:var(--bg);border:1px solid #ef444444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+                <div><div style="font-size:.65rem;color:#fca5a5;margin-bottom:3px">Panic trigger (drop)</div>
+                  <input id="td-panic-trigger" type="number" min="0.30" max="0.95" step="0.05" value="0.80" style="width:64px;padding:4px;background:var(--bg);border:1px solid #ef444444;border-radius:4px;color:var(--text);font-size:.8rem"></div>
+              </div>
               <button onclick="saveTradingParams()" style="padding:5px 14px;background:#10b981;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:700">Guardar</button>
             </div>
           </details>
 
+          <!-- Safety Real (no afecta phantom — punto 8) -->
+          <div style="font-size:.62rem;color:#fbbf24;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">⚡ Safety REAL — no afecta phantom</div>
+          <div id="trading-safety" style="background:var(--bg3);border:1px solid #fbbf2444;border-radius:6px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.72rem">
+              <div><span style="color:var(--muted)">Exposure:</span> <span id="td-sf-exp" style="font-weight:700;color:#fbbf24">$0 / $20</span><span class="help-btn" onclick="showHelp('td_safety_exp',event)">?</span>
+                <button onclick="resetTradingExposure()" title="Libera exposure marcando posiciones REAL OPEN como RELEASED (no toca on-chain)" style="margin-left:6px;padding:1px 6px;background:#ef444422;color:#fca5a5;border:1px solid #ef444455;border-radius:3px;cursor:pointer;font-size:.65rem;font-weight:700">↻ reset exposure</button>
+              </div>
+              <div><span style="color:var(--muted)">PnL hoy:</span> <span id="td-sf-pnl" style="font-weight:700">$0</span> <span style="color:var(--muted)">/ -$5</span><span class="help-btn" onclick="showHelp('td_safety_pnl',event)">?</span></div>
+              <div><span style="color:var(--muted)">Rachas:</span> <span id="td-sf-streak" style="font-weight:700">0</span> <span style="color:var(--muted)">/ 3</span><span class="help-btn" onclick="showHelp('td_safety_streak',event)">?</span>
+                <button onclick="resetTradingConsecLosses()" title="Reset racha de pérdidas consecutivas" style="margin-left:6px;padding:1px 6px;background:#fbbf2422;color:#fbbf24;border:1px solid #fbbf2455;border-radius:3px;cursor:pointer;font-size:.65rem;font-weight:700">↻ reset racha</button>
+              </div>
+              <div id="td-sf-redeem" style="display:none;background:#10b98122;color:#34d399;padding:2px 8px;border-radius:4px">⏳ <span id="td-sf-redeem-amt">$0</span> pending redeem (<span id="td-sf-redeem-ct">0</span>)<span class="help-btn" onclick="showHelp('td_pending_redeem',event)">?</span></div>
+              <div id="td-sf-kill-badge" style="display:none;background:#ef4444;color:#fff;padding:2px 8px;border-radius:4px;font-weight:700">🛑 KILL-SWITCH ACTIVO<span class="help-btn" onclick="showHelp('td_safety_kill',event)" style="color:#fff">?</span></div>
+            </div>
+            <button id="td-sf-reset-btn" onclick="resetTradingKillSwitch()" style="display:none;padding:4px 10px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.7rem;font-weight:700">Reset kill-switch</button>
+          </div>
+
+          <!-- Diagnóstico: ¿por qué no opera? -->
+          <div id="td-diag" style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:.7rem;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+            <div style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Diagnóstico</div>
+            <div id="td-diag-flags" style="color:var(--text)">cargando...</div>
+            <div id="td-diag-issues" style="color:#fbbf24;flex:1"></div>
+          </div>
+
+          <!-- Log live de Trading Mode -->
+          <details open style="background:var(--bg3);border:1px solid #374151;border-radius:6px;padding:6px 12px;margin-bottom:10px">
+            <summary style="font-size:.72rem;color:#60a5fa;cursor:pointer;user-select:none;font-weight:700">📋 Trading Log (en vivo)</summary>
+            <div id="td-log" style="margin-top:6px;max-height:240px;overflow-y:auto;font-family:monospace;font-size:.68rem;line-height:1.35;background:#0b1220;padding:6px 10px;border-radius:4px;color:#9ca3af"></div>
+          </details>
+
+          <!-- Tabs phantom / real -->
+          <div style="display:flex;gap:4px;margin-bottom:8px;border-bottom:1px solid #374151">
+            <button id="td-tab-ph" onclick="_setTradingTab('phantom')" style="padding:6px 14px;background:transparent;border:none;border-bottom:2px solid #34d399;color:#34d399;font-weight:700;font-size:.75rem;cursor:pointer">Phantom<span class="help-btn" onclick="showHelp('td_tab_phantom',event)">?</span></button>
+            <button id="td-tab-rl" onclick="_setTradingTab('real')" style="padding:6px 14px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:700;font-size:.75rem;cursor:pointer">Real $$$<span class="help-btn" onclick="showHelp('td_tab_real',event)">?</span></button>
+          </div>
+
           <!-- Posiciones abiertas -->
-          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Posiciones abiertas</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+            <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Posiciones abiertas<span class="help-btn" onclick="showHelp('td_open_table',event)">?</span></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select id="tf-open-interval" onchange="_setTradingFilter('openInterval', this.value)" style="font-size:.7rem;background:var(--bg);border:1px solid #374151;color:var(--text);border-radius:4px;padding:2px 6px">
+                <option value="all">Todos los TF</option><option value="5">5m</option><option value="15">15m</option><option value="1440">1d</option>
+              </select>
+              <select id="tf-open-side" onchange="_setTradingFilter('openSide', this.value)" style="font-size:.7rem;background:var(--bg);border:1px solid #374151;color:var(--text);border-radius:4px;padding:2px 6px">
+                <option value="all">Lado: Todos</option><option value="UP">UP</option><option value="DOWN">DOWN</option>
+              </select>
+              <button onclick="forceResolveTrading()" style="font-size:.7rem;background:transparent;border:1px solid #6b7280;color:#9ca3af;border-radius:4px;padding:2px 8px;cursor:pointer" title="Cierra posiciones cuyos mercados ya expiraron (fantasmas).">🧹 Resolver fantasmas</button>
+            </div>
+          </div>
           <div style="overflow-x:auto;margin-bottom:12px">
             <table style="min-width:100%;font-size:.72rem">
               <thead><tr style="text-align:left;color:var(--muted)">
-                <th style="padding:3px 6px">Mercado</th>
-                <th>Lado</th>
-                <th>Entry</th>
-                <th>Target</th>
-                <th>Stake</th>
-                <th>Edad</th>
-                <th>Modo</th>
+                <th style="padding:3px 6px;cursor:pointer" onclick="_setTradingSort('open','slug')">Mercado <span id="tf-open-sort-slug" style="opacity:.4">⇅</span></th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','interval')">TF <span id="tf-open-sort-interval" style="opacity:.4">⇅</span></th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','side')">Lado <span id="tf-open-sort-side" style="opacity:.4">⇅</span></th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','entry_price')">Entry <span id="tf-open-sort-entry_price" style="opacity:.4">⇅</span></th>
+                <th>Actual</th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','target_price')">Target <span id="tf-open-sort-target_price" style="opacity:.4">⇅</span></th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','unrealized_pnl')">PnL no realizado <span id="tf-open-sort-unrealized_pnl" style="opacity:.4">⇅</span></th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','stake_usdc')">Stake <span id="tf-open-sort-stake_usdc" style="opacity:.4">⇅</span></th>
+                <th style="cursor:pointer" onclick="_setTradingSort('open','seconds_to_close')">Tiempo <span id="tf-open-sort-seconds_to_close" style="opacity:.4">⇅</span></th>
+                <th>Estado</th>
               </tr></thead>
-              <tbody id="tbl-trading-open"><tr><td colspan="7" class="empty">Sin posiciones abiertas</td></tr></tbody>
+              <tbody id="tbl-trading-open"><tr><td colspan="10" class="empty">Sin posiciones abiertas</td></tr></tbody>
             </table>
           </div>
 
           <!-- Historial reciente -->
           <details>
-            <summary style="font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none">Historial de trades (últimos 100)</summary>
-            <div style="overflow-x:auto;margin-top:8px;max-height:340px;overflow-y:auto">
+            <summary style="font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none">Historial de trades (últimos 100)<span class="help-btn" onclick="showHelp('td_hist_table',event)">?</span></summary>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0">
+              <select id="tf-hist-interval" onchange="_setTradingFilter('histInterval', this.value)" style="font-size:.7rem;background:var(--bg);border:1px solid #374151;color:var(--text);border-radius:4px;padding:2px 6px">
+                <option value="all">Todos los TF</option><option value="5">5m</option><option value="15">15m</option><option value="1440">1d</option>
+              </select>
+              <select id="tf-hist-result" onchange="_setTradingFilter('histResult', this.value)" style="font-size:.7rem;background:var(--bg);border:1px solid #374151;color:var(--text);border-radius:4px;padding:2px 6px">
+                <option value="all">Resultado: Todos</option><option value="win">WIN</option><option value="loss">LOSS</option>
+              </select>
+              <select id="tf-hist-side" onchange="_setTradingFilter('histSide', this.value)" style="font-size:.7rem;background:var(--bg);border:1px solid #374151;color:var(--text);border-radius:4px;padding:2px 6px">
+                <option value="all">Lado: Todos</option><option value="UP">UP</option><option value="DOWN">DOWN</option>
+              </select>
+              <span id="tf-hist-count" style="font-size:.65rem;color:#6b7280"></span>
+            </div>
+            <div style="overflow-x:auto;margin-top:4px;max-height:340px;overflow-y:auto">
               <table style="min-width:100%;font-size:.7rem">
                 <thead><tr style="text-align:left;color:var(--muted);position:sticky;top:0;background:var(--bg2)">
-                  <th style="padding:3px 6px">Mercado</th>
-                  <th>Lado</th>
-                  <th>Entry</th>
-                  <th>Exit</th>
+                  <th style="padding:3px 6px;cursor:pointer" onclick="_setTradingSort('hist','slug')">Mercado <span id="tf-hist-sort-slug" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','interval')">TF <span id="tf-hist-sort-interval" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','side')">Lado <span id="tf-hist-sort-side" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','entry_price')">Entry <span id="tf-hist-sort-entry_price" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','entry_ts')">Compra <span id="tf-hist-sort-entry_ts" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','exit_price')">Exit <span id="tf-hist-sort-exit_price" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','exit_ts')">Venta <span id="tf-hist-sort-exit_ts" style="opacity:.4">⇅</span></th>
                   <th>Target</th>
-                  <th>Stake</th>
-                  <th>PnL</th>
-                  <th>Estado</th>
-                  <th>Modo</th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','stake_usdc')">Stake <span id="tf-hist-sort-stake_usdc" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','pnl_usdc')">PnL <span id="tf-hist-sort-pnl_usdc" style="opacity:.4">⇅</span></th>
+                  <th style="cursor:pointer" onclick="_setTradingSort('hist','status')">Estado <span id="tf-hist-sort-status" style="opacity:.4">⇅</span></th>
                 </tr></thead>
-                <tbody id="tbl-trading-hist"><tr><td colspan="9" class="empty">Sin historial aún</td></tr></tbody>
+                <tbody id="tbl-trading-hist"><tr><td colspan="11" class="empty">Sin historial aún</td></tr></tbody>
               </table>
             </div>
           </details>
         </div>
+
+      </div>
+    </div>
+    <!-- /tab-trading -->
+
+    <!-- PHANTOM TAB -->
+    <div id="tab-phantom" class="tab-content">
+      <div style="max-width:900px;margin:0 auto">
 
         <!-- ── Experimento VPS-Confianza ── -->
         <div style="background:var(--bg2);border:1px solid #7c3aed44;border-radius:8px;padding:14px;margin-bottom:16px" id="vps-experiment-panel">
@@ -2391,6 +2621,12 @@
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Activa auto BTC cada 5 min</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Detén el auto-trading BTC</span>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;font-size:.7rem;color:#9ca3af">
+        <label for="chat-model-select">Modelo:</label>
+        <select id="chat-model-select" onchange="_saveChatModel(this.value)" style="background:var(--bg);border:1px solid #374151;color:var(--text);border-radius:4px;padding:2px 6px;font-size:.7rem">
+          <option value="">cargando…</option>
+        </select>
+      </div>
       <div class="chat-input-row">
         <textarea id="chat-input" placeholder="Pregunta sobre tu portafolio, logs, parámetros, estrategias..." onkeydown="chatKeydown(event)"></textarea>
         <button id="chat-send" onclick="sendChat()">↑</button>
@@ -2483,6 +2719,38 @@ const HELP = {
   btc_direction:{ t:'Dirección (ABOVE / BELOW)', b:'La apuesta del mercado:\n• ABOVE = apostamos que BTC termina POR ENCIMA del umbral\n• BELOW = apostamos que BTC termina POR DEBAJO del umbral\nEl bot escoge la dirección que tenga edge positivo según nuestro modelo de precio.' },
   btc_dist:     { t:'Distancia % al umbral', b:'Qué tan lejos está el precio actual de BTC del umbral del mercado, en porcentaje.\n• Dist. +5% = BTC debe subir 5% para cruzar el umbral\n• Dist. −3% = BTC ya está 3% por encima del umbral (favorable si apostamos ABOVE)\nDistancias grandes → probabilidades más extremas → menos edge pero más certeza.' },
   // VPS experiment
+  trading_mode:    { t:'Trading Mode (compra-vende)', b:'Estrategia de TRADING en mercados UP/DOWN — NO predicción.\nEl bot compra el lado más barato (ej. UP a 0.40c) y lo vende cuando sube al target (ej. 0.55c) ANTES de que el mercado cierre.\n• Múltiples ciclos por mercado: compra→vende→compra→vende dentro de los 15min\n• "Una a la vez": no acumula varias compras — primero vende para tomar ganancia\n• Forzado a vender T-min antes del cierre (FORCED_EXIT) para evitar quedar atrapado\n• Si no se vende y mercado cierra → resolución binaria (gana 1.00 o pierde 0.00)\nPhantom: con dinero virtual ($50). Real: dinero del wallet (toggle aparte).' },
+  td_phantom_chk:  { t:'Phantom ON', b:'Habilita el ciclo de trading en modo phantom (con $50 virtual).\nCuando está activo el bot evalúa cada ciclo de mercado y simula compras/ventas registrando todo en data/trading_positions.json.\nDesactivado = no abre nuevas posiciones phantom (las abiertas siguen vivas hasta cerrar).' },
+  td_real_chk:     { t:'Real $$$', b:'Habilita ejecución REAL en Polymarket usando USDC del wallet.\nRespeta los caps de Safety Real (exposure, daily loss, kill-switch).\nDesactivado = el bot opera SOLO en modo phantom; las posiciones reales abiertas continúan hasta vender o resolver.' },
+  td_reset_phantom:{ t:'Reset phantom', b:'Borra TODAS las posiciones phantom (abiertas + historial) y reinicia el balance virtual a $50.\nNo afecta las posiciones reales ni el wallet.\nUsar para empezar de cero los stats phantom (ej. después de cambiar parámetros importantes).' },
+  td_balance_card: { t:'Balance phantom', b:'USDC virtual disponible para abrir nuevas posiciones phantom.\nEmpieza en $50 y se ajusta con cada compra (resta stake) y venta (suma stake + pnl).\nNo es dinero real — sólo se usa para medir performance simulada.' },
+  td_pnl_card:     { t:'PnL realizado phantom', b:'Suma de ganancias/pérdidas de TODAS las posiciones phantom cerradas (target, forzadas y resueltas).\nIncluye historial completo desde el último reset.' },
+  td_wr_card:      { t:'Win rate phantom', b:'% de posiciones phantom CERRADAS con resultado positivo:\n• TARGET_HIT (vendió al target)\n• FORCED_EXIT con pnl ≥ 0 (vendió en T-min con ganancia)\n• RESOLVED_WIN (mercado cerró a favor sin haber vendido)\nLas FORCED_EXIT con pnl < 0 y RESOLVED_LOSS cuentan como pérdida.' },
+  td_counts_card:  { t:'Abiertas / Total', b:'Posiciones OPEN actualmente / Total acumulado (open + cerradas) en historial.\nÚtil para ver cuántas órdenes vivas hay en este momento.' },
+  td_r_balance:    { t:'Wallet USDC + viva', b:'USDC EXPUESTO en posiciones reales abiertas (suma de stakes OPEN).\nNO es el balance del wallet — es cuánto dinero hay en juego ahora mismo.\nEl balance real del wallet se ve en la sección general del bot.' },
+  td_r_pnl:        { t:'PnL realizado real', b:'Ganancia/pérdida acumulada de las posiciones REALES cerradas.\nValores positivos = el bot ya generó ganancia neta en dinero real.' },
+  td_r_wr:         { t:'Win rate real', b:'Misma fórmula que phantom pero contando solo posiciones reales.\nMuestra qué tan bien funciona el bot con dinero real vs el simulado.' },
+  td_r_counts:     { t:'Abiertas / Total real', b:'Posiciones reales OPEN ahora / Total acumulado real desde que se activó el modo.' },
+  td_param_entry:  { t:'Entry threshold', b:'Precio máximo del token para abrir posición.\nEj: 0.55 = solo compra si UP o DOWN cuesta ≤ $0.55.\nMás alto = más oportunidades pero menos margen para ganar.\nMás bajo = entradas más seguras pero menos ciclos.' },
+  td_param_min_price:{ t:'Min entry price (floor)', b:'Precio MÍNIMO del token para abrir posición.\nEj: 0.10 = no compra si token < $0.10.\nProtege de mercados muertos: tokens muy baratos casi siempre resuelven a 0 (pérdida total).\n0 = sin floor (compra cualquier precio ≤ entry threshold).' },
+  td_param_offset: { t:'Profit offset', b:'Cuánto debe subir el precio del token para tomar ganancia.\nEj: 0.12 con entry a 0.40 → vende cuando llega a 0.52.\nMás chico = vende más rápido (más rotaciones).\nMás grande = más ganancia por ciclo pero menos veces alcanza el target.' },
+  td_param_exit_min:{ t:'Exit T-min', b:'Minutos antes del cierre de mercado para forzar venta (FORCED_EXIT).\nEj: 1.0 = a falta de 1 min cierra al bid actual aunque no haya alcanzado target.\nProtege contra quedar atrapado al cierre con un token sin liquidez.\nMás grande = sale más temprano (más seguro pero menos ganancia).' },
+  td_param_min_entry:{ t:'Min entry min', b:'Mínimo de minutos restantes en el mercado para ABRIR nueva posición.\nEj: 1.0 = entra incluso a 1 min del cierre.\nValor alto evita entradas tardías cuando ya no hay tiempo de operar.' },
+  td_param_max_entries:{ t:'Max entries', b:'Tope de entradas TOTALES por mercado (cuenta abiertas + cerradas en ese slug).\nCon "Una a la vez" activado limita cuántos ciclos de compra-venta puede hacer en un mercado de 15min.' },
+  td_param_stake:  { t:'Stake USDC', b:'USDC por entrada (tamaño de cada compra).\nMin 5 shares — si stake/precio < 5 el bot bumpea el stake automáticamente.\nMás alto = más ganancia por trade pero más riesgo si pierde.' },
+  td_one_open:     { t:'Una a la vez', b:'REGLA: si ya hay 1+ posición OPEN en el mercado, NO abre nueva.\nDebe vender primero para tomar ganancia, luego puede volver a comprar.\nEvita acumular varias compras que podrían perderse juntas.\nDesactivar para permitir múltiples posiciones simultáneas (más riesgoso).' },
+  td_real_exp:     { t:'Real cap exposure', b:'Tope de USDC vivos en posiciones REALES (suma de stakes OPEN).\nEj: $20 = el bot no abre nueva real si exposure actual + nuevo stake > $20.\nProtege contra apostar todo el wallet en trading.' },
+  td_real_dloss:   { t:'Real daily loss', b:'Pérdida máxima diaria en USDC para trading real.\nEj: $5 = si pnl_today ≤ -$5 el bot deja de abrir reales hasta el día siguiente.\nReseteo automático cada medianoche local.' },
+  td_real_consec:  { t:'Max consec losses', b:'Pérdidas REALES consecutivas que disparan el kill-switch.\nEj: 3 = tras 3 pérdidas seguidas activa el flag killed → bot deja de operar real hasta reset manual.\nProtección contra rachas malas catastróficas.' },
+  td_safety_exp:   { t:'Exposure actual', b:'USDC ACTUAL en posiciones reales abiertas vs el cap configurado.\nSe pone rojo cuando llega al 90% del cap (cerca de bloquear nuevas entradas).' },
+  td_safety_pnl:   { t:'PnL hoy real', b:'Ganancia/pérdida del día actual en trading real (desde medianoche local).\nSe pone rojo cuando supera el 80% del daily loss cap.' },
+  td_safety_streak:{ t:'Rachas pérdidas', b:'Pérdidas reales consecutivas más recientes (cuenta hacia atrás desde la última cerrada).\nSe resetea con cualquier WIN o con el botón "↻ reset racha".\nLlegando al cap activa el kill-switch automáticamente.' },
+  td_safety_kill:  { t:'Kill-switch', b:'Flag de seguridad activado automáticamente al cruzar max_consec_losses.\nMientras esté ON el bot NO abre posiciones reales nuevas (las abiertas siguen vivas).\nReset manual con el botón rojo cuando estés listo para reanudar.' },
+  td_pending_redeem:{ t:'Pending redeem', b:'Posiciones reales con RESOLVED_WIN que aún no se han redimido on-chain.\nPolymarket auto-redime los tokens ganadores en ~24h, depositando 1.00 USDC por share al wallet.\nEl monto mostrado es el USDC esperado.\nSi pasa más de 48h sin recibir, redimir manualmente en polymarket.com/portfolio.' },
+  td_open_table:   { t:'Posiciones abiertas', b:'Tabla de posiciones OPEN del modo seleccionado (no cerradas todavía).\nColumnas:\n• Mercado: slug abreviado del UP/DOWN\n• Lado: UP/DOWN comprado\n• Entry: precio al que se compró\n• Actual: precio LIVE del token ahora\n• Target: precio para vender (entry + offset)\n• PnL no realizado: ganancia/pérdida si se vendiera AHORA al precio actual\n• Stake: USDC apostado\n• Tiempo: minutos restantes para cierre del mercado, o tiempo desde que cerró\n• Estado:\n  - LIVE = mercado activo, esperando target\n  - GANANDO esperar resolve = mercado cerró, token ≈1.00 (gana)\n  - PERDIENDO esperar resolve = mercado cerró, token ≈0.00 (pierde)\n  - CERRÓ esperando CLOB = mercado cerró pero CLOB aún no resuelve binario\n  - FANTASMA = lleva >10 min sin resolver, usa botón "Resolver fantasmas"' },
+  td_hist_table:   { t:'Historial trades', b:'Últimas 100 posiciones cerradas del modo seleccionado.\nEstados:\n• TARGET_HIT: vendió al target (ganancia esperada)\n• FORCED_EXIT: vendió a T-min antes del cierre\n• RESOLVED_WIN: mercado cerró a favor sin haber vendido (gana 1.00)\n• RESOLVED_LOSS: mercado cerró en contra sin haber vendido (pierde stake)' },
+  td_tab_phantom:  { t:'Tab Phantom', b:'Muestra posiciones y stats del modo PHANTOM (dinero virtual).\nLas operaciones phantom corren siempre que Trading Mode esté ON.' },
+  td_tab_real:     { t:'Tab Real', b:'Muestra posiciones y stats del modo REAL ($$$).\nSolo visible si Real $$$ está activado.' },
   vps_experiment:  { t:'Experimento VPS-Confianza', b:'Variable Position Sizing basado en Confianza.\nEn vez de apostar siempre $3 fijos (baseline), el bot apuesta MÁS cuando tiene más confianza:\n• Confianza ≥65% → $10\n• 50-64% → $8\n• 35-49% → $6\n• 20-34% → $4\n• <20% → $3 (igual al fijo)\nSIN dinero real — todo es virtual. El objetivo es medir si apostar más en señales fuertes genera más ganancia.' },
   estrategia_5m:   { t:'Estrategia 5m — Desplazamiento BTC', b:'Controla si el bot sigue la tendencia o intenta predecir reversión para mercados de 5 minutos.\n\nEl "desplazamiento" es cuánto se movió BTC desde el inicio de la ventana (por ejemplo, +0.25% = BTC subió $200 en un mercado de $80k).\n\n• Mayor al umbral ALTO (default 0.20%): el bot SIGUE LA TENDENCIA. BTC ya se movió fuerte → probable que cierre en esa dirección.\n• Entre umbrales (0.10%-0.20%): NEUTRO. Los indicadores técnicos deciden sin sesgo de reversión.\n• Menor al umbral BAJO (default 0.10%): MEAN-REVERSION. Movimiento pequeño → puede revertir al cierre.\n\nFix principal: antes el bot invertía siempre el momentum en 5m, causando que apostara DOWN cuando BTC estaba $200 arriba.' },
   stake_dinamico:  { t:'Stake dinámico por confianza', b:'Ajusta cuánto USDC apuesta el bot según el % de confianza de la señal.\n• Min stake: apuesta cuando conf ≤ umbral mínimo (p.ej. 20% → $3)\n• Max stake: apuesta cuando conf ≥ umbral máximo (p.ej. 65% → $15)\n• Entre los umbrales, el stake se interpola linealmente\n• Si conf ≥ 65% → $15; si conf = 40% y rango 20-65% → mitad del camino ≈ $9\nEl parámetro "Máx por trade" en Configuración actúa como techo adicional.' },
@@ -3969,6 +4237,7 @@ async function toggleTradeType(type) {
     btc:       'btn-trade-btc',
     updown_5m: 'btn-trade-updown5',
     updown_15m:'btn-trade-updown15',
+    updown_1d: 'btn-trade-updown1d',
   }[type];
   const btn = document.getElementById(btnId);
   const currently = btn && btn.textContent.trim() === 'Activado';
@@ -3994,6 +4263,7 @@ function _renderTradeToggles(d) {
   _applyTradeTypeBtn('btn-trade-btc',       d.btc_enabled       !== false);
   _applyTradeTypeBtn('btn-trade-updown5',   d.updown_5m_enabled !== false);
   _applyTradeTypeBtn('btn-trade-updown15',  d.updown_15m_enabled!== false);
+  _applyTradeTypeBtn('btn-trade-updown1d',  d.updown_1d_enabled === true);
 }
 
 async function toggleUpdown(interval) {
@@ -4920,7 +5190,7 @@ async function askClaudeStrategyReview() {
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ messages: [{ role:'user', content: msg }] })
+      body: JSON.stringify({ messages: [{ role:'user', content: msg }], model: window._chatModel || undefined })
     });
     const reader = r.body.getReader();
     const decoder = new TextDecoder();
@@ -5244,6 +5514,39 @@ function _renderMarkdown(text) {
     .replace(/\n/g,'<br>');
 }
 
+// ── Punto 16 — selector de modelo Claude ──────────────────────────────────
+window._chatModel = localStorage.getItem('chat_model') || '';
+function _saveChatModel(v) {
+  window._chatModel = v || '';
+  try { localStorage.setItem('chat_model', window._chatModel); } catch(_) {}
+}
+async function _loadChatModels() {
+  const sel = document.getElementById('chat-model-select');
+  if (!sel) return;
+  try {
+    const r = await fetch('/api/chat/models');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const saved = window._chatModel || data.default;
+    sel.innerHTML = '';
+    (data.models || []).forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.name + (m.tier ? ' · ' + m.tier : '');
+      if (m.id === saved) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (!window._chatModel) window._chatModel = data.default || '';
+  } catch (e) {
+    sel.innerHTML = '<option value="">(error)</option>';
+  }
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _loadChatModels);
+} else {
+  _loadChatModels();
+}
+
 async function sendChat() {
   if (_chatBusy) return;
   const input = document.getElementById('chat-input');
@@ -5275,7 +5578,7 @@ async function sendChat() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: _chatHistory }),
+      body: JSON.stringify({ messages: _chatHistory, model: window._chatModel || undefined }),
     });
 
     if (!resp.ok) {
@@ -6299,6 +6602,54 @@ async function loadTradingState() {
     if (d.error) { console.warn('trading/state error:', d.error); return; }
     _renderTradingState(d);
   } catch (e) { console.warn('loadTradingState error:', e); }
+  loadTradingLogs();
+  loadTradingDiagnostics();
+}
+
+async function loadTradingLogs() {
+  try {
+    const r = await fetch('/api/trading/logs?limit=150').then(x => x.json());
+    const el = document.getElementById('td-log');
+    if (!el) return;
+    const logs = r.logs || [];
+    if (!logs.length) {
+      el.innerHTML = '<span style="color:var(--muted)">(sin logs de trading aún — el bot debe estar corriendo y tener trading_mode activo)</span>';
+      return;
+    }
+    const colorFor = (lv) => lv === 'ERROR' ? '#ef4444' : (lv === 'WARN' ? '#fbbf24' : '#9ca3af');
+    el.innerHTML = logs.reverse().map(e => {
+      const c = colorFor(e.level);
+      const msg = (e.msg || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div style="color:${c}"><span style="color:#6b7280">${e.time}</span> ${msg}</div>`;
+    }).join('');
+  } catch(e) { console.warn('loadTradingLogs:', e); }
+}
+
+async function loadTradingDiagnostics() {
+  try {
+    const r = await fetch('/api/trading/diagnostics').then(x => x.json());
+    const flagsEl = document.getElementById('td-diag-flags');
+    const issuesEl = document.getElementById('td-diag-issues');
+    if (!flagsEl || !issuesEl) return;
+    const f = r.flags || {};
+    const dot = (b) => b ? '<span style="color:#34d399">●</span>' : '<span style="color:#ef4444">●</span>';
+    flagsEl.innerHTML = [
+      `${dot(f.bot_running)} bot`,
+      `${dot(f.trading_mode_enabled)} trading`,
+      `${dot(f.updown_enabled)} updown`,
+      `${dot(f.updown_5m_enabled || f.updown_15m_enabled)} 5m/15m`,
+      `<span style="color:var(--muted)">open ph/rl:</span> ${f.phantom_open ?? 0}/${f.real_open ?? 0}`,
+    ].join(' · ');
+    const issues = r.issues || [];
+    issuesEl.innerHTML = issues.length ? ('⚠ ' + issues.join(' | ')) : '<span style="color:#34d399">OK — sin bloqueos</span>';
+  } catch(e) { console.warn('loadTradingDiagnostics:', e); }
+}
+
+function _fmtSecs(s) {
+  s = Math.max(0, Math.floor(s));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
 }
 
 function _fmtTsAge(ts) {
@@ -6334,13 +6685,75 @@ function _renderTradingState(d) {
   const p = d.params || {};
   const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
   setVal('td-entry', p.entry_threshold);
+  setVal('td-min-price', p.min_entry_price);
+  setVal('td-max-price', p.max_entry_price);
   setVal('td-offset', p.profit_offset);
+  if (typeof updateRRHint === 'function') updateRRHint();
   setVal('td-exit-min', p.exit_deadline_min);
   setVal('td-min-entry', p.min_entry_minutes_left);
   setVal('td-max-entries', p.max_entries_per_market);
   setVal('td-stake', p.stake_usdc);
+  setVal('td-real-exp', p.real_max_exposure_usdc);
+  setVal('td-real-dloss', p.real_daily_loss_limit_usdc);
+  setVal('td-real-consec', p.real_max_consec_losses);
+  const oneOpenChk = document.getElementById('td-one-open');
+  if (oneOpenChk && p.one_open_at_a_time != null) oneOpenChk.checked = !!p.one_open_at_a_time;
+  // Buy probable (punto 14)
+  const bpChk = document.getElementById('td-buy-probable');
+  if (bpChk && p.buy_probable != null) bpChk.checked = !!p.buy_probable;
+  setVal('td-prob-min', p.probable_min_price);
+  setVal('td-prob-max', p.probable_max_price);
+  setVal('td-prob-offset', p.probable_profit_offset);
+  // Stop-loss (punto 12)
+  const slChk = document.getElementById('td-sl-enabled');
+  if (slChk && p.sl_enabled != null) slChk.checked = !!p.sl_enabled;
+  setVal('td-sl-trigger', p.sl_trigger_drop);
+  setVal('td-sl-wait', p.sl_wait_min);
+  setVal('td-sl-recover', p.sl_min_recover_factor);
+  setVal('td-panic-trigger', p.panic_trigger_drop);
 
-  // Stats combinados phantom + real (si real activo)
+  // Safety real
+  const sf = d.real_safety || {};
+  const expEl = document.getElementById('td-sf-exp');
+  if (expEl) {
+    const expNow = +(sf.exposure_usdc ?? 0);
+    const expCap = +(sf.exposure_cap ?? 0);
+    expEl.textContent = `$${expNow.toFixed(2)} / $${expCap.toFixed(0)}`;
+    expEl.style.color = expNow >= expCap * 0.9 ? '#ef4444' : '#fbbf24';
+  }
+  const pnlEl = document.getElementById('td-sf-pnl');
+  if (pnlEl) {
+    const pt = +(sf.pnl_today_usdc ?? 0);
+    const cap = +(sf.daily_loss_cap ?? 0);
+    pnlEl.textContent = `${pt >= 0 ? '+' : ''}$${pt.toFixed(2)}`;
+    pnlEl.style.color = pt < 0 && Math.abs(pt) >= cap * 0.8 ? '#ef4444' : (pt >= 0 ? '#34d399' : '#fbbf24');
+    const dl = pnlEl.parentElement.querySelector('span:last-child');
+    if (dl) dl.textContent = `/ -$${cap.toFixed(1)}`;
+  }
+  const stEl = document.getElementById('td-sf-streak');
+  if (stEl) {
+    const ct = +(sf.consec_losses ?? 0);
+    const cap = +(sf.consec_cap ?? 3);
+    stEl.textContent = String(ct);
+    stEl.style.color = ct >= cap ? '#ef4444' : (ct > 0 ? '#fbbf24' : '#9ca3af');
+    const cs = stEl.parentElement.querySelector('span:last-child');
+    if (cs) cs.textContent = `/ ${cap}`;
+  }
+  const killBadge = document.getElementById('td-sf-kill-badge');
+  const killBtn = document.getElementById('td-sf-reset-btn');
+  if (killBadge) killBadge.style.display = sf.killed ? 'inline-block' : 'none';
+  if (killBtn) killBtn.style.display = sf.killed ? 'inline-block' : 'none';
+  const redBadge = document.getElementById('td-sf-redeem');
+  if (redBadge) {
+    const pr = +(sf.pending_redeem_usdc ?? 0);
+    redBadge.style.display = pr > 0 ? 'inline-block' : 'none';
+    const amt = document.getElementById('td-sf-redeem-amt');
+    const ct = document.getElementById('td-sf-redeem-ct');
+    if (amt) amt.textContent = `$${pr.toFixed(2)}`;
+    if (ct) ct.textContent = String(sf.pending_redeem_count ?? 0);
+  }
+
+  // Stats phantom
   const ph = d.phantom || {stats:{}};
   const rl = d.real || {stats:null};
   const s = ph.stats || {};
@@ -6354,55 +6767,250 @@ function _renderTradingState(d) {
   setText('td-wr', `${s.win_rate ?? 0}%`, (s.win_rate ?? 0) >= 50 ? '#34d399' : '#ef4444');
   setText('td-counts', `${s.open ?? 0} / ${s.total_positions ?? 0}`);
 
-  // Open positions table
-  const openAll = (ph.open || []).map(p => ({...p, _mode:'PH'}))
-    .concat((rl.open || []).map(p => ({...p, _mode:'RL'})));
-  const openTb = document.getElementById('tbl-trading-open');
-  if (openTb) {
-    if (openAll.length === 0) {
-      openTb.innerHTML = '<tr><td colspan="7" class="empty">Sin posiciones abiertas</td></tr>';
-    } else {
-      openTb.innerHTML = openAll.map(p => `
-        <tr>
-          <td style="padding:3px 6px;font-family:monospace">${_slugShort(p.slug)}</td>
-          <td style="color:${p.side === 'UP' ? '#34d399' : '#ef4444'};font-weight:700">${p.side}</td>
-          <td>${(p.entry_price ?? 0).toFixed(3)}</td>
-          <td style="color:#fbbf24">${(p.target_price ?? 0).toFixed(3)}</td>
-          <td>$${(p.stake_usdc ?? 0).toFixed(2)}</td>
-          <td>${_fmtTsAge(p.entry_ts)}</td>
-          <td style="color:${p._mode === 'RL' ? '#fbbf24' : '#9ca3af'}">${p._mode}</td>
-        </tr>
-      `).join('');
-    }
+  // Breakdown por interval (puntos 3 + 5)
+  fetch('/api/trading/stats-by-interval').then(r => r.json()).then(by => {
+    const ph = by.phantom || {};
+    const upd = (suf, st) => {
+      st = st || {};
+      const wr = st.win_rate;
+      const pnl = st.realized_pnl ?? 0;
+      const closed = st.closed ?? 0;
+      setText(`td-wr-${suf}`,    wr != null ? `${wr}%` : '—%', wr != null && wr >= 50 ? '#34d399' : '#ef4444');
+      setText(`td-pnl-${suf}`,   `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl >= 0 ? '#34d399' : '#ef4444');
+      setText(`td-counts-${suf}`, `${closed} trades`);
+    };
+    upd('5m',  ph['5m']);
+    upd('15m', ph['15m']);
+    upd('1d',  ph['1d']);
+  }).catch(()=>{});
+
+  // Dashboard (punto 9)
+  fetch('/api/trading/dashboard').then(r => r.json()).then(dash => {
+    if (!dash || dash.error) return;
+    const ph = dash.phantom || {}, rl = dash.real || {}, pp = dash.params || {};
+    const cFor = v => (v == null ? 'var(--muted)' : v >= 0 ? '#34d399' : '#ef4444');
+    const fmt$ = v => `${(v ?? 0) >= 0 ? '+' : ''}$${(v ?? 0).toFixed(2)}`;
+    setText('dash-ph-balance', `$${(ph.balance ?? 0).toFixed(2)}`);
+    const pt = ph.today || {};
+    setText('dash-ph-pnl-today', fmt$(pt.pnl_usdc), cFor(pt.pnl_usdc));
+    setText('dash-ph-trades-today', `${pt.trades ?? 0} trades`);
+    setText('dash-ph-wr-today', pt.win_rate != null ? `${pt.win_rate}%` : '—%', cFor((pt.win_rate ?? 50) - 50));
+    setText('dash-ph-wl-today', `${pt.wins ?? 0} W / ${pt.losses ?? 0} L`);
+    setText('dash-rl-exposure', `$${(rl.exposure ?? 0).toFixed(2)}`);
+    setText('dash-rl-open', `${rl.open ?? 0} abiertas · ${rl.consec_losses ?? 0} consec`);
+    const rt = rl.today || {};
+    setText('dash-rl-pnl-today', fmt$(rt.pnl_usdc), cFor(rt.pnl_usdc));
+    setText('dash-rl-trades-today', `${rt.trades ?? 0} trades`);
+    const pa = ph.all_time || {};
+    setText('dash-ph-pnl-all', fmt$(pa.pnl), cFor(pa.pnl));
+    setText('dash-ph-wr-all', `WR ${pa.wr ?? 0}% · ${pa.trades ?? 0} trades`);
+    const fmtTf = obj => obj ? `${obj.tf} — WR ${obj.wr ?? 0}% · ${fmt$(obj.pnl)} (${obj.trades})` : 'sin datos';
+    setText('dash-best-tf', fmtTf(ph.best_tf), '#34d399');
+    setText('dash-worst-tf', fmtTf(ph.worst_tf), '#ef4444');
+    setText('dash-most-tf', fmtTf(ph.most_profit_tf), '#fbbf24');
+    const stTxt = pp.killed ? '🛑 KILL-SWITCH' : (pp.trading_real_enabled ? 'REAL ON' : (pp.trading_mode_enabled ? 'PHANTOM ON' : 'OFF'));
+    const stCol = pp.killed ? '#ef4444' : (pp.trading_real_enabled ? '#fbbf24' : (pp.trading_mode_enabled ? '#34d399' : '#6b7280'));
+    setText('dash-state', stTxt, stCol);
+  }).catch(()=>{});
+
+  // Stats real (sólo si activo)
+  const realWrap = document.getElementById('trading-stats-real-wrap');
+  if (realWrap) realWrap.style.display = d.real_enabled ? 'block' : 'none';
+  if (d.real_enabled && rl.stats) {
+    const rs = rl.stats;
+    setText('td-r-balance', `$${(d.real_safety?.exposure_usdc ?? 0).toFixed(2)} viva`);
+    const rpnl = rs.realized_pnl ?? 0;
+    setText('td-r-pnl', `${rpnl >= 0 ? '+' : ''}$${rpnl.toFixed(2)}`, rpnl >= 0 ? '#34d399' : '#ef4444');
+    setText('td-r-wr', `${rs.win_rate ?? 0}%`, (rs.win_rate ?? 0) >= 50 ? '#34d399' : '#ef4444');
+    setText('td-r-counts', `${rs.open ?? 0} / ${rs.total_positions ?? 0}`);
   }
 
-  // History
-  const histAll = (ph.history || []).map(p => ({...p, _mode:'PH'}))
-    .concat((rl.history || []).map(p => ({...p, _mode:'RL'})))
-    .sort((a,b) => (b.entry_ts || 0) - (a.entry_ts || 0))
-    .slice(0, 100);
-  const histTb = document.getElementById('tbl-trading-hist');
-  if (histTb) {
-    if (histAll.length === 0) {
-      histTb.innerHTML = '<tr><td colspan="9" class="empty">Sin historial aún</td></tr>';
+  // Persistir datos para el switch de tab sin re-fetch
+  window._tradingData = d;
+  _renderTradingTables(window._tradingTab || 'phantom');
+
+  // Si real desactivado y estabamos en tab real, volver a phantom
+  if (!d.real_enabled && window._tradingTab === 'real') {
+    _setTradingTab('phantom');
+  }
+}
+
+window._tradingFilters = window._tradingFilters || {openInterval:'all', openSide:'all', histInterval:'all', histResult:'all', histSide:'all'};
+window._tradingSort = window._tradingSort || {open:{col:null,dir:1}, hist:{col:null,dir:1}};
+
+function _setTradingFilter(key, val) {
+  window._tradingFilters[key] = val;
+  _renderTradingTables(window._tradingTab || 'phantom');
+}
+
+function _setTradingSort(table, col) {
+  const cur = window._tradingSort[table];
+  if (cur.col === col) cur.dir = -cur.dir;
+  else { cur.col = col; cur.dir = 1; }
+  // visual: clear all then mark
+  document.querySelectorAll(`[id^="tf-${table}-sort-"]`).forEach(el => { el.textContent = '⇅'; el.style.opacity = '.4'; });
+  const arrow = document.getElementById(`tf-${table}-sort-${col}`);
+  if (arrow) { arrow.textContent = cur.dir > 0 ? '↑' : '↓'; arrow.style.opacity = '1'; }
+  _renderTradingTables(window._tradingTab || 'phantom');
+}
+
+function _applyTradingFiltersOpen(list) {
+  const f = window._tradingFilters;
+  let out = list;
+  if (f.openInterval !== 'all') out = out.filter(p => String(p.interval) === f.openInterval);
+  if (f.openSide !== 'all') out = out.filter(p => (p.side || '').toUpperCase() === f.openSide);
+  const s = window._tradingSort.open;
+  if (s.col) {
+    out = [...out].sort((a, b) => {
+      const va = a[s.col], vb = b[s.col];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * s.dir;
+      return String(va).localeCompare(String(vb)) * s.dir;
+    });
+  }
+  return out;
+}
+
+function _isWinStatus(st, pnl) {
+  return st === 'TARGET_HIT' || st === 'RESOLVED_WIN' || (st === 'FORCED_EXIT' && (pnl ?? 0) >= 0);
+}
+
+function _applyTradingFiltersHist(list) {
+  const f = window._tradingFilters;
+  let out = list;
+  if (f.histInterval !== 'all') out = out.filter(p => String(p.interval) === f.histInterval);
+  if (f.histSide !== 'all') out = out.filter(p => (p.side || '').toUpperCase() === f.histSide);
+  if (f.histResult !== 'all') {
+    out = out.filter(p => {
+      const isWin = _isWinStatus(p.status, p.pnl_usdc);
+      return f.histResult === 'win' ? isWin : !isWin;
+    });
+  }
+  const s = window._tradingSort.hist;
+  if (s.col) {
+    out = [...out].sort((a, b) => {
+      const va = a[s.col], vb = b[s.col];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * s.dir;
+      return String(va).localeCompare(String(vb)) * s.dir;
+    });
+  }
+  return out;
+}
+
+function _renderTradingTables(which) {
+  const d = window._tradingData; if (!d) return;
+  const src = which === 'real' ? (d.real || {open:[],history:[]}) : (d.phantom || {open:[],history:[]});
+  const isReal = which === 'real';
+
+  const openTb = document.getElementById('tbl-trading-open');
+  if (openTb) {
+    const list = _applyTradingFiltersOpen(src.open || []);
+    if (list.length === 0) {
+      openTb.innerHTML = '<tr><td colspan="10" class="empty">Sin posiciones abiertas</td></tr>';
     } else {
-      histTb.innerHTML = histAll.map(p => {
-        const pn = p.pnl_usdc ?? 0;
-        const pnc = pn > 0 ? '#34d399' : (pn < 0 ? '#ef4444' : 'var(--muted)');
+      openTb.innerHTML = list.map(p => {
+        const cur = p.current_price;
+        const upn = p.unrealized_pnl;
+        const stc = p.seconds_to_close;
+        const ms  = p.market_status || 'live';
+        // Tiempo
+        let timeTxt;
+        if (stc == null) {
+          timeTxt = _fmtTsAge(p.entry_ts);
+        } else if (stc > 0) {
+          timeTxt = `<span style="color:#34d399">vivo ${_fmtSecs(stc)}</span>`;
+        } else {
+          timeTxt = `<span style="color:#ef4444">cerró hace ${_fmtSecs(-stc)}</span>`;
+        }
+        // Badge estado — para closed_awaiting mostrar countdown a auto-cierre (10min)
+        const awaitingRemaining = Math.max(0, 600 - (-stc));
+        const awaitingTxt = `RESOLVIENDO (auto-cierre en ${_fmtSecs(awaitingRemaining)})`;
+        const stMap = {
+          live:            {bg:'#10b98122', fg:'#34d399', txt:'LIVE'},
+          closed_winning:  {bg:'#10b98144', fg:'#10b981', txt:'GANANDO — esperar resolve'},
+          closed_losing:   {bg:'#ef444444', fg:'#ef4444', txt:'PERDIENDO — esperar resolve'},
+          closed_awaiting: {bg:'#fbbf2422', fg:'#fbbf24', txt:awaitingTxt},
+          closed_stale:    {bg:'#ef444422', fg:'#ef4444', txt:'FANTASMA — usa Resolver'},
+        };
+        const sc = stMap[ms] || stMap.live;
+        const stBadge = `<span style="background:${sc.bg};color:${sc.fg};padding:1px 6px;border-radius:3px;font-size:.65rem;font-weight:700">${sc.txt}</span>`;
+        // PnL no realizado
+        let pnlCell;
+        if (upn == null) {
+          pnlCell = '<span style="color:var(--muted)">—</span>';
+        } else {
+          const c = upn > 0 ? '#34d399' : (upn < 0 ? '#ef4444' : 'var(--muted)');
+          pnlCell = `<span style="color:${c};font-weight:700">${upn >= 0 ? '+' : ''}$${upn.toFixed(2)}</span>`;
+        }
+        const curTxt = cur != null ? cur.toFixed(3) : '<span style="color:var(--muted)">—</span>';
+        const tfTxt = p.interval == 1440 ? '1d' : (p.interval ? `${p.interval}m` : '—');
         return `<tr>
           <td style="padding:3px 6px;font-family:monospace">${_slugShort(p.slug)}</td>
+          <td style="color:#9ca3af">${tfTxt}</td>
           <td style="color:${p.side === 'UP' ? '#34d399' : '#ef4444'};font-weight:700">${p.side}</td>
           <td>${(p.entry_price ?? 0).toFixed(3)}</td>
-          <td>${p.exit_price != null ? p.exit_price.toFixed(3) : '—'}</td>
-          <td>${(p.target_price ?? 0).toFixed(3)}</td>
+          <td>${curTxt}</td>
+          <td style="color:#fbbf24">${(p.target_price ?? 0).toFixed(3)}</td>
+          <td>${pnlCell}</td>
           <td>$${(p.stake_usdc ?? 0).toFixed(2)}</td>
-          <td style="color:${pnc};font-weight:700">${pn >= 0 ? '+' : ''}$${pn.toFixed(2)}</td>
-          <td>${_statusBadge(p.status)}</td>
-          <td style="color:${p._mode === 'RL' ? '#fbbf24' : '#9ca3af'}">${p._mode}</td>
+          <td>${timeTxt}</td>
+          <td>${stBadge}</td>
         </tr>`;
       }).join('');
     }
   }
+
+  const histTb = document.getElementById('tbl-trading-hist');
+  if (histTb) {
+    const histAll = (src.history || []).slice(0, 100);
+    const hist = _applyTradingFiltersHist(histAll);
+    const cntEl = document.getElementById('tf-hist-count');
+    if (cntEl) cntEl.textContent = `${hist.length} / ${histAll.length}`;
+    if (hist.length === 0) {
+      histTb.innerHTML = '<tr><td colspan="11" class="empty">Sin historial aún</td></tr>';
+    } else {
+      histTb.innerHTML = hist.map(p => {
+        const pn = p.pnl_usdc ?? 0;
+        const pnc = pn > 0 ? '#34d399' : (pn < 0 ? '#ef4444' : 'var(--muted)');
+        const tfTxt = p.interval == 1440 ? '1d' : (p.interval ? `${p.interval}m` : '—');
+        const entryHms = p.entry_hms || (p.entry_ts ? new Date(p.entry_ts*1000).toTimeString().slice(0,8) : '—');
+        const exitHms  = p.exit_hms  || (p.exit_ts  ? new Date(p.exit_ts*1000).toTimeString().slice(0,8)  : '—');
+        return `<tr>
+          <td style="padding:3px 6px;font-family:monospace">${_slugShort(p.slug)}</td>
+          <td style="color:#9ca3af">${tfTxt}</td>
+          <td style="color:${p.side === 'UP' ? '#34d399' : '#ef4444'};font-weight:700">${p.side}</td>
+          <td>${(p.entry_price ?? 0).toFixed(3)}</td>
+          <td style="font-family:monospace;color:#9ca3af;font-size:.75rem">${entryHms}</td>
+          <td>${p.exit_price != null ? p.exit_price.toFixed(3) : '—'}</td>
+          <td style="font-family:monospace;color:#9ca3af;font-size:.75rem">${exitHms}</td>
+          <td>${(p.target_price ?? 0).toFixed(3)}</td>
+          <td>$${(p.stake_usdc ?? 0).toFixed(2)}</td>
+          <td style="color:${pnc};font-weight:700">${pn >= 0 ? '+' : ''}$${pn.toFixed(2)}</td>
+          <td>${_statusBadge(p.status)}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+}
+
+function _setTradingTab(which) {
+  window._tradingTab = which;
+  const phBtn = document.getElementById('td-tab-ph');
+  const rlBtn = document.getElementById('td-tab-rl');
+  if (phBtn) {
+    phBtn.style.borderBottomColor = which === 'phantom' ? '#34d399' : 'transparent';
+    phBtn.style.color = which === 'phantom' ? '#34d399' : 'var(--muted)';
+  }
+  if (rlBtn) {
+    rlBtn.style.borderBottomColor = which === 'real' ? '#fbbf24' : 'transparent';
+    rlBtn.style.color = which === 'real' ? '#fbbf24' : 'var(--muted)';
+  }
+  _renderTradingTables(which);
 }
 
 async function saveTradingToggle(key, val) {
@@ -6416,15 +7024,49 @@ async function saveTradingToggle(key, val) {
   } catch(e) { console.warn('saveTradingToggle:', e); }
 }
 
+function updateRRHint() {
+  // Punto 10 — calcula R:R según params. R:R = profit_offset / entry_price
+  // Uso worst-case (max_entry_price) para ser conservador.
+  const minP = parseFloat(document.getElementById('td-min-price')?.value) || 0;
+  const maxP = parseFloat(document.getElementById('td-max-price')?.value) || 0;
+  const off  = parseFloat(document.getElementById('td-offset')?.value) || 0;
+  const el = document.getElementById('td-rr-hint');
+  if (!el || !maxP) return;
+  const worst = off / maxP;
+  const best  = minP ? off / minP : null;
+  // R:R ≥ 2 significa 1 win cubre 2 losses
+  const col = worst >= 2 ? '#34d399' : worst >= 1 ? '#fbbf24' : '#ef4444';
+  el.style.color = col;
+  el.textContent = best ? `1:${worst.toFixed(2)} – 1:${best.toFixed(2)}` : `1:${worst.toFixed(2)}`;
+  el.title = worst >= 2
+    ? `R:R favorable — 1 win ≥ ${worst.toFixed(1)} losses`
+    : `R:R desfavorable — necesitas ${(1/worst).toFixed(1)} wins por loss`;
+}
+
 async function saveTradingParams() {
   try {
     const body = {
       trading_entry_threshold:        parseFloat(document.getElementById('td-entry').value),
+      trading_min_entry_price:        parseFloat(document.getElementById('td-min-price').value),
+      trading_max_entry_price:        parseFloat(document.getElementById('td-max-price').value),
       trading_profit_offset:          parseFloat(document.getElementById('td-offset').value),
       trading_exit_deadline_min:      parseFloat(document.getElementById('td-exit-min').value),
       trading_min_entry_minutes_left: parseFloat(document.getElementById('td-min-entry').value),
       trading_max_entries_per_market: parseInt(document.getElementById('td-max-entries').value),
       trading_stake_usdc:             parseFloat(document.getElementById('td-stake').value),
+      trading_real_max_exposure_usdc:     parseFloat(document.getElementById('td-real-exp').value),
+      trading_real_daily_loss_limit_usdc: parseFloat(document.getElementById('td-real-dloss').value),
+      trading_real_max_consec_losses:     parseInt(document.getElementById('td-real-consec').value),
+      trading_one_open_at_a_time:         !!document.getElementById('td-one-open').checked,
+      trading_sl_enabled:                 !!document.getElementById('td-sl-enabled')?.checked,
+      trading_sl_trigger_drop:            parseFloat(document.getElementById('td-sl-trigger')?.value || '0.50'),
+      trading_sl_wait_min:                parseFloat(document.getElementById('td-sl-wait')?.value || '3'),
+      trading_sl_min_recover_factor:      parseFloat(document.getElementById('td-sl-recover')?.value || '0.50'),
+      trading_panic_trigger_drop:         parseFloat(document.getElementById('td-panic-trigger')?.value || '0.80'),
+      trading_buy_probable:               !!document.getElementById('td-buy-probable')?.checked,
+      trading_probable_min_price:         parseFloat(document.getElementById('td-prob-min')?.value || '0.55'),
+      trading_probable_max_price:         parseFloat(document.getElementById('td-prob-max')?.value || '0.85'),
+      trading_probable_profit_offset:     parseFloat(document.getElementById('td-prob-offset')?.value || '0.08'),
     };
     const r = await fetch('/api/trading/params', {
       method: 'POST',
@@ -6432,6 +7074,39 @@ async function saveTradingParams() {
       body: JSON.stringify(body),
     }).then(r => r.json());
     if (r.ok) { loadTradingState(); }
+    else alert('Error: ' + (r.error || '?'));
+  } catch(e) { alert('Error: ' + e); }
+}
+
+async function forceResolveTrading() {
+  if (!confirm('Cerrar todas las posiciones cuyos mercados ya expiraron (fantasmas)?')) return;
+  try {
+    const r = await fetch('/api/trading/force-resolve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({scope:'both'}),
+    }).then(r => r.json());
+    if (r.ok) {
+      alert(`Resueltas: phantom=${r.resolved.phantom}, real=${r.resolved.real}`);
+      loadTradingState();
+    } else alert('Error: ' + (r.error || '?'));
+  } catch(e) { alert('Error: ' + e); }
+}
+
+async function resetTradingKillSwitch() {
+  if (!confirm('¿Reiniciar kill-switch? El bot volverá a abrir posiciones reales.')) return;
+  try {
+    const r = await fetch('/api/trading/reset-kill-switch', { method: 'POST' }).then(r => r.json());
+    if (r.ok) loadTradingState();
+    else alert('Error: ' + (r.error || '?'));
+  } catch(e) { alert('Error: ' + e); }
+}
+
+async function resetTradingConsecLosses() {
+  if (!confirm('¿Reiniciar racha de pérdidas? Marca las posiciones cerradas previas como "reset" y desactiva kill-switch.')) return;
+  try {
+    const r = await fetch('/api/trading/reset-consec-losses', { method: 'POST' }).then(r => r.json());
+    if (r.ok) loadTradingState();
     else alert('Error: ' + (r.error || '?'));
   } catch(e) { alert('Error: ' + e); }
 }
@@ -6448,9 +7123,38 @@ async function resetTradingPhantom() {
   } catch(e) { alert('Error: ' + e); }
 }
 
-// Auto-refresh cada 10s
+async function editPhantomBalance() {
+  const cur = document.getElementById('td-balance')?.textContent || '$0';
+  const v = prompt('Nuevo balance phantom (USDC virtual). NO borra posiciones.', cur.replace(/[^\d.]/g, '') || '50');
+  if (v == null) return;
+  const n = parseFloat(v);
+  if (isNaN(n) || n < 0) { alert('Valor inválido'); return; }
+  try {
+    const r = await fetch('/api/trading/set-phantom-balance', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({balance: n}),
+    }).then(r => r.json());
+    if (r.ok) loadTradingState();
+    else alert('Error: ' + (r.error || '?'));
+  } catch(e) { alert('Error: ' + e); }
+}
+
+async function resetTradingExposure() {
+  if (!confirm('¿Liberar exposure REAL? Marcará posiciones OPEN como RELEASED.\nNO toca on-chain — solo limpia el tracking interno.\nÚsalo cuando ya cerraste manualmente en Polymarket.')) return;
+  try {
+    const r = await fetch('/api/trading/reset-exposure', { method: 'POST' }).then(r => r.json());
+    if (r.ok) {
+      alert(`OK — ${r.released} posiciones liberadas. Exposure ahora: $${(r.exposure_after ?? 0).toFixed(2)}`);
+      loadTradingState();
+    } else alert('Error: ' + (r.error || '?'));
+  } catch(e) { alert('Error: ' + e); }
+}
+
+// Auto-refresh cada 10s del estado; logs y diagnóstico cada 3s para ver actividad en vivo
 loadTradingState();
 setInterval(loadTradingState, 10000);
+setInterval(() => { loadTradingLogs(); loadTradingDiagnostics(); }, 3000);
 
 
 // ── Experimento VPS-Confianza ─────────────────────────────────────────────
@@ -7102,7 +7806,23 @@ async function loadBots() {
     hasData:     (ph15.total ?? 0) > 0,
   };
 
-  grid.innerHTML = [ud5cfg, ud15cfg, ph5cfg, ph15cfg]
+  // ── Trading Mode 5m / 15m / 1d (phantom + real combined) ────────────────
+  const _tmCfg = (id, name, key) => {
+    const tm = botsStats[key] || {};
+    return {
+      id, name, badge: 'Trading',
+      wr:          tm.win_rate  ?? null,
+      recentWr:    tm.recent_wr ?? null,
+      consLosses:  (tm.adaptive || {}).streak_losses ?? 0,
+      totalTrades: tm.total     ?? 0,
+      hasData:     (tm.total ?? 0) > 0,
+    };
+  };
+  const tm5cfg  = _tmCfg('tm5m',  'Trading 5m',  'tm5m');
+  const tm15cfg = _tmCfg('tm15m', 'Trading 15m', 'tm15m');
+  const tm1dcfg = _tmCfg('tm1d',  'Trading 1d',  'tm1d');
+
+  grid.innerHTML = [ud5cfg, ud15cfg, ph5cfg, ph15cfg, tm5cfg, tm15cfg, tm1dcfg]
     .map(_renderBotCard)
     .join('');
 
@@ -7505,7 +8225,7 @@ async function sendBrainChat() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: _brainChatHistory, bot_id: _brainLastId }),
+      body: JSON.stringify({ messages: _brainChatHistory, bot_id: _brainLastId, model: window._chatModel || undefined }),
     });
     if (!resp.ok) {
       let errMsg = `HTTP ${resp.status}`;
@@ -7654,31 +8374,50 @@ async function showBotBrain(botId) {
   // Fetch data — usa /api/bots/stats como fuente única de WR
   let d = {};
   const isPhantom = botId.startsWith('ph');
-  const interval  = botId.includes('15m') ? '15m' : '5m';
+  const isTrading = botId.startsWith('tm');
+  const interval  = botId.includes('15m') ? '15m' : (botId.includes('1d') ? '1d' : '5m');
   _brainInterval  = interval;
   try {
-    // Siempre refrescar stats canónicas
-    const [botsR, learnR] = await Promise.all([
-      _fetchBotsStats(),
-      fetch('/api/updown/learn').then(r => r.json()),
-    ]);
-    const canonical = (botsR || {})[botId] || {};
-    // Para adaptive params y detalles extras seguimos usando updown/learn
-    const learnRaw  = (learnR || {})[interval] || {};
-    const learnDetail = isPhantom ? (learnRaw.phantom || {}) : learnRaw;
-    // Mezclar: WR siempre de canonical, resto de learnDetail
-    d = Object.assign({}, learnDetail, {
-      win_rate:  canonical.win_rate  ?? learnDetail.win_rate,
-      recent_wr: canonical.recent_wr ?? learnDetail.recent_wr,
-      total:     canonical.total     ?? learnDetail.total,
-      wins:      canonical.wins      ?? learnDetail.wins,
-      by_side:   canonical.by_side   ?? learnDetail.by_side,
-    });
-    d._adaptive = canonical.adaptive || learnRaw.adaptive || {};
-    d._interval = interval;
+    if (isTrading) {
+      // Trading bots: usar /api/bots/stats canonical (combina phantom+real)
+      const botsR = await _fetchBotsStats();
+      const canonical = (botsR || {})[botId] || {};
+      const ph = canonical.phantom || {};
+      d = {
+        win_rate:  canonical.win_rate,
+        recent_wr: canonical.recent_wr,
+        total:     canonical.total ?? 0,
+        wins:      canonical.wins  ?? 0,
+        by_side:   canonical.by_side || {},
+        recent:    ph.recent || [],
+        _adaptive: canonical.adaptive || {},
+        _interval: interval,
+        _trading_card: canonical,
+      };
+    } else {
+      // Siempre refrescar stats canónicas
+      const [botsR, learnR] = await Promise.all([
+        _fetchBotsStats(),
+        fetch('/api/updown/learn').then(r => r.json()),
+      ]);
+      const canonical = (botsR || {})[botId] || {};
+      // Para adaptive params y detalles extras seguimos usando updown/learn
+      const learnRaw  = (learnR || {})[interval] || {};
+      const learnDetail = isPhantom ? (learnRaw.phantom || {}) : learnRaw;
+      // Mezclar: WR siempre de canonical, resto de learnDetail
+      d = Object.assign({}, learnDetail, {
+        win_rate:  canonical.win_rate  ?? learnDetail.win_rate,
+        recent_wr: canonical.recent_wr ?? learnDetail.recent_wr,
+        total:     canonical.total     ?? learnDetail.total,
+        wins:      canonical.wins      ?? learnDetail.wins,
+        by_side:   canonical.by_side   ?? learnDetail.by_side,
+      });
+      d._adaptive = canonical.adaptive || learnRaw.adaptive || {};
+      d._interval = interval;
+    }
   } catch(e) {}
 
-  const names = { ud5m:'UpDown 5m (Real)', ud15m:'UpDown 15m (Real)', ph5m:'Phantom 5m', ph15m:'Phantom 15m' };
+  const names = { ud5m:'UpDown 5m (Real)', ud15m:'UpDown 15m (Real)', ph5m:'Phantom 5m', ph15m:'Phantom 15m', tm5m:'Trading 5m', tm15m:'Trading 15m', tm1d:'Trading 1d' };
   const botName = names[botId] || botId;
   titleEl.textContent = `🧠 Cerebro del Bot · ${botName} · ${_wrLabel(d.win_rate)} WR total`;
 

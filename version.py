@@ -19,12 +19,12 @@ Historial de fases:
 """
 
 MAJOR = 9
-MINOR = 4
-PATCH = 2
+MINOR = 5
+PATCH = 0
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Trading Mode UI + API — panel en Phantom tab, tresholds más permisivos"
+PHASE_NAME = "Trading Mode — preflight gates (drawdown/paper/stale), selector modelo Claude, Phantom Bot MD"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

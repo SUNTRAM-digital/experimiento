@@ -167,6 +167,7 @@ def _build_status() -> dict:
         # UpDown — control
         "updown_5m_enabled":            bot_params.updown_5m_enabled,
         "updown_15m_enabled":           bot_params.updown_15m_enabled,
+        "updown_1d_enabled":            getattr(bot_params, "updown_1d_enabled", False),
         "updown_5m_stopped":            bot.state.updown_5m_stopped,
         "updown_15m_stopped":           bot.state.updown_15m_stopped,
         "updown_5m_consecutive_losses": bot.state.updown_5m_consecutive_losses,
@@ -690,6 +691,7 @@ async def toggle_trade_type(data: dict):
         "btc":       "btc_enabled",
         "updown_5m": "updown_5m_enabled",
         "updown_15m":"updown_15m_enabled",
+        "updown_1d": "updown_1d_enabled",
     }
     key = key_map.get(trade_type)
     if not key:
@@ -701,6 +703,7 @@ async def toggle_trade_type(data: dict):
         "btc":       "₿ BTC above/below",
         "updown_5m": "⚡ UpDown 5m",
         "updown_15m":"⚡ UpDown 15m",
+        "updown_1d": "⚡ UpDown 1d",
     }[trade_type]
     estado = "ACTIVADO" if enabled else "DESACTIVADO"
     bot._log("INFO", f"Tipo de trade {label} → {estado}")
@@ -877,6 +880,47 @@ async def get_bots_stats():
         ph5  = _ph_stats(ud5,  5)
         ph15 = _ph_stats(ud15, 15)
 
+        # Trading Mode bots (phantom + real combined into per-interval bot)
+        try:
+            import trading_positions as _tp
+            tm5_ph  = _tp.stats_by_interval(is_real=False, interval=5)
+            tm15_ph = _tp.stats_by_interval(is_real=False, interval=15)
+            tm1d_ph = _tp.stats_by_interval(is_real=False, interval=1440)
+            tm5_rl  = _tp.stats_by_interval(is_real=True,  interval=5)
+            tm15_rl = _tp.stats_by_interval(is_real=True,  interval=15)
+            tm1d_rl = _tp.stats_by_interval(is_real=True,  interval=1440)
+
+            try:
+                import trading_learner as _tl
+            except Exception:
+                _tl = None
+
+            def _tm_card(ph: dict, rl: dict, interval: int) -> dict:
+                ap = {}
+                if _tl:
+                    try:
+                        ap = _tl.get_adaptive_params(interval)
+                    except Exception:
+                        ap = {}
+                return {
+                    "phantom": ph,
+                    "real":    rl,
+                    "total":     (ph.get("total")  or 0) + (rl.get("total")  or 0),
+                    "wins":      (ph.get("wins")   or 0) + (rl.get("wins")   or 0),
+                    "losses":    (ph.get("losses") or 0) + (rl.get("losses") or 0),
+                    "win_rate":  ph.get("win_rate"),
+                    "recent_wr": ph.get("recent_wr"),
+                    "by_side":   ph.get("by_side", {}),
+                    "realized_pnl_phantom": ph.get("realized_pnl", 0),
+                    "realized_pnl_real":    rl.get("realized_pnl", 0),
+                    "adaptive":  ap,
+                }
+            tm5  = _tm_card(tm5_ph,  tm5_rl,  5)
+            tm15 = _tm_card(tm15_ph, tm15_rl, 15)
+            tm1d = _tm_card(tm1d_ph, tm1d_rl, 1440)
+        except Exception:
+            tm5 = tm15 = tm1d = {}
+
         return {
             "ud5m":  {"total": ud5.get("total",0), "wins": ud5.get("wins",0),
                       "win_rate": ud5.get("win_rate"), "recent_wr": ud5.get("recent_wr"),
@@ -888,6 +932,111 @@ async def get_bots_stats():
                       "by_elapsed": ud15.get("by_elapsed",{}), "adaptive": ud15.get("adaptive",{})},
             "ph5m":  ph5,
             "ph15m": ph15,
+            "tm5m":  tm5,
+            "tm15m": tm15,
+            "tm1d":  tm1d,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/trading/stats-by-interval")
+async def get_trading_stats_by_interval():
+    """Stats Trading Mode segregados por interval (5/15/1440) y por modo (phantom/real)."""
+    try:
+        import trading_positions as _tp
+        return {
+            "phantom": {
+                "5m":  _tp.stats_by_interval(is_real=False, interval=5),
+                "15m": _tp.stats_by_interval(is_real=False, interval=15),
+                "1d":  _tp.stats_by_interval(is_real=False, interval=1440),
+                "all": _tp.stats_by_interval(is_real=False, interval=None),
+            },
+            "real": {
+                "5m":  _tp.stats_by_interval(is_real=True, interval=5),
+                "15m": _tp.stats_by_interval(is_real=True, interval=15),
+                "1d":  _tp.stats_by_interval(is_real=True, interval=1440),
+                "all": _tp.stats_by_interval(is_real=True, interval=None),
+            },
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/trading/dashboard")
+async def get_trading_dashboard():
+    """Punto 9 — KPIs agregados Trading Mode (phantom + real, por TF, hoy + total)."""
+    try:
+        import datetime as _dt
+        import trading_positions as _tp
+
+        midnight_ts = int(_dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+        def _today_stats(is_real: bool):
+            wins = losses = trades = 0
+            pnl = 0.0
+            with _tp._LOCK:
+                state = _tp._load()
+                bucket = "real" if is_real else "phantom"
+                for plist in state[bucket].values():
+                    for p in plist:
+                        if p.get("status") == "OPEN":
+                            continue
+                        ets = int(p.get("exit_ts") or 0)
+                        if ets < midnight_ts:
+                            continue
+                        trades += 1
+                        pn = float(p.get("pnl_usdc") or 0)
+                        pnl += pn
+                        st = p.get("status")
+                        is_win = st in ("TARGET_HIT", "RESOLVED_WIN") or (st == "FORCED_EXIT" and pn >= 0)
+                        if is_win:
+                            wins += 1
+                        else:
+                            losses += 1
+            wr = round(wins / (wins + losses) * 100, 2) if (wins + losses) else None
+            return {"trades": trades, "wins": wins, "losses": losses, "win_rate": wr, "pnl_usdc": round(pnl, 4)}
+
+        ph_today = _today_stats(False)
+        rl_today = _today_stats(True)
+        ph_all   = _tp.stats_by_interval(is_real=False, interval=None)
+        rl_all   = _tp.stats_by_interval(is_real=True,  interval=None)
+        meta     = _tp.get_meta()
+
+        # mejor/peor interval por WR (phantom)
+        per_tf = {iv: _tp.stats_by_interval(is_real=False, interval=iv) for iv in (5, 15, 1440)}
+        ranked = [(k, v.get("win_rate"), v.get("realized_pnl", 0.0), v.get("closed", 0))
+                  for k, v in per_tf.items() if v.get("closed", 0) > 0]
+        ranked_wr = sorted([r for r in ranked if r[1] is not None], key=lambda x: x[1], reverse=True)
+        best = ranked_wr[0] if ranked_wr else None
+        worst = ranked_wr[-1] if ranked_wr else None
+        ranked_pnl = sorted(ranked, key=lambda x: x[2], reverse=True)
+        most_profitable = ranked_pnl[0] if ranked_pnl else None
+
+        return {
+            "phantom": {
+                "balance":        meta.get("phantom_balance", 0.0),
+                "today":          ph_today,
+                "all_time":       {"trades": ph_all["closed"], "wr": ph_all["win_rate"], "pnl": ph_all["realized_pnl"]},
+                "open":           ph_all["open"],
+                "by_tf":          {("1d" if iv == 1440 else f"{iv}m"): {"wr": v["win_rate"], "pnl": v["realized_pnl"], "trades": v["closed"]} for iv, v in per_tf.items()},
+                "best_tf":        ({"tf": ("1d" if best[0] == 1440 else f"{best[0]}m"), "wr": best[1], "pnl": best[2], "trades": best[3]} if best else None),
+                "worst_tf":       ({"tf": ("1d" if worst[0] == 1440 else f"{worst[0]}m"), "wr": worst[1], "pnl": worst[2], "trades": worst[3]} if worst else None),
+                "most_profit_tf": ({"tf": ("1d" if most_profitable[0] == 1440 else f"{most_profitable[0]}m"), "wr": most_profitable[1], "pnl": most_profitable[2], "trades": most_profitable[3]} if most_profitable else None),
+            },
+            "real": {
+                "exposure":   _tp.real_exposure_usdc(),
+                "today":      rl_today,
+                "all_time":   {"trades": rl_all["closed"], "wr": rl_all["win_rate"], "pnl": rl_all["realized_pnl"]},
+                "open":       rl_all["open"],
+                "consec_losses": _tp.real_consecutive_losses(),
+                "pending_redeem": _tp.real_pending_redemption_usdc(48),
+            },
+            "params": {
+                "trading_mode_enabled": bool(getattr(bot_params, "trading_mode_enabled", False)),
+                "trading_real_enabled": bool(getattr(bot_params, "trading_real_enabled", False)),
+                "killed":               bool(getattr(bot_params, "trading_real_killed", False)),
+            },
         }
     except Exception as e:
         return {"error": str(e)}
@@ -1601,6 +1750,49 @@ def _build_chat_context(include_logs: bool = True, include_learner: bool = True)
         except Exception as _e:
             lines.append(f"(Error al cargar comparativa bots: {_e})")
 
+    # === TRADING MODE (v9.4 — punto 13) ===
+    try:
+        import trading_positions as _tp
+        from config import bot_params as _bp3
+        bp3 = _bp3.to_dict()
+        ph_stats = _tp.stats_summary(is_real=False)
+        rl_stats = _tp.stats_summary(is_real=True) if bp3.get("trading_real_enabled") else None
+        lines += [
+            "",
+            "=== TRADING MODE ===",
+            f"enabled: {bp3.get('trading_mode_enabled')} | real_enabled: {bp3.get('trading_real_enabled')}",
+            f"Params: entry≤{bp3.get('trading_entry_threshold')} | max_entry≤{bp3.get('trading_max_entry_price')} | "
+            f"offset={bp3.get('trading_profit_offset')} | stake=${bp3.get('trading_stake_usdc')} | "
+            f"one_open={bp3.get('trading_one_open_at_a_time')}",
+            f"Stop-loss: enabled={bp3.get('trading_sl_enabled')} | trigger={bp3.get('trading_sl_trigger_drop')} "
+            f"| wait={bp3.get('trading_sl_wait_min')}min | recover×={bp3.get('trading_sl_min_recover_factor')} "
+            f"| panic={bp3.get('trading_panic_trigger_drop')}",
+            f"Safety real: max_exp=${bp3.get('trading_real_max_exposure_usdc')} | daily_loss=${bp3.get('trading_real_daily_loss_limit_usdc')} "
+            f"| max_consec={bp3.get('trading_real_max_consec_losses')} | killed={bp3.get('trading_real_killed')}",
+            f"Phantom: balance=${ph_stats.get('phantom_balance', 0):.2f} | trades={ph_stats.get('total_positions',0)} "
+            f"| wins={ph_stats.get('wins',0)}/{ph_stats.get('closed',0)} WR={ph_stats.get('win_rate',0)}% "
+            f"| pnl_realizado=${ph_stats.get('realized_pnl',0):.2f} | open={ph_stats.get('open',0)}",
+        ]
+        if rl_stats:
+            lines.append(
+                f"Real: trades={rl_stats.get('total_positions',0)} | wins={rl_stats.get('wins',0)}/{rl_stats.get('closed',0)} "
+                f"WR={rl_stats.get('win_rate',0)}% | pnl=${rl_stats.get('realized_pnl',0):.2f} | open={rl_stats.get('open',0)} "
+                f"| exposure=${_tp.real_exposure_usdc():.2f}"
+            )
+        # Últimas 5 posiciones (phantom+real mezcladas por ts)
+        recent = _tp.get_all_positions_flat(is_real=False, limit=5)
+        if recent:
+            lines.append("Últimos 5 trades phantom:")
+            for p in recent:
+                tf = "1d" if p.get("interval") == 1440 else f"{p.get('interval','?')}m"
+                lines.append(
+                    f"  • {p.get('entry_iso','?')} | TF={tf} | {p.get('side')} "
+                    f"entry={p.get('entry_price',0):.3f}→exit={p.get('exit_price') if p.get('exit_price') is not None else '—'} "
+                    f"| status={p.get('status')} | pnl=${p.get('pnl_usdc',0):.2f}"
+                )
+    except Exception as _e:
+        lines.append(f"(Trading Mode context err: {_e})")
+
     # === LOGS RECIENTES (últimos 30) ===
     if include_logs:
         recent_logs = bot.get_log_history()[-30:]
@@ -1646,6 +1838,14 @@ UpDown (5m/15m BTC up-or-down):
 - Si el usuario pide resetear el bloqueo / circuit breaker de 5m o 15m → llama reset_updown_circuit_breaker
 - Si el usuario pregunta "¿qué ve el bot ahora?", "analiza el 5m/15m", "señal actual", "¿debería entrar?" → llama analyze_bot con el interval correspondiente
 - Para comparar bots o recomendar cambios con datos frescos → llama analyze_bot para cada intervalo de interés
+
+Trading Mode (v9.4 — mercados UP/DOWN Polymarket, compra barato y vende target):
+- Opera en UpDown 5m/15m/1d de BTC con bot phantom (entrenamiento) y opcionalmente real.
+- Parámetros clave: trading_entry_threshold, trading_max_entry_price (ceiling R:R), trading_profit_offset, trading_stake_usdc.
+- Stop-loss escalonado (punto 12): trading_sl_enabled, trading_sl_trigger_drop (0.50=50% drop arma), trading_sl_wait_min, trading_sl_min_recover_factor, trading_panic_trigger_drop (0.80=80% drop → panic salvage).
+- Safety REAL (NO afecta phantom): trading_real_max_exposure_usdc, trading_real_daily_loss_limit_usdc, trading_real_max_consec_losses, trading_real_killed.
+- Si el usuario pide "ajusta R:R", "cambia stop-loss", "sube stake trading", "reset exposure", "activa trading real" → llama update_params con claves trading_*.
+- NUNCA modifiques params proactivamente — solo sugiere y espera orden explícita.
 
 Phantom (trades de aprendizaje):
 - Si el usuario pide activar dinero real en phantom → llama toggle_phantom_real con enabled=true
@@ -1779,7 +1979,22 @@ CHAT_TOOLS = [
                         "updown_15m_momentum_gate, updown_5m_momentum_gate, "
                         "updown_stake_min_usdc, updown_stake_max_usdc, "
                         "updown_stake_conf_min_pct, updown_stake_conf_max_pct, "
-                        "updown_displacement_hi_pct, updown_displacement_lo_pct"
+                        "updown_displacement_hi_pct, updown_displacement_lo_pct, "
+                        "trading_mode_enabled, trading_real_enabled, "
+                        "trading_entry_threshold, trading_min_entry_price, trading_max_entry_price, "
+                        "trading_profit_offset, trading_exit_deadline_min, "
+                        "trading_min_entry_minutes_left, trading_max_entries_per_market, "
+                        "trading_max_open_per_side, trading_stake_usdc, trading_one_open_at_a_time, "
+                        "trading_real_max_exposure_usdc, trading_real_daily_loss_limit_usdc, "
+                        "trading_real_max_consec_losses, trading_real_killed, "
+                        "trading_sl_enabled, trading_sl_trigger_drop, trading_sl_wait_min, "
+                        "trading_sl_min_recover_factor, trading_panic_trigger_drop, "
+                        "trading_buy_probable, trading_probable_min_price, "
+                        "trading_probable_max_price, trading_probable_profit_offset, "
+                        "trading_real_drawdown_halt_pct, "
+                        "trading_paper_required_days, trading_paper_required_trades, "
+                        "trading_paper_required_wr, trading_paper_gate_override, "
+                        "trading_max_price_age_sec"
                     ),
                 },
                 "reason": {
@@ -2076,6 +2291,25 @@ async def _execute_chat_tool(name: str, inputs: dict, bot_id: str | None = None)
             "updown_stake_min_usdc", "updown_stake_max_usdc",
             "updown_stake_conf_min_pct", "updown_stake_conf_max_pct",
             "updown_displacement_hi_pct", "updown_displacement_lo_pct",
+            # Punto 17 — Trading Mode (Claude puede modificar en chat)
+            "trading_mode_enabled", "trading_real_enabled",
+            "trading_entry_threshold", "trading_min_entry_price", "trading_max_entry_price",
+            "trading_trend_prefer_winning", "trading_profit_offset",
+            "trading_exit_deadline_min", "trading_min_entry_minutes_left",
+            "trading_max_entries_per_market", "trading_max_open_per_side",
+            "trading_stake_usdc", "trading_one_open_at_a_time",
+            "trading_real_max_exposure_usdc", "trading_real_daily_loss_limit_usdc",
+            "trading_real_max_consec_losses", "trading_real_killed",
+            "trading_sl_enabled", "trading_sl_trigger_drop", "trading_sl_wait_min",
+            "trading_sl_min_recover_factor",
+            "trading_panic_trigger_drop", "trading_panic_min_recover_factor",
+            "trading_buy_probable", "trading_probable_min_price",
+            "trading_probable_max_price", "trading_probable_profit_offset",
+            # Punto 19 — preflight gates + stale check
+            "trading_real_drawdown_halt_pct",
+            "trading_paper_required_days", "trading_paper_required_trades",
+            "trading_paper_required_wr", "trading_paper_gate_override",
+            "trading_max_price_age_sec",
         }
         invalid = [k for k in params if k not in valid_keys]
         if invalid:
@@ -2207,6 +2441,23 @@ async def _execute_chat_tool(name: str, inputs: dict, bot_id: str | None = None)
     return f"Herramienta desconocida: {name}"
 
 
+@app.get("/api/chat/models")
+async def list_chat_models():
+    """Punto 16 — devuelve la lista de modelos Claude disponibles para el chat."""
+    import os as _os
+    default = _os.getenv("CLAUDE_CHAT_MODEL", _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
+    return {
+        "default": default,
+        "models": [
+            {"id": "claude-opus-4-7",           "name": "Opus 4.7",           "tier": "premium"},
+            {"id": "claude-opus-4-6",           "name": "Opus 4.6",           "tier": "premium"},
+            {"id": "claude-sonnet-4-6",         "name": "Sonnet 4.6",         "tier": "balanced"},
+            {"id": "claude-sonnet-4-5",         "name": "Sonnet 4.5",         "tier": "balanced"},
+            {"id": "claude-haiku-4-5-20251001", "name": "Haiku 4.5",          "tier": "fast"},
+        ],
+    }
+
+
 @app.post("/api/chat")
 async def chat_endpoint(data: dict):
     from claude_analyst import get_client
@@ -2225,7 +2476,15 @@ async def chat_endpoint(data: dict):
 
     import os as _os
     # Chat usa sonnet para mejor razonamiento con herramientas; CLAUDE_CHAT_MODEL lo sobreescribe
-    model = _os.getenv("CLAUDE_CHAT_MODEL", _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
+    _default_model = _os.getenv("CLAUDE_CHAT_MODEL", _os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
+    # Punto 16 — selector de modelo desde UI (whitelist para evitar modelos inválidos)
+    _ALLOWED_MODELS = {
+        "claude-opus-4-7", "claude-opus-4-6",
+        "claude-sonnet-4-6", "claude-sonnet-4-5",
+        "claude-haiku-4-5-20251001",
+    }
+    _req_model = (data.get("model") or "").strip()
+    model = _req_model if _req_model in _ALLOWED_MODELS else _default_model
     bot_id = data.get("bot_id")  # presente solo en brain chat
     try:
         if bot_id:
@@ -2838,6 +3097,15 @@ async def reset_vps_experiment():
 
 # ── Trading Mode (v9.4) ────────────────────────────────────────────────────
 
+async def _safe_enrich(is_real: bool):
+    try:
+        from trading_runner import enrich_open_positions
+        return await enrich_open_positions(is_real=is_real)
+    except Exception:
+        import trading_positions as _tp
+        return _tp.all_open_positions(is_real=is_real)
+
+
 @app.get("/api/trading/state")
 async def get_trading_state():
     """
@@ -2847,26 +3115,72 @@ async def get_trading_state():
     try:
         import trading_positions as tp
         is_real_enabled = bool(getattr(bot_params, "trading_real_enabled", False))
+        max_consec = int(getattr(bot_params, "trading_real_max_consec_losses", 3))
+        max_exposure = float(getattr(bot_params, "trading_real_max_exposure_usdc", 20.0))
+        daily_limit  = float(getattr(bot_params, "trading_real_daily_loss_limit_usdc", 5.0))
+        exposure_now = tp.real_exposure_usdc()
+        pnl_today    = tp.real_pnl_today_usdc()
+        consec       = tp.real_consecutive_losses()
+        pending_red  = tp.real_pending_redemption_usdc(48)
         return {
             "enabled":      bool(getattr(bot_params, "trading_mode_enabled", False)),
             "real_enabled": is_real_enabled,
             "params": {
                 "entry_threshold":         getattr(bot_params, "trading_entry_threshold", 0.35),
-                "profit_offset":           getattr(bot_params, "trading_profit_offset", 0.20),
+                "min_entry_price":         getattr(bot_params, "trading_min_entry_price", 0.10),
+                "max_entry_price":         getattr(bot_params, "trading_max_entry_price", 0.30),
+                "profit_offset":           getattr(bot_params, "trading_profit_offset", 0.30),
                 "exit_deadline_min":       getattr(bot_params, "trading_exit_deadline_min", 3.0),
                 "min_entry_minutes_left":  getattr(bot_params, "trading_min_entry_minutes_left", 6.0),
                 "max_entries_per_market":  getattr(bot_params, "trading_max_entries_per_market", 3),
                 "max_open_per_side":       getattr(bot_params, "trading_max_open_per_side", 2),
                 "stake_usdc":              getattr(bot_params, "trading_stake_usdc", 5.0),
+                "one_open_at_a_time":      bool(getattr(bot_params, "trading_one_open_at_a_time", True)),
+                "real_max_exposure_usdc":      max_exposure,
+                "real_daily_loss_limit_usdc":  daily_limit,
+                "real_max_consec_losses":      max_consec,
+                "sl_enabled":                  bool(getattr(bot_params, "trading_sl_enabled", True)),
+                "sl_trigger_drop":             getattr(bot_params, "trading_sl_trigger_drop", 0.50),
+                "sl_wait_min":                 getattr(bot_params, "trading_sl_wait_min", 3.0),
+                "sl_min_recover_factor":       getattr(bot_params, "trading_sl_min_recover_factor", 0.50),
+                "panic_trigger_drop":          getattr(bot_params, "trading_panic_trigger_drop", 0.80),
+                "panic_min_recover_factor":    getattr(bot_params, "trading_panic_min_recover_factor", 0.33),
+                "buy_probable":                bool(getattr(bot_params, "trading_buy_probable", True)),
+                "probable_min_price":          getattr(bot_params, "trading_probable_min_price", 0.55),
+                "probable_max_price":          getattr(bot_params, "trading_probable_max_price", 0.85),
+                "probable_profit_offset":      getattr(bot_params, "trading_probable_profit_offset", 0.08),
+                "real_drawdown_halt_pct":      getattr(bot_params, "trading_real_drawdown_halt_pct", 0.40),
+                "paper_required_days":         getattr(bot_params, "trading_paper_required_days", 7.0),
+                "paper_required_trades":       getattr(bot_params, "trading_paper_required_trades", 200),
+                "paper_required_wr":           getattr(bot_params, "trading_paper_required_wr", 0.75),
+                "paper_gate_override":         bool(getattr(bot_params, "trading_paper_gate_override", False)),
+                "max_price_age_sec":           getattr(bot_params, "trading_max_price_age_sec", 10.0),
+            },
+            "real_safety": {
+                "killed":          bool(getattr(bot_params, "trading_real_killed", False)),
+                "exposure_usdc":   exposure_now,
+                "exposure_cap":    max_exposure,
+                "pnl_today_usdc":  pnl_today,
+                "daily_loss_cap":  daily_limit,
+                "consec_losses":   consec,
+                "consec_cap":      max_consec,
+                "pending_redeem_usdc": pending_red["total_usdc"],
+                "pending_redeem_count": pending_red["count"],
+                "drawdown":        tp.real_equity_drawdown(),
+                "paper_gate":      tp.phantom_gate_status(
+                    required_days=float(getattr(bot_params, "trading_paper_required_days", 7.0)),
+                    required_trades=int(getattr(bot_params, "trading_paper_required_trades", 200)),
+                    required_wr=float(getattr(bot_params, "trading_paper_required_wr", 0.75)),
+                ),
             },
             "phantom": {
                 "stats": tp.stats_summary(is_real=False),
-                "open":  tp.all_open_positions(is_real=False),
+                "open":  await _safe_enrich(False),
                 "history": tp.get_all_positions_flat(is_real=False, limit=100),
             },
             "real": {
                 "stats": tp.stats_summary(is_real=True) if is_real_enabled else None,
-                "open":  tp.all_open_positions(is_real=True) if is_real_enabled else [],
+                "open":  (await _safe_enrich(True)) if is_real_enabled else [],
                 "history": tp.get_all_positions_flat(is_real=True, limit=100) if is_real_enabled else [],
             },
         }
@@ -2882,12 +3196,36 @@ async def set_trading_params(body: dict):
             "trading_mode_enabled":           bool,
             "trading_real_enabled":           bool,
             "trading_entry_threshold":        float,
+            "trading_min_entry_price":        float,
+            "trading_max_entry_price":        float,
+            "trading_trend_prefer_winning":   bool,
             "trading_profit_offset":          float,
             "trading_exit_deadline_min":      float,
             "trading_min_entry_minutes_left": float,
             "trading_max_entries_per_market": int,
             "trading_max_open_per_side":      int,
             "trading_stake_usdc":             float,
+            "trading_one_open_at_a_time":     bool,
+            "trading_real_max_exposure_usdc":     float,
+            "trading_real_daily_loss_limit_usdc": float,
+            "trading_real_max_consec_losses":     int,
+            "trading_real_killed":                bool,
+            "trading_sl_enabled":                 bool,
+            "trading_sl_trigger_drop":            float,
+            "trading_sl_wait_min":                float,
+            "trading_sl_min_recover_factor":      float,
+            "trading_panic_trigger_drop":         float,
+            "trading_panic_min_recover_factor":   float,
+            "trading_buy_probable":               bool,
+            "trading_probable_min_price":         float,
+            "trading_probable_max_price":         float,
+            "trading_probable_profit_offset":     float,
+            "trading_real_drawdown_halt_pct":     float,
+            "trading_paper_required_days":        float,
+            "trading_paper_required_trades":      int,
+            "trading_paper_required_wr":          float,
+            "trading_paper_gate_override":        bool,
+            "trading_max_price_age_sec":          float,
         }
         changed = {}
         for key, caster in mapping.items():
@@ -2907,6 +3245,113 @@ async def set_trading_params(body: dict):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/api/trading/force-resolve")
+async def force_resolve_trading(body: dict = None):
+    """
+    Fuerza la resolución de TODAS las posiciones OPEN cuyo mercado ya cerró.
+    Útil cuando quedaron fantasmas porque el CLOB no devuelve outcome claro.
+    """
+    try:
+        from trading_runner import resolve_stale_positions
+        scope = (body or {}).get("scope", "both")
+        out = {"phantom": 0, "real": 0}
+        if scope in ("both", "phantom"):
+            r = await resolve_stale_positions(is_real=False)
+            out["phantom"] = len(r)
+        if scope in ("both", "real"):
+            r = await resolve_stale_positions(is_real=True)
+            out["real"] = len(r)
+        return {"ok": True, "resolved": out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trading/reset-kill-switch")
+async def reset_trading_kill_switch():
+    """Desactiva el kill-switch de trading real. Reanuda apertura de posiciones."""
+    try:
+        bot_params.trading_real_killed = False
+        try:
+            bot_params.save()
+        except Exception:
+            pass
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/trading/logs")
+async def get_trading_logs(limit: int = 100):
+    """Retorna últimas N entradas de log que contengan [TRADING."""
+    try:
+        import bot as _bot
+        hist = _bot.get_log_history()
+        filtered = [e for e in hist if "[TRADING" in str(e.get("msg", ""))]
+        return {"ok": True, "count": len(filtered), "logs": filtered[-limit:]}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "logs": []}
+
+
+@app.get("/api/trading/diagnostics")
+async def get_trading_diagnostics():
+    """Por qué el bot no opera. Devuelve flags de runtime."""
+    try:
+        import bot as _bot
+        import trading_positions as tp
+        flags = {
+            "bot_running":           bool(getattr(_bot.state, "running", False)),
+            "trading_mode_enabled":  bool(getattr(bot_params, "trading_mode_enabled", False)),
+            "trading_real_enabled":  bool(getattr(bot_params, "trading_real_enabled", False)),
+            "updown_enabled":        bool(getattr(bot_params, "updown_enabled", False)),
+            "updown_5m_enabled":     bool(getattr(bot_params, "updown_5m_enabled", False)),
+            "updown_15m_enabled":    bool(getattr(bot_params, "updown_15m_enabled", False)),
+            "trading_real_killed":   bool(getattr(bot_params, "trading_real_killed", False)),
+            "clob_client_ready":     getattr(_bot, "_clob_client", None) is not None,
+            "phantom_open":          len(tp.all_open_positions(is_real=False)),
+            "real_open":             len(tp.all_open_positions(is_real=True)),
+            "balance_usdc":          round(float(getattr(_bot.state, "balance_usdc", 0) or 0), 2),
+        }
+        # Chequeos de problemas comunes
+        issues = []
+        if not flags["bot_running"]:
+            issues.append("Bot detenido — presiona 'Iniciar bot' en el dashboard")
+        if not flags["trading_mode_enabled"]:
+            issues.append("trading_mode_enabled=False — activa Trading Mode")
+        if not flags["updown_enabled"]:
+            issues.append("updown_enabled=False — activa UpDown")
+        if not flags["updown_5m_enabled"] and not flags["updown_15m_enabled"]:
+            issues.append("Ninguna ventana UpDown (5m/15m) habilitada")
+        if flags["trading_real_enabled"] and not flags["clob_client_ready"]:
+            issues.append("Real activo pero CLOB no inicializado (revisa POLY_PRIVATE_KEY)")
+        if flags["trading_real_enabled"] and flags["trading_real_killed"]:
+            issues.append("Kill-switch activo — resetea en UI para reanudar real")
+        stake = float(getattr(bot_params, "trading_stake_usdc", 5.0))
+        if flags["trading_real_enabled"] and flags["balance_usdc"] < stake:
+            issues.append(
+                f"Balance real ${flags['balance_usdc']:.2f} < stake ${stake:.2f} — real no podrá comprar"
+            )
+        return {"ok": True, "flags": flags, "issues": issues}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trading/reset-consec-losses")
+async def reset_trading_consec_losses():
+    """Resetea contador de pérdidas consecutivas marcando la posición más
+    reciente con streak_reset=True. También desactiva kill-switch."""
+    try:
+        import trading_positions as tp
+        n = tp.reset_real_streak()
+        bot_params.trading_real_killed = False
+        try:
+            bot_params.save()
+        except Exception:
+            pass
+        return {"ok": True, "marked": n, "consec_losses_after": tp.real_consecutive_losses()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/api/trading/reset-phantom")
 async def reset_trading_phantom(body: dict = None):
     """Reinicia el balance y posiciones phantom."""
@@ -2917,6 +3362,33 @@ async def reset_trading_phantom(body: dict = None):
             new_balance = float(body["balance"])
         tp.reset_phantom(new_balance=new_balance)
         return {"ok": True, "balance": new_balance}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trading/set-phantom-balance")
+async def set_phantom_balance(body: dict):
+    """Punto 6 — modifica el balance virtual phantom manualmente sin borrar posiciones."""
+    try:
+        import trading_positions as tp
+        if "balance" not in body:
+            return {"ok": False, "error": "falta 'balance' en body"}
+        new_bal = float(body["balance"])
+        if new_bal < 0:
+            return {"ok": False, "error": "balance debe ser >= 0"}
+        result = tp.set_phantom_balance(new_bal)
+        return {"ok": True, "balance": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trading/reset-exposure")
+async def reset_trading_exposure():
+    """Punto 7 — libera exposure REAL (marca OPEN como RELEASED, no toca on-chain)."""
+    try:
+        import trading_positions as tp
+        out = tp.reset_real_exposure()
+        return {"ok": True, **out, "exposure_after": tp.real_exposure_usdc()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
