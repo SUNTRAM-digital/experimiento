@@ -363,9 +363,14 @@ def params_from_config(bot_params) -> TradingParams:
         panic_trigger_drop       = float(getattr(bot_params, "trading_panic_trigger_drop", 0.80)),
         panic_min_recover_factor = float(getattr(bot_params, "trading_panic_min_recover_factor", 0.33)),
         buy_probable             = bool(getattr(bot_params, "trading_buy_probable", True)),
-        probable_min_price       = float(getattr(bot_params, "trading_probable_min_price", 0.55)),
+        probable_min_price       = float(getattr(bot_params, "trading_probable_min_price", 0.45)),
         probable_max_price       = float(getattr(bot_params, "trading_probable_max_price", 0.85)),
-        probable_profit_offset   = float(getattr(bot_params, "trading_probable_profit_offset", 0.08)),
+        probable_profit_offset   = float(getattr(bot_params, "trading_probable_profit_offset", 0.45)),
+        min_elapsed_for_entry    = float(getattr(bot_params, "trading_min_elapsed_for_entry", 8.0)),
+        stake_tier_60            = float(getattr(bot_params, "trading_stake_tier_60", 5.0)),
+        stake_tier_70            = float(getattr(bot_params, "trading_stake_tier_70", 10.0)),
+        stake_tier_80            = float(getattr(bot_params, "trading_stake_tier_80", 15.0)),
+        stake_tier_90            = float(getattr(bot_params, "trading_stake_tier_90", 20.0)),
     )
 
 

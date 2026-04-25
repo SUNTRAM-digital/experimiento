@@ -149,6 +149,14 @@ class BotParams:
         self.trading_probable_min_price: float = 0.45
         self.trading_probable_max_price: float = 0.85
         self.trading_probable_profit_offset: float = 0.45
+        # --- Late-entry + stakes dinámicos (v9.6.0) ---
+        # Entrar solo cuando elapsed >= 8min (lead signal activo, mercado ya mostró dirección)
+        # Stakes escalan con confianza: base $3 → $5 → $10 → $15 → $20
+        self.trading_min_elapsed_for_entry: float = 8.0
+        self.trading_stake_tier_60: float = 5.0
+        self.trading_stake_tier_70: float = 10.0
+        self.trading_stake_tier_80: float = 15.0
+        self.trading_stake_tier_90: float = 20.0
         # --- Stop-loss escalonado (punto 12, enfoque A) ---
         self.trading_sl_enabled: bool = True
         self.trading_sl_trigger_drop: float = 0.50           # caída 50% vs entry arma SL
@@ -270,6 +278,11 @@ class BotParams:
             "trading_probable_min_price":          self.trading_probable_min_price,
             "trading_probable_max_price":          self.trading_probable_max_price,
             "trading_probable_profit_offset":      self.trading_probable_profit_offset,
+            "trading_min_elapsed_for_entry":       self.trading_min_elapsed_for_entry,
+            "trading_stake_tier_60":               self.trading_stake_tier_60,
+            "trading_stake_tier_70":               self.trading_stake_tier_70,
+            "trading_stake_tier_80":               self.trading_stake_tier_80,
+            "trading_stake_tier_90":               self.trading_stake_tier_90,
             "trading_real_drawdown_halt_pct":      self.trading_real_drawdown_halt_pct,
             "trading_paper_required_days":         self.trading_paper_required_days,
             "trading_paper_required_trades":       self.trading_paper_required_trades,

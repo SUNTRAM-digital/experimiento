@@ -1744,20 +1744,61 @@ async def _scan_updown(interval_minutes: int):
         funding_data=funding_data,
     )
 
-    # ── TRADING MODE (v9.5.8) — signal-guided hold-to-resolution ────────
-    # Ejecutar DESPUÉS de opp para inyectar dirección de señal al market dict.
-    # La señal del predictor (77.4% WR) guía qué lado comprar en modo probable.
+    # ── TRADING MODE (v9.6.0) — lead-based + CLOB flow ────────────────────
+    # Señal primaria: BTC lead vs price_to_beat a partir de T=8min (matemática).
+    # Señal secundaria: volumen CLOB UP vs DOWN (dónde apuesta el mercado).
+    # Fallback: señal TA si elapsed < 8min y hay confianza suficiente.
     if _trading_mode_active:
         try:
             from trading_runner import run_cycle as _trading_cycle
+            from strategy_updown import calc_lead_confidence as _calc_lead
+            from markets import get_clob_flow as _get_clob_flow
+
+            _elapsed = float(market.get("elapsed_minutes", 0))
+            _mins_left = float(market.get("minutes_to_close", 0))
+
+            # Lead signal (principal cuando elapsed >= 8min)
+            _lead = _calc_lead(
+                btc_now=btc_price_now or 0,
+                price_to_beat=btc_ref_price or 0,
+                elapsed_minutes=_elapsed,
+                minutes_remaining=_mins_left,
+            )
+
+            # CLOB flow — en paralelo con nada más que esperar (es rápido)
+            _flow = await _get_clob_flow(
+                market.get("up_token", ""),
+                market.get("down_token", ""),
+                window_seconds=300,
+            )
+
             _market_for_trading = dict(market)
-            _sig_preview = (opp.get("signal_breakdown") if opp else None) or {}
-            _td_dir  = _sig_preview.get("direction", "NEUTRAL")
-            _td_conf = float(_sig_preview.get("confidence", 0))
+            _market_for_trading["lead_direction"]  = _lead["direction"]
+            _market_for_trading["lead_confidence"] = _lead["confidence"]
+            _market_for_trading["lead_pct"]        = _lead.get("lead_pct", 0)
+            _market_for_trading["clob_flow"]       = _flow
+
+            # Determinar señal final: lead tiene prioridad sobre TA
             _td_min_conf = float(getattr(bot_params, "phantom_min_conf_pct", 35.0))
-            if _td_dir in ("UP", "DOWN") and _td_conf >= _td_min_conf:
-                _market_for_trading["signal_direction"]   = _td_dir
-                _market_for_trading["signal_confidence"]  = _td_conf
+            if _lead["direction"] in ("UP", "DOWN") and _lead["confidence"] >= 55.0:
+                _market_for_trading["signal_direction"]  = _lead["direction"]
+                _market_for_trading["signal_confidence"] = _lead["confidence"]
+            else:
+                # Fallback a señal TA
+                _sig_preview = (opp.get("signal_breakdown") if opp else None) or {}
+                _td_dir  = _sig_preview.get("direction", "NEUTRAL")
+                _td_conf = float(_sig_preview.get("confidence", 0))
+                if _td_dir in ("UP", "DOWN") and _td_conf >= _td_min_conf:
+                    _market_for_trading["signal_direction"]  = _td_dir
+                    _market_for_trading["signal_confidence"] = _td_conf
+
+            _log("DEBUG",
+                 f"UpDown {interval_minutes}m | Lead: {_lead['direction']} "
+                 f"{_lead['confidence']:.0f}% (lead={_lead.get('lead_pct',0):+.3f}% "
+                 f"elapsed={_elapsed:.1f}m left={_mins_left:.1f}m) | "
+                 f"CLOB: {_flow['direction']} str={_flow['strength']:.2f} "
+                 f"up={_flow['up_vol']:.0f} dn={_flow['down_vol']:.0f}")
+
             _tres = await _trading_cycle(_market_for_trading, bot_params)
             _ph_op = _tres.get("phantom", {}).get("opened") if isinstance(_tres, dict) else None
             _ph_cl = len(_tres.get("phantom", {}).get("closed", []) or []) if isinstance(_tres, dict) else 0

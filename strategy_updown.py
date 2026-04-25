@@ -19,6 +19,7 @@ FLUJO DE DECISIÓN:
   4. PESOS DINÁMICOS según régimen
   5. GATES Y DECISIÓN FINAL
 """
+import math as _math
 from typing import Optional
 from config import bot_params
 
@@ -226,6 +227,54 @@ def _multi_tf_alignment(ta_map: dict) -> tuple[float, int]:
             combined *= 1.25
     n_aligned = sum(1 for x in non_neutral if x == (non_neutral[0] if non_neutral else 0))
     return max(-1.0, min(1.0, combined)), n_aligned
+
+
+def calc_lead_confidence(
+    btc_now: float,
+    price_to_beat: float,
+    elapsed_minutes: float,
+    minutes_remaining: float,
+    btc_vol_per_min: float = 0.10,
+) -> dict:
+    """
+    Confianza de que el lead actual de BTC sobre price_to_beat aguante hasta resolución.
+
+    Modelo: random walk Browniano.
+      lead_pct  = (btc_now - price_to_beat) / price_to_beat * 100
+      sigma_req = lead_pct / (vol_por_min * sqrt(minutos_restantes))
+      conf      = Φ(sigma_req)  — prob de que BTC NO revierta suficiente
+
+    Solo activo con elapsed >= 8min (antes del mercado es 50/50 puro).
+    btc_vol_per_min: % típico de movimiento BTC por minuto (~0.10% en condiciones normales).
+    """
+    if (not price_to_beat or price_to_beat <= 0
+            or elapsed_minutes < 8.0
+            or minutes_remaining <= 0.5
+            or not btc_now):
+        return {"direction": "NEUTRAL", "confidence": 0.0, "lead_pct": 0.0, "sigma": 0.0}
+
+    lead_pct = (btc_now - price_to_beat) / price_to_beat * 100.0
+    abs_lead = abs(lead_pct)
+
+    if abs_lead < 0.05:
+        return {"direction": "NEUTRAL", "confidence": 50.0, "lead_pct": round(lead_pct, 4), "sigma": 0.0}
+
+    expected_move = btc_vol_per_min * (minutes_remaining ** 0.5)
+    if expected_move <= 0:
+        return {"direction": "NEUTRAL", "confidence": 50.0, "lead_pct": round(lead_pct, 4), "sigma": 0.0}
+
+    sigma_req = abs_lead / expected_move
+    conf      = 0.5 * (1.0 + _math.erf(sigma_req / _math.sqrt(2)))
+    conf      = min(0.99, conf)
+    conf_pct  = round(conf * 100.0, 1)
+
+    direction = "UP" if lead_pct > 0 else "DOWN"
+    return {
+        "direction":  direction if conf_pct >= 55.0 else "NEUTRAL",
+        "confidence": conf_pct,
+        "lead_pct":   round(lead_pct, 4),
+        "sigma":      round(sigma_req, 2),
+    }
 
 
 def _window_momentum(btc_now: float, btc_start: Optional[float]) -> float:

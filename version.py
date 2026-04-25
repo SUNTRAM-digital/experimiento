@@ -16,15 +16,16 @@ Historial de fases:
   Fase 7  (v7.0.0) — ML Models: Warming/Cooling Model, Ensemble Calibrator, pesos adaptativos NOAA/OpenMeteo
   Fase 8  (v8.0.0) — UpDown Markets + Performance Monitor: BTC 5m/15m up/down, learner adaptativo, resource dashboard
   Fase 9  (v9.0.0) — Phantom Bets + Claude Advisor Total: apuestas fantasma para aprendizaje, Claude con acceso completo de lectura + tool update_params, análisis proactivo, win rate fixes
+  v9.6.0 — Late-entry strategy: BTC lead vs price_to_beat (T≥8min, matemática Browniana), CLOB volume flow, stakes dinámicos $3-$20 por tier de confianza
 """
 
 MAJOR = 9
-MINOR = 5
-PATCH = 8
+MINOR = 6
+PATCH = 0
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Trading: signal-guided hold-to-resolution — predictor 77.4% WR guía side"
+PHASE_NAME = "Late-entry T≥8min: lead BTC vs price-to-beat + CLOB flow + stakes dinámicos"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

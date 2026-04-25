@@ -20,17 +20,15 @@ def _read_scan_updown_source() -> str:
 
 
 def test_trading_mode_branch_does_not_return_early():
-    """En la rama trading_mode no debe haber `return` antes del bloque phantom."""
+    """En la rama trading_mode no debe haber `return` antes del bloque phantom.
+    v9.6.0: bloque trading movido a después de opp; marker ahora es Guardar oportunidad."""
     src = _read_scan_updown_source()
-    # Localizar el bloque "TRADING MODE"
     idx = src.find("TRADING MODE")
     assert idx != -1, "no encontré la sección TRADING MODE"
-    # Localizar el siguiente comentario que ya está fuera del bloque
-    next_section = src.find("# No operar dos veces", idx)
-    assert next_section != -1, "no encontré marcador de fin de bloque"
+    # v9.6.0: el bloque trading está DESPUÉS de opp; el siguiente marcador es el snapshot
+    next_section = src.find("# Guardar oportunidad evaluada", idx)
+    assert next_section != -1, "no encontré marcador de fin de bloque (Guardar oportunidad)"
     block = src[idx:next_section]
-    # NO debe haber un `return` (sin condición) inmediatamente — fix v9.5.2
-    # Permitimos `return` dentro del except si lo hubiera (no lo hay).
     lines = [ln.strip() for ln in block.splitlines()]
     standalone_return = [ln for ln in lines if ln == "return"]
     assert standalone_return == [], (

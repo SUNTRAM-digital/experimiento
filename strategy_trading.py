@@ -40,6 +40,12 @@ class TradingParams:
     probable_min_price: float     = 0.55   # piso del favorito (evita 50/50 sin edge)
     probable_max_price: float     = 0.85   # techo del favorito (evita pagar casi fill)
     probable_profit_offset: float = 0.08   # offset más pequeño en modo probable (quick flip)
+    # v9.6.0 — Late entry + stakes dinámicos
+    min_elapsed_for_entry: float  = 8.0    # esperar N min de ventana antes de entrar (lead signal)
+    stake_tier_60: float          = 5.0    # stake conf 60-69%
+    stake_tier_70: float          = 10.0   # stake conf 70-79%
+    stake_tier_80: float          = 15.0   # stake conf 80-89%
+    stake_tier_90: float          = 20.0   # stake conf ≥90%
     # Punto 12 — stop-loss escalonado (enfoque A)
     sl_enabled: bool              = True   # activar stop-loss escalonado
     sl_trigger_drop: float        = 0.50   # caída vs entry que arma SL (0.50 = precio <= entry*0.50)
@@ -80,11 +86,18 @@ def evaluate_entry_verbose(
     reason_str explica por qué se aceptó/rechazó (para logs).
     """
     minutes_to_close = market.get("minutes_to_close", 0)
+    elapsed_minutes  = float(market.get("elapsed_minutes", 0))
     up_price   = float(market.get("up_price",   0.5))
     down_price = float(market.get("down_price", 0.5))
 
     if minutes_to_close < params.min_entry_minutes_left:
         return None, f"min_entry_min: quedan {minutes_to_close:.1f}m < {params.min_entry_minutes_left:.1f}m requeridos"
+
+    # Gate de elapsed: solo entrar cuando el mercado ya mostró dirección
+    lead_dir = market.get("lead_direction")   # presente si lead signal fue computado
+    min_elapsed = getattr(params, "min_elapsed_for_entry", 8.0)
+    if lead_dir is not None and elapsed_minutes < min_elapsed:
+        return None, f"elapsed {elapsed_minutes:.1f}m < {min_elapsed:.0f}m requeridos (esperar señal lead)"
 
     open_now = [p for p in open_positions if p.get("status") == "OPEN"]
 
@@ -172,13 +185,36 @@ def evaluate_entry_verbose(
     if target >= 0.97:
         return None, f"{side}@{price:.3f} target {target:.3f} >= 0.97 (sin buyer)"
 
+    # ── Ajuste de confianza por CLOB flow ────────────────────────────────
+    base_conf = float(market.get("signal_confidence", 0))
+    clob = market.get("clob_flow") or {}
+    if clob.get("available"):
+        clob_dir = clob.get("direction", "NEUTRAL")
+        clob_str = float(clob.get("strength", 0))
+        if clob_dir == side:          # CLOB confirma nuestra dirección
+            base_conf = min(99, base_conf + clob_str * 10)
+        elif clob_dir not in ("NEUTRAL", side):  # CLOB contradice
+            base_conf = max(0, base_conf - clob_str * 15)
+
+    # ── Stake dinámico según confianza final ──────────────────────────────
+    if base_conf >= 90:
+        stake = getattr(params, "stake_tier_90", 20.0)
+    elif base_conf >= 80:
+        stake = getattr(params, "stake_tier_80", 15.0)
+    elif base_conf >= 70:
+        stake = getattr(params, "stake_tier_70", 10.0)
+    elif base_conf >= 60:
+        stake = getattr(params, "stake_tier_60", 5.0)
+    else:
+        stake = params.stake_usdc  # base ($3)
+
     sig = EntrySignal(
         side=side,
         token_id=token_id,
         entry_price=round(price, 3),
         target_price=target,
-        stake_usdc=params.stake_usdc,
-        reason=f"{mode_tag}: {side}@{price:.3f} → target {target:.3f} (+{offset:.2f})",
+        stake_usdc=stake,
+        reason=f"{mode_tag}: {side}@{price:.3f} → target {target:.3f} (+{offset:.2f}) conf={base_conf:.0f}% stake=${stake:.0f}",
     )
     return sig, f"OK {side}@{price:.3f} target={target:.3f}"
 

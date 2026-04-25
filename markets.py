@@ -396,6 +396,81 @@ async def get_full_order_book(token_id: str) -> dict:
         return default
 
 
+async def get_clob_trades(token_id: str, limit: int = 100) -> list:
+    """Fills recientes del CLOB para un token."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{CLOB_BASE}/trades",
+                params={"token_id": token_id, "limit": limit},
+                headers=HEADERS,
+                timeout=8,
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            return data if isinstance(data, list) else (data.get("data") or [])
+    except Exception:
+        return []
+
+
+async def get_clob_flow(up_token_id: str, down_token_id: str, window_seconds: int = 300) -> dict:
+    """
+    Calcula flujo de volumen CLOB últimos N segundos.
+    Retorna dirección donde va el dinero real de participantes.
+    """
+    import time as _t
+    cutoff = _t.time() - window_seconds
+
+    _neutral = {"available": False, "up_vol": 0.0, "down_vol": 0.0,
+                "direction": "NEUTRAL", "strength": 0.0, "flow_ratio": 0.5}
+    if not up_token_id or not down_token_id:
+        return _neutral
+
+    up_raw, down_raw = await asyncio.gather(
+        get_clob_trades(up_token_id),
+        get_clob_trades(down_token_id),
+        return_exceptions=True,
+    )
+    if isinstance(up_raw, Exception):   up_raw = []
+    if isinstance(down_raw, Exception): down_raw = []
+
+    def _sum_vol(trades):
+        v = 0.0
+        for t in trades:
+            try:
+                ts = float(t.get("match_time") or t.get("timestamp") or t.get("created_at") or 0)
+                if ts >= cutoff:
+                    v += float(t.get("size") or t.get("trade_size") or t.get("matched_amount") or 0)
+            except Exception:
+                pass
+        return v
+
+    up_vol   = _sum_vol(up_raw)
+    down_vol = _sum_vol(down_raw)
+    total    = up_vol + down_vol
+
+    if total < 5.0:
+        return _neutral
+
+    ratio = up_vol / total
+    if ratio > 0.60:
+        direction, strength = "UP",   round((ratio - 0.50) / 0.50, 3)
+    elif ratio < 0.40:
+        direction, strength = "DOWN", round((0.50 - ratio) / 0.50, 3)
+    else:
+        direction, strength = "NEUTRAL", 0.0
+
+    return {
+        "available":  True,
+        "up_vol":     round(up_vol, 1),
+        "down_vol":   round(down_vol, 1),
+        "flow_ratio": round(ratio, 3),
+        "direction":  direction,
+        "strength":   strength,
+    }
+
+
 async def get_live_price(token_id: str) -> Optional[float]:
     """Obtiene el precio actual de un token desde el CLOB."""
     try:
