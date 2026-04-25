@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 5
-PATCH = 6
+PATCH = 7
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom: 3 filtros de calidad (min_conf≥35%, TA+mom alineados, elapsed≥8m)"
+PHASE_NAME = "Phantom: bugfix gates no bloquean retry + 3 filtros de calidad"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

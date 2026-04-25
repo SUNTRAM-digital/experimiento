@@ -136,3 +136,31 @@ def test_scan_updown_has_quality_gate_variables():
     assert "phantom_min_conf_pct"    in src
     assert "phantom_ta_mom_gate"     in src
     assert "phantom_min_elapsed_15m" in src
+
+
+def test_quality_gates_do_not_add_to_slug_set():
+    """Bug fix v9.5.6b: los gates de calidad NO deben añadir el slug al set.
+    Si lo añaden, el segundo scan del mismo mercado ve 'ya registrado' y
+    nunca se registra el phantom aunque las condiciones mejoren.
+    Solo 'retry next scan' en logs — el set se toca únicamente al registrar."""
+    import bot
+    src = inspect.getsource(bot._scan_updown)
+    # Encontrar los bloques de cada gate y verificar que no llamen a .add(slug)
+    # justo antes del log de "retry next scan"
+    for gate_label in ["low-conf", "TA/mom", "too-early"]:
+        # Buscar "retry next scan" near the gate label — no debe haber .add(slug) antes
+        idx = src.find(gate_label)
+        assert idx != -1, f"gate '{gate_label}' no encontrado en _scan_updown"
+        # El bloque del gate va desde idx hacia atrás hasta el if/elif
+        # Verificar que "retry next scan" está en ese bloque
+        block_end = src.find("retry next scan", idx)
+        assert block_end != -1, f"'{gate_label}' no tiene 'retry next scan' en su bloque"
+        # Entre el inicio del elif y "retry next scan" no debe haber _updown_phantom_slugs.add
+        elif_start = src.rfind("elif _ph_", 0, idx)
+        if elif_start == -1:
+            elif_start = src.rfind("if _ph_", 0, idx)
+        block = src[elif_start:block_end]
+        assert "_updown_phantom_slugs.add" not in block, (
+            f"Gate '{gate_label}' añade slug al set → impide retry. "
+            f"Debe usar solo log DEBUG sin .add()"
+        )

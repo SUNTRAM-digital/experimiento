@@ -1884,20 +1884,20 @@ async def _scan_updown(interval_minutes: int):
             _ph_too_early  = (not is_5m) and (_elapsed_now < _ph_min_el_15m)
 
             if _ph_low_conf:
-                _updown_phantom_slugs.add(slug)
-                _log("INFO",
+                # NO añadir al set: la señal puede cambiar en el siguiente scan
+                _log("DEBUG",
                      f"UpDown {interval_minutes}m | [PHANTOM] ⊘ low-conf — "
-                     f"{phantom_conf:.0f}% < mín {_ph_min_conf:.0f}% (skip)")
+                     f"{phantom_conf:.0f}% < mín {_ph_min_conf:.0f}% (retry next scan)")
             elif _ph_mom_conflict:
-                _updown_phantom_slugs.add(slug)
-                _log("INFO",
+                # NO añadir al set: TA/momentum puede alinearse en siguiente scan
+                _log("DEBUG",
                      f"UpDown {interval_minutes}m | [PHANTOM] ⊘ TA/mom conflicto — "
-                     f"ta={_ta_raw_v:+.3f} mom={_mom_raw_v:+.3f} (skip)")
+                     f"ta={_ta_raw_v:+.3f} mom={_mom_raw_v:+.3f} (retry next scan)")
             elif _ph_too_early:
-                _updown_phantom_slugs.add(slug)
-                _log("INFO",
+                # NO añadir al set: el elapsed sube con el tiempo — reintentar cuando madure
+                _log("DEBUG",
                      f"UpDown {interval_minutes}m | [PHANTOM] ⊘ too-early — "
-                     f"elapsed {_elapsed_now:.1f}m < {_ph_min_el_15m:.0f}m (skip)")
+                     f"elapsed {_elapsed_now:.1f}m < {_ph_min_el_15m:.0f}m (retry next scan)")
             else:  # señal válida — registrar phantom
                 _ph_reason = skip_reason or ("traded_real" if opp else "no_signal")
                 end_ts = int(market["window_start_ts"]) + interval_minutes * 60
