@@ -1728,6 +1728,19 @@
             <!-- inyectado por JS -->
           </div>
 
+          <!-- Set saldo virtual manual (reset experiment) -->
+          <div style="background:var(--bg3);border:1px dashed #7c3aed;border-radius:6px;padding:8px 12px;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div style="font-size:.68rem;color:#a78bfa;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Cambiar saldo virtual</div>
+            <input id="vps-set-balance-input" type="number" min="0" step="0.5" value="50"
+              style="width:90px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.78rem"
+              title="Nuevo saldo virtual VPS y Fixed. Borra todos los trades y stats.">
+            <button onclick="setVpsBalance()"
+              style="padding:5px 12px;background:#7c3aed;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.74rem;font-weight:700">
+              Reset con saldo
+            </button>
+            <span style="font-size:.65rem;color:var(--muted)">⚠ Borra trades, P&amp;L, daily summaries — empieza experimento de cero</span>
+          </div>
+
           <!-- Desglose por mercado -->
           <div id="vps-market-breakdown" style="display:flex;gap:8px;margin-bottom:10px;font-size:.72rem">
             <!-- inyectado por JS -->
@@ -7185,6 +7198,26 @@ async function loadVpsExperiment() {
 // Auto-refresh VPS every 30s (defined here because loadVpsExperiment lives in this script block)
 loadVpsExperiment();
 setInterval(loadVpsExperiment, 30000);
+
+async function setVpsBalance() {
+  const input = document.getElementById('vps-set-balance-input');
+  const bal = parseFloat(input.value);
+  if (isNaN(bal) || bal < 0) { alert('Saldo inválido'); return; }
+  if (!confirm(`Reset experimento con saldo $${bal.toFixed(2)}?\n\nSe borrarán TODOS los trades, P&L, daily summaries y stats.\nNo afecta dinero real.`)) return;
+  try {
+    const r = await fetch('/api/vps-experiment/set-balance', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({balance: bal})
+    }).then(r => r.json());
+    if (r.ok) {
+      loadVpsExperiment();
+      if (typeof loadPhantomTrades === 'function') loadPhantomTrades(0);
+    } else {
+      alert('Error: ' + (r.error || 'desconocido'));
+    }
+  } catch(e) { alert('Error de red: ' + e); }
+}
 
 async function requestVpsDailySummary() {
   try {

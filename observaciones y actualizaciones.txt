@@ -2,3 +2,4 @@
 
 1. (hecho) Veo que en la seccion phantom ya no hay operaciones de ese tipo de trade, quiero que se vuelvan a habilitar
 2. (hecho) en phantom quiero un boton para activar y desactivar los mercados de 15min, de 5min y de 1 dia
+3. (hecho) en la seccion phantom en experimento vps-confianza poder cambiar el saldo virtual manualmente y que al hacerlo se reinicien todas las stats (PnL net, Fixed net, ventaja vps, expectancy, etc.)

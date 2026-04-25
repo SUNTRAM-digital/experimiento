@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 5
-PATCH = 2
+PATCH = 3
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom legacy registration restaurado en trading_mode (no más short-circuit)"
+PHASE_NAME = "VPS experiment: set saldo virtual manual + reset stats"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

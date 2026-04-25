@@ -128,6 +128,27 @@ def _save(data: dict) -> None:
         logger.warning(f"[VPS] Error guardando {DATA_FILE}: {e}")
 
 
+def reset_with_balance(new_balance: float) -> dict:
+    """Reset total: trades=[], daily_summaries=[], saldos virtuales = new_balance,
+    started=ahora. Se conserva la estructura de config (tiers, etc.).
+    Devuelve el dict resultante."""
+    if new_balance is None or new_balance < 0:
+        raise ValueError("new_balance debe ser >= 0")
+    bal = round(float(new_balance), 4)
+    if os.path.exists(DATA_FILE):
+        try:
+            os.remove(DATA_FILE)
+        except Exception as e:
+            logger.warning(f"[VPS] No se pudo borrar {DATA_FILE}: {e}")
+    data = _load()  # crea estructura fresca con VIRTUAL_BALANCE_INITIAL
+    data["meta"]["virtual_balance_vps"]   = bal
+    data["meta"]["virtual_balance_fixed"] = bal
+    data["meta"]["virtual_balance_initial_custom"] = bal
+    data["config"]["virtual_balance_initial"] = bal
+    _save(data)
+    return data
+
+
 # ── API pública ───────────────────────────────────────────────────────────────
 
 def record_phantom_vps(
@@ -375,7 +396,11 @@ def get_status() -> dict:
         "pending":       len(pending),
         "virtual_balance_vps":   round(meta.get("virtual_balance_vps",   VIRTUAL_BALANCE_INITIAL), 2),
         "virtual_balance_fixed": round(meta.get("virtual_balance_fixed", VIRTUAL_BALANCE_INITIAL), 2),
-        "virtual_balance_initial": VIRTUAL_BALANCE_INITIAL,
+        "virtual_balance_initial": round(
+            meta.get("virtual_balance_initial_custom",
+                     data.get("config", {}).get("virtual_balance_initial", VIRTUAL_BALANCE_INITIAL)),
+            2,
+        ),
         "vps":           stats["vps"],
         "fixed":         stats["fixed"],
         "comparison":    stats["comparison"],

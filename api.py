@@ -3118,6 +3118,22 @@ async def reset_vps_experiment():
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/api/vps-experiment/set-balance")
+async def set_vps_balance(body: dict):
+    """Reset experimento VPS con saldo virtual custom. Borra trades, daily_summaries
+    y reinicia balances + stats (todo arranca de cero con el balance pedido).
+    body: {balance: float}"""
+    try:
+        bal = float(body.get("balance", 0))
+        if bal < 0:
+            return {"ok": False, "error": "balance debe ser >= 0"}
+        from vps_experiment import reset_with_balance
+        reset_with_balance(bal)
+        return {"ok": True, "msg": f"Experimento reiniciado con saldo ${bal:.2f}", "balance": bal}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── Trading Mode (v9.4) ────────────────────────────────────────────────────
 
 async def _safe_enrich(is_real: bool):
