@@ -1850,131 +1850,170 @@ async def _scan_updown(interval_minutes: int):
                 f"UpDown {interval_minutes}m | [PHANTOM] ⊘ deadzone — conf {phantom_conf:.0f}% "
                 f"en [{_dz_min:.0f}-{_dz_max:.0f}] (skip)",
             )
-        elif phantom_dir != "NEUTRAL":
-            _ph_reason = skip_reason or ("traded_real" if opp else "no_signal")
-            end_ts = int(market["window_start_ts"]) + interval_minutes * 60
-            _updown_phantom_pending[slug] = {
-                "interval":        interval_minutes,
-                "side":            phantom_dir,
-                "btc_start":       btc_ref_price or 0,
-                "end_ts":          end_ts,
-                "slug":            slug,
-                "skip_reason":     _ph_reason,
-                "confidence":      phantom_conf,
-                "combined_signal": _sig["combined"],
-                "ta_signal":       _sig["ta_raw"],
-                "ta_rsi":          _sig.get("rsi"),
-                "window_momentum": _sig["momentum"],
-                "elapsed_minutes": market.get("elapsed_minutes", 0),
-                # Token IDs de Polymarket — usados para leer el resultado real del CLOB
-                "up_token":          market.get("up_token"),
-                "down_token":        market.get("down_token"),
-                # Precio referencia Chainlink al inicio de la ventana
-                "btc_price_to_beat": market.get("btc_price_to_beat"),
-            }
-            _updown_phantom_slugs.add(slug)
-            _log(
-                "INFO",
-                f"UpDown {interval_minutes}m | [PHANTOM] ✦ {phantom_dir} registrado — "
-                f"confianza {phantom_conf:.0f}% | combined={_sig['combined']:+.3f} | "
-                f"motivo_skip={_ph_reason}",
-            )
-            # ── Phantom REAL: ejecutar trade con dinero real cuando está habilitado ──
-            _ph_used_real = False
-            # Disparar phantom real cuando el bot real NO va a operar en este mercado:
-            #   - sin señal suficiente (opp is None), O
-            #   - hay señal pero el bot real está stopped (pérdidas consecutivas)
-            # En ambos casos no hay trade real → phantom real puede tomar la posición.
-            # Si el bot real SÍ va a ejecutar (opp and not stopped) → no doblar exposición.
-            _real_will_trade = bool(opp and not stopped)
-            if bot_params.phantom_real_enabled and not _real_will_trade:
-                # Solo ejecutar phantom real si el bot real no va a operar
-                _ph_bucket_attr = (
-                    "phantom_bucket_5m_usdc" if interval_minutes <= 5 else "phantom_bucket_15m_usdc"
-                )
-                _ph_avail = getattr(bot_params, _ph_bucket_attr, 0.0)
-                _ph_size  = min(bot_params.updown_max_usdc, _ph_avail)
-                if _ph_size >= 1.0:
-                    _ph_entry_price = (
-                        market.get("up_price",  0.50) if phantom_dir == "UP"
-                        else market.get("down_price", 0.50)
-                    )
-                    _ph_token = (
-                        market.get("up_token")  if phantom_dir == "UP"
-                        else market.get("down_token")
-                    )
-                    if _ph_token and _ph_entry_price > 0:
-                        _ph_opp = {
-                            "token_id":       _ph_token,
-                            "entry_price":    _ph_entry_price,
-                            "size_usdc":      _ph_size,
-                            "shares":         round(_ph_size / _ph_entry_price, 2),
-                            "side":           phantom_dir,
-                            "asset":          "BTC_UPDOWN",
-                            "interval_minutes": interval_minutes,
-                            "confidence":     phantom_conf,
-                            "market_title":   market.get("title", ""),
-                            "slug":           slug,
-                            "ev_pct":         0,
-                            "poly_url":       "",
-                            "window_pct":     0,
-                        }
-                        try:
-                            _ph_success = await asyncio.get_event_loop().run_in_executor(
-                                None, _execute_trade, _ph_opp
-                            )
-                            if _ph_success:
-                                _deduct_phantom_bucket(_ph_bucket_attr, _ph_size)
-                                _ph_used_real = True
-                                _log(
-                                    "INFO",
-                                    f"UpDown {interval_minutes}m | [PHANTOM-REAL] ✦ {phantom_dir} "
-                                    f"${_ph_size:.2f} @ {_ph_entry_price:.3f} ejecutado",
-                                )
-                                # Guardar referencia al bucket para devolver stake en resolución
-                                _updown_phantom_pending[slug]["phantom_bucket_attr"] = _ph_bucket_attr
-                                _updown_phantom_pending[slug]["phantom_real_size"]   = _ph_size
-                        except Exception as _ph_exec_err:
-                            _log("WARN", f"[PHANTOM-REAL] Error ejecutando trade: {_ph_exec_err}")
-
-            # ── Experimento VPS-Confianza ─────────────────────────────────────
-            try:
-                from vps_experiment import record_phantom_vps as _vps_rec
-                _vps_rec(
-                    slug=slug,
-                    interval=interval_minutes,
-                    side=phantom_dir,
-                    confidence_pct=phantom_conf,
-                    btc_start=btc_ref_price or 0,
-                    end_ts=end_ts,
-                    ta_scores={
-                        "combined":  _sig.get("combined", 0),
-                        "ta":        _sig.get("ta_raw", 0),
-                        "rsi":       _sig.get("rsi"),
-                        "macd":      _sig.get("macd_sig", 0),
-                        "ema":       _sig.get("ema_sig", 0),
-                        "momentum":  _sig.get("momentum", 0),
-                        "ofi":       _sig.get("ofi", 0),
-                        "market":    _sig.get("market_sig", 0),
-                        "macro":     _sig.get("macro", 0),
-                    },
-                    entry_price=opp["entry_price"] if opp else 0.50,
-                    used_real_money=_ph_used_real,
-                    up_token=market.get("up_token"),
-                    down_token=market.get("down_token"),
-                    btc_price_to_beat=market.get("btc_price_to_beat"),
-                )
-            except Exception as _vps_err:
-                _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
-        else:
+        elif phantom_dir == "NEUTRAL":
             # Señal neutral — phantom no se registra porque no hay dirección clara
-            _updown_phantom_slugs.add(slug)  # evitar spam en ciclos siguientes del mismo slug
+            _updown_phantom_slugs.add(slug)
             _log(
                 "INFO",
                 f"UpDown {interval_minutes}m | [PHANTOM] ✗ NEUTRAL — señal sin dirección clara "
                 f"(combined={_sig['combined']:+.3f} | TA:{_sig['ta_raw']:+.3f} "
                 f"RSI:{_sig.get('rsi','?')} Momentum:{_sig['momentum']:+.3f})",
             )
+        else:
+            # ── Filtros de calidad phantom (v9.5.6) ──────────────────────────
+            # Basados en 221 trades reales: conf ≥35% → WR 83.5%, TA+mom agree → 81.3%,
+            # elapsed ≥8min → 86.1%. Sin estos filtros el phantom apuesta en ruido puro.
+
+            # Gate 1: confianza mínima
+            _ph_min_conf   = float(getattr(bot_params, "phantom_min_conf_pct", 35.0))
+            _ph_low_conf   = float(phantom_conf) < _ph_min_conf
+
+            # Gate 2: alineación TA + momentum (mismo signo → acuerdo)
+            _ph_ta_mom_on  = bool(getattr(bot_params, "phantom_ta_mom_gate", True))
+            _ta_raw_v      = float(_sig.get("ta_raw",   0.0) or 0.0)
+            _mom_raw_v     = float(_sig.get("momentum", 0.0) or 0.0)
+            _ta_mom_agree  = (
+                (_ta_raw_v > 0.0 and _mom_raw_v > 0.0) or
+                (_ta_raw_v < 0.0 and _mom_raw_v < 0.0)
+            )
+            _ph_mom_conflict = _ph_ta_mom_on and not _ta_mom_agree
+
+            # Gate 3: elapsed mínimo para 15m (entradas tempranas = 33% WR)
+            _ph_min_el_15m = float(getattr(bot_params, "phantom_min_elapsed_15m", 8.0))
+            _elapsed_now   = float(market.get("elapsed_minutes", 0) or 0)
+            _ph_too_early  = (not is_5m) and (_elapsed_now < _ph_min_el_15m)
+
+            if _ph_low_conf:
+                _updown_phantom_slugs.add(slug)
+                _log("INFO",
+                     f"UpDown {interval_minutes}m | [PHANTOM] ⊘ low-conf — "
+                     f"{phantom_conf:.0f}% < mín {_ph_min_conf:.0f}% (skip)")
+            elif _ph_mom_conflict:
+                _updown_phantom_slugs.add(slug)
+                _log("INFO",
+                     f"UpDown {interval_minutes}m | [PHANTOM] ⊘ TA/mom conflicto — "
+                     f"ta={_ta_raw_v:+.3f} mom={_mom_raw_v:+.3f} (skip)")
+            elif _ph_too_early:
+                _updown_phantom_slugs.add(slug)
+                _log("INFO",
+                     f"UpDown {interval_minutes}m | [PHANTOM] ⊘ too-early — "
+                     f"elapsed {_elapsed_now:.1f}m < {_ph_min_el_15m:.0f}m (skip)")
+            else:  # señal válida — registrar phantom
+                _ph_reason = skip_reason or ("traded_real" if opp else "no_signal")
+                end_ts = int(market["window_start_ts"]) + interval_minutes * 60
+                _updown_phantom_pending[slug] = {
+                    "interval":        interval_minutes,
+                    "side":            phantom_dir,
+                    "btc_start":       btc_ref_price or 0,
+                    "end_ts":          end_ts,
+                    "slug":            slug,
+                    "skip_reason":     _ph_reason,
+                    "confidence":      phantom_conf,
+                    "combined_signal": _sig["combined"],
+                    "ta_signal":       _sig["ta_raw"],
+                    "ta_rsi":          _sig.get("rsi"),
+                    "window_momentum": _sig["momentum"],
+                    "elapsed_minutes": market.get("elapsed_minutes", 0),
+                    # Token IDs de Polymarket — usados para leer el resultado real del CLOB
+                    "up_token":          market.get("up_token"),
+                    "down_token":        market.get("down_token"),
+                    # Precio referencia Chainlink al inicio de la ventana
+                    "btc_price_to_beat": market.get("btc_price_to_beat"),
+                }
+                _updown_phantom_slugs.add(slug)
+                _log(
+                    "INFO",
+                    f"UpDown {interval_minutes}m | [PHANTOM] ✦ {phantom_dir} registrado — "
+                    f"confianza {phantom_conf:.0f}% | combined={_sig['combined']:+.3f} | "
+                    f"motivo_skip={_ph_reason}",
+                )
+                # ── Phantom REAL: ejecutar trade con dinero real cuando está habilitado ──
+                _ph_used_real = False
+                # Disparar phantom real cuando el bot real NO va a operar en este mercado:
+                #   - sin señal suficiente (opp is None), O
+                #   - hay señal pero el bot real está stopped (pérdidas consecutivas)
+                # En ambos casos no hay trade real → phantom real puede tomar la posición.
+                # Si el bot real SÍ va a ejecutar (opp and not stopped) → no doblar exposición.
+                _real_will_trade = bool(opp and not stopped)
+                if bot_params.phantom_real_enabled and not _real_will_trade:
+                    # Solo ejecutar phantom real si el bot real no va a operar
+                    _ph_bucket_attr = (
+                        "phantom_bucket_5m_usdc" if interval_minutes <= 5 else "phantom_bucket_15m_usdc"
+                    )
+                    _ph_avail = getattr(bot_params, _ph_bucket_attr, 0.0)
+                    _ph_size  = min(bot_params.updown_max_usdc, _ph_avail)
+                    if _ph_size >= 1.0:
+                        _ph_entry_price = (
+                            market.get("up_price",  0.50) if phantom_dir == "UP"
+                            else market.get("down_price", 0.50)
+                        )
+                        _ph_token = (
+                            market.get("up_token")  if phantom_dir == "UP"
+                            else market.get("down_token")
+                        )
+                        if _ph_token and _ph_entry_price > 0:
+                            _ph_opp = {
+                                "token_id":       _ph_token,
+                                "entry_price":    _ph_entry_price,
+                                "size_usdc":      _ph_size,
+                                "shares":         round(_ph_size / _ph_entry_price, 2),
+                                "side":           phantom_dir,
+                                "asset":          "BTC_UPDOWN",
+                                "interval_minutes": interval_minutes,
+                                "confidence":     phantom_conf,
+                                "market_title":   market.get("title", ""),
+                                "slug":           slug,
+                                "ev_pct":         0,
+                                "poly_url":       "",
+                                "window_pct":     0,
+                            }
+                            try:
+                                _ph_success = await asyncio.get_event_loop().run_in_executor(
+                                    None, _execute_trade, _ph_opp
+                                )
+                                if _ph_success:
+                                    _deduct_phantom_bucket(_ph_bucket_attr, _ph_size)
+                                    _ph_used_real = True
+                                    _log(
+                                        "INFO",
+                                        f"UpDown {interval_minutes}m | [PHANTOM-REAL] ✦ {phantom_dir} "
+                                        f"${_ph_size:.2f} @ {_ph_entry_price:.3f} ejecutado",
+                                    )
+                                    # Guardar referencia al bucket para devolver stake en resolución
+                                    _updown_phantom_pending[slug]["phantom_bucket_attr"] = _ph_bucket_attr
+                                    _updown_phantom_pending[slug]["phantom_real_size"]   = _ph_size
+                            except Exception as _ph_exec_err:
+                                _log("WARN", f"[PHANTOM-REAL] Error ejecutando trade: {_ph_exec_err}")
+
+                # ── Experimento VPS-Confianza ─────────────────────────────────────
+                try:
+                    from vps_experiment import record_phantom_vps as _vps_rec
+                    _vps_rec(
+                        slug=slug,
+                        interval=interval_minutes,
+                        side=phantom_dir,
+                        confidence_pct=phantom_conf,
+                        btc_start=btc_ref_price or 0,
+                        end_ts=end_ts,
+                        ta_scores={
+                            "combined":  _sig.get("combined", 0),
+                            "ta":        _sig.get("ta_raw", 0),
+                            "rsi":       _sig.get("rsi"),
+                            "macd":      _sig.get("macd_sig", 0),
+                            "ema":       _sig.get("ema_sig", 0),
+                            "momentum":  _sig.get("momentum", 0),
+                            "ofi":       _sig.get("ofi", 0),
+                            "market":    _sig.get("market_sig", 0),
+                            "macro":     _sig.get("macro", 0),
+                        },
+                        entry_price=opp["entry_price"] if opp else 0.50,
+                        used_real_money=_ph_used_real,
+                        up_token=market.get("up_token"),
+                        down_token=market.get("down_token"),
+                        btc_price_to_beat=market.get("btc_price_to_beat"),
+                    )
+                except Exception as _vps_err:
+                    _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
     else:
         _log(
             "INFO",

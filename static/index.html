@@ -1768,6 +1768,39 @@
             </div>
           </div>
 
+          <!-- Filtros de Calidad Phantom (v9.5.6 — 3 gates basados en 221 trades reales) -->
+          <div style="background:var(--bg3);border:1px solid #10b981;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+            <div style="font-size:.68rem;color:#34d399;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:4px">
+              Filtros de Calidad — Solo apostar en señales reales
+            </div>
+            <div style="font-size:.65rem;color:var(--muted);margin-bottom:8px">
+              Datos de 221 trades: conf≥35% → WR 83.5% | TA+mom alineados → 81.3% | elapsed≥8m → 86.1%
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Conf mín phantom (%)</div>
+                <input id="ph-qg-minconf" type="number" min="0" max="100" step="1" value="35"
+                  title="Solo registrar phantom si confianza ≥ este %. Conf 35-65% WR=83.5%"
+                  style="width:70px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.78rem">
+              </div>
+              <div>
+                <div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Elapsed mín 15m (min)</div>
+                <input id="ph-qg-elapsed" type="number" min="0" max="14" step="0.5" value="8"
+                  title="Solo registrar phantom 15m si ya transcurrieron estos minutos. Entradas tardías WR=86.1%"
+                  style="width:70px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.78rem">
+              </div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--text);cursor:pointer" title="TA y momentum en conflicto → WR 45.5%. Con acuerdo → 81.3%">
+                <input id="ph-qg-tamom" type="checkbox" checked style="cursor:pointer">
+                Gate TA+momentum alineados
+              </label>
+              <button onclick="savePhantomQualityGates()"
+                style="padding:5px 14px;background:#10b981;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.74rem;font-weight:700">
+                Guardar
+              </button>
+              <span id="ph-qg-status" style="font-size:.66rem;color:var(--muted)"></span>
+            </div>
+          </div>
+
           <!-- Set saldo virtual manual (reset experiment) -->
           <div style="background:var(--bg3);border:1px dashed #7c3aed;border-radius:6px;padding:8px 12px;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <div style="font-size:.68rem;color:#a78bfa;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Cambiar saldo virtual</div>
@@ -7304,7 +7337,44 @@ async function _loadPhantomDeadzone() {
     if (cb && s.phantom_deadzone_enabled !== undefined) cb.checked = !!s.phantom_deadzone_enabled;
     if (mn && s.phantom_deadzone_min_conf !== undefined) mn.value = s.phantom_deadzone_min_conf;
     if (mx && s.phantom_deadzone_max_conf !== undefined) mx.value = s.phantom_deadzone_max_conf;
+    // Quality gates
+    const qcMin = document.getElementById('ph-qg-minconf');
+    const qcEl  = document.getElementById('ph-qg-elapsed');
+    const qcTM  = document.getElementById('ph-qg-tamom');
+    if (qcMin && s.phantom_min_conf_pct    !== undefined) qcMin.value   = s.phantom_min_conf_pct;
+    if (qcEl  && s.phantom_min_elapsed_15m !== undefined) qcEl.value    = s.phantom_min_elapsed_15m;
+    if (qcTM  && s.phantom_ta_mom_gate     !== undefined) qcTM.checked  = !!s.phantom_ta_mom_gate;
   } catch(e) {}
+}
+
+async function savePhantomQualityGates() {
+  const minConf   = parseFloat(document.getElementById('ph-qg-minconf').value);
+  const elapsed   = parseFloat(document.getElementById('ph-qg-elapsed').value);
+  const taMomOn   = document.getElementById('ph-qg-tamom').checked;
+  const st        = document.getElementById('ph-qg-status');
+  if (isNaN(minConf) || minConf < 0 || minConf > 100) {
+    st.textContent = 'conf inválida'; st.style.color = '#f87171'; return;
+  }
+  if (isNaN(elapsed) || elapsed < 0 || elapsed > 14) {
+    st.textContent = 'elapsed inválido'; st.style.color = '#f87171'; return;
+  }
+  try {
+    const r = await fetch('/api/params', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        phantom_min_conf_pct:    minConf,
+        phantom_min_elapsed_15m: elapsed,
+        phantom_ta_mom_gate:     taMomOn,
+      })
+    }).then(r => r.json());
+    if (r.ok || r.success) {
+      st.textContent = 'guardado ✓'; st.style.color = '#34d399';
+      setTimeout(() => { st.textContent = ''; }, 2000);
+    } else {
+      st.textContent = 'error: ' + (r.error || '?'); st.style.color = '#f87171';
+    }
+  } catch(e) { st.textContent = 'error red'; st.style.color = '#f87171'; }
 }
 
 async function setVpsBalance() {

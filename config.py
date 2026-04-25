@@ -103,6 +103,13 @@ class BotParams:
         self.phantom_deadzone_enabled:  bool  = True
         self.phantom_deadzone_min_conf: float = 20.0
         self.phantom_deadzone_max_conf: float = 34.0
+        # Filtros de calidad phantom (v9.5.6) — basados en 221 trades reales:
+        #   - conf ≥35% → WR 83.5% vs 70.1% débil (gap +13pp)
+        #   - TA+momentum alineados → WR 81.3% vs 45.5% en conflicto
+        #   - elapsed ≥8min en 15m → WR 86.1% vs 33.3% entrada temprana
+        self.phantom_min_conf_pct:     float = 35.0   # solo registrar si conf ≥ este %
+        self.phantom_ta_mom_gate:      bool  = True   # skip si TA y momentum apuntan distinto
+        self.phantom_min_elapsed_15m:  float = 8.0    # min minutos transcurridos en ventana 15m
         # Stake dinámico UpDown por nivel de confianza (item 29)
         # Stake = min_stake + (max_stake - min_stake) * (conf - conf_min) / (conf_max - conf_min)
         # clipped to [min_stake, max_stake]
@@ -223,6 +230,9 @@ class BotParams:
             "phantom_deadzone_enabled":  self.phantom_deadzone_enabled,
             "phantom_deadzone_min_conf": self.phantom_deadzone_min_conf,
             "phantom_deadzone_max_conf": self.phantom_deadzone_max_conf,
+            "phantom_min_conf_pct":      self.phantom_min_conf_pct,
+            "phantom_ta_mom_gate":       self.phantom_ta_mom_gate,
+            "phantom_min_elapsed_15m":   self.phantom_min_elapsed_15m,
             "updown_stake_min_usdc":      self.updown_stake_min_usdc,
             "updown_stake_max_usdc":      self.updown_stake_max_usdc,
             "updown_stake_conf_min_pct":  self.updown_stake_conf_min_pct,

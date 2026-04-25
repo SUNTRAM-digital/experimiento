@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 5
-PATCH = 5
+PATCH = 6
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Trading mode: toggles por intervalo (5m/15m/1d) + R/R ajustado"
+PHASE_NAME = "Phantom: 3 filtros de calidad (min_conf≥35%, TA+mom alineados, elapsed≥8m)"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
