@@ -134,7 +134,7 @@ class BotParams:
         self.trading_min_entry_minutes_left: float = 1.0  # entrar desde el inicio
         self.trading_max_entries_per_market: int = 8 # con one-open-at-a-time, permite muchos ciclos
         self.trading_max_open_per_side: int = 1      # con one-open, solo 1 a la vez
-        self.trading_stake_usdc: float = 5.0         # USDC por entrada
+        self.trading_stake_usdc: float = 3.0         # USDC por entrada (base; tiers escalan hasta $20)
         self.trading_one_open_at_a_time: bool = True # vender antes de volver a comprar
         # --- Safety caps para trading real (v9.4.4) ---
         self.trading_real_max_exposure_usdc: float = 20.0   # exposure máximo vivo en real (suma stakes OPEN)
@@ -148,7 +148,7 @@ class BotParams:
         self.trading_buy_probable: bool = True
         self.trading_probable_min_price: float = 0.45
         self.trading_probable_max_price: float = 0.85
-        self.trading_probable_profit_offset: float = 0.45
+        self.trading_probable_profit_offset: float = 0.15  # tomar ganancia rápido (+15¢)
         # --- Late-entry + stakes dinámicos (v9.6.0) ---
         # Entrar solo cuando elapsed >= 8min (lead signal activo, mercado ya mostró dirección)
         # Stakes escalan con confianza: base $3 → $5 → $10 → $15 → $20

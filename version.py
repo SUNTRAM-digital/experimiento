@@ -21,7 +21,7 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 6
-PATCH = 0
+PATCH = 2
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"

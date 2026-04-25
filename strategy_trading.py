@@ -264,20 +264,16 @@ def should_exit_position(
             if drop_pct >= panic_thr and current_token_price > 0:
                 return "PANIC_EXIT"
 
-            # Nivel 1 (SL): caída >=50% — armar timer; vender si recupera a entry/2 o tiempo cumplido
+            # Nivel 1 (SL): caída >= sl_trigger_drop → disparar en el siguiente scan.
+            # Sin esperar "recovery": el objetivo es RESCATAR el stake, no esperar rebote.
+            # El ciclo de monitoreo corre cada ~15s; armar hoy, disparar en el siguiente ciclo.
             now = now_ts if now_ts is not None else int(_t.time())
-            wait_min = getattr(params, "sl_wait_min", 3.0)
-            armed_ts = position.get("sl_armed_ts")
-
-            if armed_ts is None:
-                # Sólo armamos si estamos bajo trigger ahora
-                if drop_pct >= sl_thr:
-                    position["sl_armed_ts"] = now
-                    return None  # recién armado
-            else:
-                mins_armed = (now - int(armed_ts)) / 60.0
-                if mins_armed >= wait_min and current_token_price >= sl_min:
-                    return "STOP_LOSS"
+            if drop_pct >= sl_thr:
+                armed_ts = position.get("sl_armed_ts")
+                if armed_ts is None:
+                    position["sl_armed_ts"] = now   # primer ciclo: armar
+                else:
+                    return "STOP_LOSS"               # segundo ciclo (~15s): disparar siempre
 
     return None
 

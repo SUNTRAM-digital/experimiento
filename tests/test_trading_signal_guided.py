@@ -124,7 +124,7 @@ def test_config_defaults_updated():
     bp = BotParams()
     assert bp.trading_buy_probable          is True
     assert bp.trading_probable_min_price    == 0.45
-    assert bp.trading_probable_profit_offset == 0.45
+    assert bp.trading_probable_profit_offset == 0.15  # v9.6.2: quick take-profit
 
 
 def test_mode_tag_includes_signal_info():
