@@ -134,9 +134,17 @@ def evaluate_entry_verbose(
         return None, f"sin candidatos ({mode_tag}) | " + " | ".join(rejected)
 
     # Selección del lado:
-    #   - probable: HIGHEST price (favorito/trending) — quick flip a price+offset_small
+    #   - probable+signal: comprar el lado que predice la señal del predictor (77.4% WR)
+    #   - probable sin señal: HIGHEST price (favorito/trending)
     #   - cheapest: LOWEST price — esperar movimiento grande
-    if getattr(params, "buy_probable", False):
+    signal_dir = market.get("signal_direction")  # inyectado por bot._scan_updown cuando conf≥min
+    if getattr(params, "buy_probable", False) and signal_dir in ("UP", "DOWN"):
+        signal_cands = [c for c in candidates if c[0] == signal_dir]
+        if not signal_cands:
+            return None, f"señal dice {signal_dir} pero ese lado no pasó filtros de precio | " + " | ".join(rejected)
+        candidates = signal_cands
+        mode_tag = f"signal({signal_dir}@{market.get('signal_confidence', 0):.0f}%)"
+    elif getattr(params, "buy_probable", False):
         candidates.sort(key=lambda c: -c[1])  # desc (favorito primero)
     else:
         candidates.sort(key=lambda c: c[1])   # asc (cheapest primero)

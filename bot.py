@@ -1632,13 +1632,7 @@ async def _scan_updown(interval_minutes: int):
     else:
         state.updown_last_market_15m = market
 
-    # ── TRADING MODE (v9.4) — buy cheap / sell target ──────────────────
-    # Si trading_mode_enabled está activo, se ejecuta el trading runner
-    # PERO ya NO se hace return (v9.5.2): la lógica de predicción legacy
-    # sigue corriendo para registrar el phantom (vps_experiment + learner)
-    # — sin abrir trade real legacy (se bloquea más abajo).
     # Gate por intervalo (v9.5.5): cada timeframe se controla independiente.
-    # Permite apagar 5m (WR catastrófico) sin matar 15m.
     _trading_iv_attr = (
         "trading_5m_enabled"  if interval_minutes <= 5    else
         "trading_1d_enabled"  if interval_minutes >= 1440 else
@@ -1649,20 +1643,6 @@ async def _scan_updown(interval_minutes: int):
         bool(getattr(bot_params, "trading_mode_enabled", False))
         and _trading_iv_on
     )
-    if _trading_mode_active:
-        try:
-            from trading_runner import run_cycle as _trading_cycle
-            _tres = await _trading_cycle(market, bot_params)
-            _ph_op = _tres.get("phantom", {}).get("opened") if isinstance(_tres, dict) else None
-            _ph_cl = len(_tres.get("phantom", {}).get("closed", []) or []) if isinstance(_tres, dict) else 0
-            if _ph_op or _ph_cl:
-                _log("INFO",
-                     f"UpDown {interval_minutes}m | TRADING phantom: "
-                     f"{'OPEN ' + _ph_op['side'] + ' @' + str(round(_ph_op['entry_price'],3)) if _ph_op else ''} "
-                     f"{'closed=' + str(_ph_cl) if _ph_cl else ''}".strip())
-        except Exception as _te:
-            _log("WARN", f"UpDown {interval_minutes}m | Trading runner error: {_te}")
-        # NO return — caer a la lógica legacy para registrar phantom.
 
     # No operar dos veces en el mismo ciclo de mercado
     if slug in _updown_traded_slugs:
@@ -1763,6 +1743,32 @@ async def _scan_updown(interval_minutes: int):
         ta_multi=ta_multi,
         funding_data=funding_data,
     )
+
+    # ── TRADING MODE (v9.5.8) — signal-guided hold-to-resolution ────────
+    # Ejecutar DESPUÉS de opp para inyectar dirección de señal al market dict.
+    # La señal del predictor (77.4% WR) guía qué lado comprar en modo probable.
+    if _trading_mode_active:
+        try:
+            from trading_runner import run_cycle as _trading_cycle
+            _market_for_trading = dict(market)
+            _sig_preview = (opp.get("signal_breakdown") if opp else None) or {}
+            _td_dir  = _sig_preview.get("direction", "NEUTRAL")
+            _td_conf = float(_sig_preview.get("confidence", 0))
+            _td_min_conf = float(getattr(bot_params, "phantom_min_conf_pct", 35.0))
+            if _td_dir in ("UP", "DOWN") and _td_conf >= _td_min_conf:
+                _market_for_trading["signal_direction"]   = _td_dir
+                _market_for_trading["signal_confidence"]  = _td_conf
+            _tres = await _trading_cycle(_market_for_trading, bot_params)
+            _ph_op = _tres.get("phantom", {}).get("opened") if isinstance(_tres, dict) else None
+            _ph_cl = len(_tres.get("phantom", {}).get("closed", []) or []) if isinstance(_tres, dict) else 0
+            if _ph_op or _ph_cl:
+                _log("INFO",
+                     f"UpDown {interval_minutes}m | TRADING phantom: "
+                     f"{'OPEN ' + _ph_op['side'] + ' @' + str(round(_ph_op['entry_price'],3)) if _ph_op else ''} "
+                     f"{'closed=' + str(_ph_cl) if _ph_cl else ''}".strip())
+        except Exception as _te:
+            _log("WARN", f"UpDown {interval_minutes}m | Trading runner error: {_te}")
+        # NO return — caer a la lógica legacy para registrar phantom.
 
     # Guardar oportunidad evaluada (aunque no se opere)
     scan_snapshot = {

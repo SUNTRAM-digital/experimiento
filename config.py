@@ -141,11 +141,14 @@ class BotParams:
         self.trading_real_daily_loss_limit_usdc: float = 5.0  # stop diario (|pnl negativo| día hoy)
         self.trading_real_max_consec_losses: int = 3        # kill-switch tras N pérdidas seguidas
         self.trading_real_killed: bool = False              # flag activado por kill-switch; reset manual
-        # --- Modo "comprar el más probable" (punto 14) ---
+        # --- Modo "comprar el más probable" (punto 14, v9.5.8) ---
+        # buy_probable=True + signal_direction: hold-to-resolution guiado por predictor 77.4% WR
+        # probable_min_price=0.45: acepta mercados 50/50 (BTC 15m ~0.48-0.52)
+        # probable_profit_offset=0.45: target ≥0.95, raramente hit antes; FORCED_EXIT captura resolución
         self.trading_buy_probable: bool = True
-        self.trading_probable_min_price: float = 0.55
+        self.trading_probable_min_price: float = 0.45
         self.trading_probable_max_price: float = 0.85
-        self.trading_probable_profit_offset: float = 0.08
+        self.trading_probable_profit_offset: float = 0.45
         # --- Stop-loss escalonado (punto 12, enfoque A) ---
         self.trading_sl_enabled: bool = True
         self.trading_sl_trigger_drop: float = 0.50           # caída 50% vs entry arma SL
