@@ -2061,7 +2061,12 @@ async def _scan_updown(interval_minutes: int):
                     )
                 except Exception as _vps_err:
                     _log("WARN", f"[VPS] Error registrando phantom: {_vps_err}")
-    else:
+    elif not _phantom_on:
+        _log(
+            "DEBUG",
+            f"UpDown {interval_minutes}m | [PHANTOM] — phantom {interval_minutes}m deshabilitado (skip)",
+        )
+    else:  # slug in _updown_phantom_slugs
         _log(
             "INFO",
             f"UpDown {interval_minutes}m | [PHANTOM] ⟳ ya registrado para este slug — esperando resolución",
