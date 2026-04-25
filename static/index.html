@@ -1728,6 +1728,37 @@
             <!-- inyectado por JS -->
           </div>
 
+          <!-- Filtro Zona Muerta de Confianza (v9.5.4 — punto 4) -->
+          <div style="background:var(--bg3);border:1px solid #f87171;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+            <div style="font-size:.68rem;color:#fbbf24;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">
+              Filtro Zona Muerta — Saltar señales con conf en rango perdedor
+            </div>
+            <div style="font-size:.66rem;color:var(--muted);margin-bottom:8px">
+              Por defecto: skip conf 20–34% (tier "low_moderate" perdió 67% en sample previo).
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--text)">
+                <input id="ph-dz-on" type="checkbox" style="cursor:pointer">
+                Activado
+              </label>
+              <div>
+                <div style="font-size:.66rem;color:var(--muted);margin-bottom:3px">Conf mín (%)</div>
+                <input id="ph-dz-min" type="number" min="0" max="100" step="1" value="20"
+                  style="width:64px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.78rem">
+              </div>
+              <div>
+                <div style="font-size:.66rem;color:var(--muted);margin-bottom:3px">Conf máx (%)</div>
+                <input id="ph-dz-max" type="number" min="0" max="100" step="1" value="34"
+                  style="width:64px;padding:4px 6px;background:var(--bg);border:1px solid #374151;border-radius:4px;color:var(--text);font-size:.78rem">
+              </div>
+              <button onclick="savePhantomDeadzone()"
+                style="padding:5px 14px;background:#f59e0b;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.74rem;font-weight:700">
+                Guardar
+              </button>
+              <span id="ph-dz-status" style="font-size:.66rem;color:var(--muted)"></span>
+            </div>
+          </div>
+
           <!-- Set saldo virtual manual (reset experiment) -->
           <div style="background:var(--bg3);border:1px dashed #7c3aed;border-radius:6px;padding:8px 12px;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <div style="font-size:.68rem;color:#a78bfa;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Cambiar saldo virtual</div>
@@ -7189,6 +7220,7 @@ async function loadVpsExperiment() {
   try {
     const d = await fetch('/api/vps-experiment').then(r => r.json());
     _renderVpsExperiment(d);
+    _loadPhantomDeadzone();
   } catch(e) {
     const sb = document.getElementById('vps-status-bar');
     if (sb) sb.textContent = 'Error cargando experimento VPS.';
@@ -7198,6 +7230,45 @@ async function loadVpsExperiment() {
 // Auto-refresh VPS every 30s (defined here because loadVpsExperiment lives in this script block)
 loadVpsExperiment();
 setInterval(loadVpsExperiment, 30000);
+
+async function savePhantomDeadzone() {
+  const on  = document.getElementById('ph-dz-on').checked;
+  const mn  = parseFloat(document.getElementById('ph-dz-min').value);
+  const mx  = parseFloat(document.getElementById('ph-dz-max').value);
+  const st  = document.getElementById('ph-dz-status');
+  if (isNaN(mn) || isNaN(mx) || mn < 0 || mx > 100 || mn > mx) {
+    st.textContent = 'rango inválido'; st.style.color = '#f87171'; return;
+  }
+  try {
+    const r = await fetch('/api/params', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        phantom_deadzone_enabled: on,
+        phantom_deadzone_min_conf: mn,
+        phantom_deadzone_max_conf: mx,
+      })
+    }).then(r => r.json());
+    if (r.ok || r.success) {
+      st.textContent = 'guardado'; st.style.color = 'var(--green)';
+      setTimeout(() => { st.textContent = ''; }, 2000);
+    } else {
+      st.textContent = 'error: ' + (r.error || 'desconocido'); st.style.color = '#f87171';
+    }
+  } catch(e) { st.textContent = 'error red'; st.style.color = '#f87171'; }
+}
+
+async function _loadPhantomDeadzone() {
+  try {
+    const s = await fetch('/api/phantom/status').then(r => r.json());
+    const cb = document.getElementById('ph-dz-on');
+    const mn = document.getElementById('ph-dz-min');
+    const mx = document.getElementById('ph-dz-max');
+    if (cb && s.phantom_deadzone_enabled !== undefined) cb.checked = !!s.phantom_deadzone_enabled;
+    if (mn && s.phantom_deadzone_min_conf !== undefined) mn.value = s.phantom_deadzone_min_conf;
+    if (mx && s.phantom_deadzone_max_conf !== undefined) mx.value = s.phantom_deadzone_max_conf;
+  } catch(e) {}
+}
 
 async function setVpsBalance() {
   const input = document.getElementById('vps-set-balance-input');

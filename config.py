@@ -98,6 +98,11 @@ class BotParams:
         self.phantom_5m_enabled: bool = True
         self.phantom_15m_enabled: bool = True
         self.phantom_1d_enabled: bool = False
+        # Zona muerta de confianza — saltar señales con conf en [min, max]
+        # (en sample 54 trades, tier "low_moderate" 20-34% conf perdió 67% y -$12.24 PnL)
+        self.phantom_deadzone_enabled:  bool  = True
+        self.phantom_deadzone_min_conf: float = 20.0
+        self.phantom_deadzone_max_conf: float = 34.0
         # Stake dinámico UpDown por nivel de confianza (item 29)
         # Stake = min_stake + (max_stake - min_stake) * (conf - conf_min) / (conf_max - conf_min)
         # clipped to [min_stake, max_stake]
@@ -210,6 +215,9 @@ class BotParams:
             "phantom_5m_enabled":  self.phantom_5m_enabled,
             "phantom_15m_enabled": self.phantom_15m_enabled,
             "phantom_1d_enabled":  self.phantom_1d_enabled,
+            "phantom_deadzone_enabled":  self.phantom_deadzone_enabled,
+            "phantom_deadzone_min_conf": self.phantom_deadzone_min_conf,
+            "phantom_deadzone_max_conf": self.phantom_deadzone_max_conf,
             "updown_stake_min_usdc":      self.updown_stake_min_usdc,
             "updown_stake_max_usdc":      self.updown_stake_max_usdc,
             "updown_stake_conf_min_pct":  self.updown_stake_conf_min_pct,

@@ -1,5 +1,3 @@
 0. Este documento es para listarte los puntos a tratar. cuando resuelvas cualquiera le pones (hecho) al inicio, si alguno de los puntos dice (hecho) entonces lo ignoras y sigues con el siguiente que no tenga esa marca. al finalizar sube los cambios a github y corre el proyecto con la version mas actual. Todo cambio debe tener sus test propios para asegurte de que funciona correctamente antes de subir cambios
 
-1. (hecho) Veo que en la seccion phantom ya no hay operaciones de ese tipo de trade, quiero que se vuelvan a habilitar
-2. (hecho) en phantom quiero un boton para activar y desactivar los mercados de 15min, de 5min y de 1 dia
-3. (hecho) en la seccion phantom en experimento vps-confianza poder cambiar el saldo virtual manualmente y que al hacerlo se reinicien todas las stats (PnL net, Fixed net, ventaja vps, expectancy, etc.)
+1. (hecho) Nos concentraremos primero con el bot de la Sección de Phantom. Si revisas ahora, tenemos un wr de 48% una perdidad de + de 11 usdc ficticios, en saldo virtual vps, ventaja vps de -3.06. Osea es muy malo, ¿Como mejorarmos el bot de tal forma que ese wr sea 60%? — implementado filtro zona muerta conf 20-34% (tier que perdió 67% en sample). UI en sección VPS-Confianza para ajustar el rango.

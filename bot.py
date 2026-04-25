@@ -1821,7 +1821,25 @@ async def _scan_updown(interval_minutes: int):
         phantom_dir  = _sig["direction"]
         phantom_conf = _sig["confidence"]
 
-        if phantom_dir != "NEUTRAL":
+        # Gate de zona muerta de confianza (filtro tier-skip — punto 4 v9.5.4)
+        # Si conf cae en [min, max] configurada, no registramos phantom (sample previo
+        # mostró que tier "low_moderate" 20-34% perdió 67% y consumió todo el PnL).
+        _dz_on   = bool(getattr(bot_params, "phantom_deadzone_enabled", False))
+        _dz_min  = float(getattr(bot_params, "phantom_deadzone_min_conf", 20.0))
+        _dz_max  = float(getattr(bot_params, "phantom_deadzone_max_conf", 34.0))
+        _in_deadzone = (
+            phantom_dir != "NEUTRAL"
+            and _dz_on
+            and _dz_min <= float(phantom_conf) <= _dz_max
+        )
+        if _in_deadzone:
+            _updown_phantom_slugs.add(slug)
+            _log(
+                "INFO",
+                f"UpDown {interval_minutes}m | [PHANTOM] ⊘ deadzone — conf {phantom_conf:.0f}% "
+                f"en [{_dz_min:.0f}-{_dz_max:.0f}] (skip)",
+            )
+        elif phantom_dir != "NEUTRAL":
             _ph_reason = skip_reason or ("traded_real" if opp else "no_signal")
             end_ts = int(market["window_start_ts"]) + interval_minutes * 60
             _updown_phantom_pending[slug] = {

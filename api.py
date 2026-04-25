@@ -2312,6 +2312,7 @@ async def _execute_chat_tool(name: str, inputs: dict, bot_id: str | None = None)
             "trading_max_price_age_sec",
             # Punto 2 v9.5.1 — phantom per-interval toggles
             "phantom_5m_enabled", "phantom_15m_enabled", "phantom_1d_enabled",
+            "phantom_deadzone_enabled", "phantom_deadzone_min_conf", "phantom_deadzone_max_conf",
         }
         invalid = [k for k in params if k not in valid_keys]
         if invalid:
@@ -2843,6 +2844,9 @@ async def phantom_status():
             "phantom_5m_enabled":      bool(getattr(bot_params, "phantom_5m_enabled", True)),
             "phantom_15m_enabled":     bool(getattr(bot_params, "phantom_15m_enabled", True)),
             "phantom_1d_enabled":      bool(getattr(bot_params, "phantom_1d_enabled", False)),
+            "phantom_deadzone_enabled":  bool(getattr(bot_params, "phantom_deadzone_enabled", True)),
+            "phantom_deadzone_min_conf": float(getattr(bot_params, "phantom_deadzone_min_conf", 20.0)),
+            "phantom_deadzone_max_conf": float(getattr(bot_params, "phantom_deadzone_max_conf", 34.0)),
             "in_bets":     max(0.0, in_bets),
             "total_trades":  total_trades,
             "wins":          wins,

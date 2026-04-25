@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 5
-PATCH = 3
+PATCH = 4
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "VPS experiment: set saldo virtual manual + reset stats"
+PHASE_NAME = "Phantom: filtro zona muerta de confianza (skip 20-34%)"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
