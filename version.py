@@ -20,11 +20,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 5
-PATCH = 4
+PATCH = 5
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom: filtro zona muerta de confianza (skip 20-34%)"
+PHASE_NAME = "Trading mode: toggles por intervalo (5m/15m/1d) + R/R ajustado"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

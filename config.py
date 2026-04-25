@@ -113,11 +113,16 @@ class BotParams:
         # --- Trading Mode (v9.4) — compra barato, vende target ---
         self.trading_mode_enabled: bool = True       # usar trading mode en vez de prediction
         self.trading_real_enabled: bool = False      # False = solo phantom; True = phantom + real
+        # Toggles por intervalo (v9.5.5) — controlar 5m/15m/1d independiente
+        # 5m default OFF: en sample real WR=25% catastrófico. 15m default ON. 1d OFF.
+        self.trading_5m_enabled:  bool = False
+        self.trading_15m_enabled: bool = True
+        self.trading_1d_enabled:  bool = False
         self.trading_entry_threshold: float = 0.55   # comprar si token <= este precio
         self.trading_min_entry_price: float = 0.10   # floor: no comprar si token < este (mercado muerto)
         self.trading_max_entry_price: float = 0.30   # ceiling (punto 10): solo comprar barato → R:R favorable
         self.trading_trend_prefer_winning: bool = True  # preferir lado trending vs cheapest
-        self.trading_profit_offset: float = 0.30     # vender en entry + offset (punto 10: 0.12→0.30 para R:R≥2:1)
+        self.trading_profit_offset: float = 0.40     # v9.5.5: 0.30→0.40 → R/R=1.33 con max_entry=0.30, break-even WR=43%
         self.trading_exit_deadline_min: float = 1.0  # forzar salida a T-X min del cierre
         self.trading_min_entry_minutes_left: float = 1.0  # entrar desde el inicio
         self.trading_max_entries_per_market: int = 8 # con one-open-at-a-time, permite muchos ciclos
@@ -224,6 +229,9 @@ class BotParams:
             "updown_stake_conf_max_pct":  self.updown_stake_conf_max_pct,
             "trading_mode_enabled":            self.trading_mode_enabled,
             "trading_real_enabled":            self.trading_real_enabled,
+            "trading_5m_enabled":              self.trading_5m_enabled,
+            "trading_15m_enabled":             self.trading_15m_enabled,
+            "trading_1d_enabled":              self.trading_1d_enabled,
             "trading_entry_threshold":         self.trading_entry_threshold,
             "trading_min_entry_price":         self.trading_min_entry_price,
             "trading_max_entry_price":         self.trading_max_entry_price,

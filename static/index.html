@@ -1402,6 +1402,15 @@
             </div>
           </div>
 
+          <!-- Toggles por intervalo (v9.5.5) — apagar 5m/15m/1d independiente -->
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+            <span style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700">Intervalos:</span>
+            <button id="td-iv-5m"  onclick="toggleTradingInterval('5m')"  style="padding:6px 12px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer">5m: —</button>
+            <button id="td-iv-15m" onclick="toggleTradingInterval('15m')" style="padding:6px 12px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer">15m: —</button>
+            <button id="td-iv-1d"  onclick="toggleTradingInterval('1d')"  style="padding:6px 12px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.78rem;cursor:pointer">1d: —</button>
+            <span style="font-size:.65rem;color:#6b7280">5m suele tener WR bajo — déjalo OFF si no estás haciendo prueba activa.</span>
+          </div>
+
           <!-- Stats cards: Phantom -->
           <div style="font-size:.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">PHANTOM (virtual)</div>
           <div id="trading-stats-phantom" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px">
@@ -6738,6 +6747,19 @@ function _renderTradingState(d) {
   if (chkEnabled) chkEnabled.checked = !!d.enabled;
   if (chkReal) chkReal.checked = !!d.real_enabled;
 
+  // Toggles por intervalo (v9.5.5)
+  const ivs = d.intervals || {};
+  ['5m','15m','1d'].forEach(iv => {
+    const btn = document.getElementById('td-iv-' + iv);
+    if (!btn) return;
+    const on = !!ivs[iv];
+    btn.dataset.on = on ? '1' : '0';
+    btn.textContent = iv + ': ' + (on ? 'ON' : 'OFF');
+    btn.style.borderColor = on ? '#10b981' : '#6b7280';
+    btn.style.background  = on ? '#064e3b' : '#1f2937';
+    btn.style.color       = on ? '#34d399' : '#9ca3af';
+  });
+
   // Params
   const p = d.params || {};
   const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
@@ -7079,6 +7101,21 @@ async function saveTradingToggle(key, val) {
     });
     setTimeout(loadTradingState, 300);
   } catch(e) { console.warn('saveTradingToggle:', e); }
+}
+
+async function toggleTradingInterval(interval) {
+  const btn = document.getElementById('td-iv-' + interval);
+  if (!btn) return;
+  const newState = !(btn.dataset.on === '1');
+  try {
+    const r = await fetch('/api/trading/interval_toggle', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({interval, enabled: newState})
+    }).then(r => r.json());
+    if (r.ok) loadTradingState();
+    else alert('Error: ' + (r.error || 'desconocido'));
+  } catch(e) { alert('Error de red: ' + e); }
 }
 
 function updateRRHint() {

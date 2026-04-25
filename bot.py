@@ -1637,7 +1637,18 @@ async def _scan_updown(interval_minutes: int):
     # PERO ya NO se hace return (v9.5.2): la lógica de predicción legacy
     # sigue corriendo para registrar el phantom (vps_experiment + learner)
     # — sin abrir trade real legacy (se bloquea más abajo).
-    _trading_mode_active = bool(getattr(bot_params, "trading_mode_enabled", False))
+    # Gate por intervalo (v9.5.5): cada timeframe se controla independiente.
+    # Permite apagar 5m (WR catastrófico) sin matar 15m.
+    _trading_iv_attr = (
+        "trading_5m_enabled"  if interval_minutes <= 5    else
+        "trading_1d_enabled"  if interval_minutes >= 1440 else
+        "trading_15m_enabled"
+    )
+    _trading_iv_on = bool(getattr(bot_params, _trading_iv_attr, False))
+    _trading_mode_active = (
+        bool(getattr(bot_params, "trading_mode_enabled", False))
+        and _trading_iv_on
+    )
     if _trading_mode_active:
         try:
             from trading_runner import run_cycle as _trading_cycle

@@ -2293,6 +2293,7 @@ async def _execute_chat_tool(name: str, inputs: dict, bot_id: str | None = None)
             "updown_displacement_hi_pct", "updown_displacement_lo_pct",
             # Punto 17 — Trading Mode (Claude puede modificar en chat)
             "trading_mode_enabled", "trading_real_enabled",
+            "trading_5m_enabled", "trading_15m_enabled", "trading_1d_enabled",
             "trading_entry_threshold", "trading_min_entry_price", "trading_max_entry_price",
             "trading_trend_prefer_winning", "trading_profit_offset",
             "trading_exit_deadline_min", "trading_min_entry_minutes_left",
@@ -3168,6 +3169,11 @@ async def get_trading_state():
         return {
             "enabled":      bool(getattr(bot_params, "trading_mode_enabled", False)),
             "real_enabled": is_real_enabled,
+            "intervals": {
+                "5m":  bool(getattr(bot_params, "trading_5m_enabled",  False)),
+                "15m": bool(getattr(bot_params, "trading_15m_enabled", True)),
+                "1d":  bool(getattr(bot_params, "trading_1d_enabled",  False)),
+            },
             "params": {
                 "entry_threshold":         getattr(bot_params, "trading_entry_threshold", 0.35),
                 "min_entry_price":         getattr(bot_params, "trading_min_entry_price", 0.10),
@@ -3238,6 +3244,9 @@ async def set_trading_params(body: dict):
         mapping = {
             "trading_mode_enabled":           bool,
             "trading_real_enabled":           bool,
+            "trading_5m_enabled":             bool,
+            "trading_15m_enabled":            bool,
+            "trading_1d_enabled":             bool,
             "trading_entry_threshold":        float,
             "trading_min_entry_price":        float,
             "trading_max_entry_price":        float,
@@ -3284,6 +3293,23 @@ async def set_trading_params(body: dict):
         except Exception:
             pass
         return {"ok": True, "changed": changed}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trading/interval_toggle")
+async def trading_interval_toggle(body: dict):
+    """Toggle trading mode por intervalo (5m/15m/1d). body: {interval, enabled}."""
+    try:
+        interval = str(body.get("interval", "")).lower()
+        enabled  = bool(body.get("enabled", False))
+        attr_map = {"5m": "trading_5m_enabled", "15m": "trading_15m_enabled", "1d": "trading_1d_enabled"}
+        attr = attr_map.get(interval)
+        if not attr:
+            return {"ok": False, "error": f"interval inválido: {interval}"}
+        setattr(bot_params, attr, enabled)
+        bot_params.save()
+        return {"ok": True, "interval": interval, "enabled": enabled}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
