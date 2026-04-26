@@ -1864,9 +1864,10 @@
                   <th style="white-space:nowrap">Resultado<span class="help-btn" onclick="showHelp('col_resultado',event)">?</span></th>
                   <th style="white-space:nowrap">P&L VPS<span class="help-btn" onclick="showHelp('col_pnl_vps',event)">?</span></th>
                   <th style="white-space:nowrap">P&L Fixed<span class="help-btn" onclick="showHelp('col_pnl_fixed',event)">?</span></th>
+                  <th style="white-space:nowrap">Retorno<span class="help-btn" onclick="showHelp('col_retorno',event)">?</span></th>
                   <th style="white-space:nowrap">Δ<span class="help-btn" onclick="showHelp('col_delta',event)">?</span></th>
                 </tr></thead>
-                <tbody id="tbl-vps-trades"><tr><td colspan="13" class="empty">Sin datos aún</td></tr></tbody>
+                <tbody id="tbl-vps-trades"><tr><td colspan="14" class="empty">Sin datos aún</td></tr></tbody>
               </table>
               <div id="vps-trades-loader" style="display:none;text-align:center;padding:8px;font-size:.72rem;color:var(--muted)">Cargando más...</div>
             </div>
@@ -2877,6 +2878,7 @@ const HELP = {
   col_resultado:   { t:'Resultado del trade', b:'Desenlace del trade phantom:\n• WIN ✓ = el mercado resolvió a favor de la predicción (UP ganó si subió, DOWN ganó si bajó)\n• LOSS ✗ = el mercado resolvió en contra\n• PENDING ⏳ = el mercado aún no ha cerrado' },
   col_pnl_vps:     { t:'P&L con tamaño VPS', b:'Ganancia o pérdida en dólares usando el tamaño variable:\n• WIN: +size × 0.98 (98¢ por dólar apostado, descontando fee Polymarket)\n• LOSS: −size (pierdes todo lo apostado)\nEs el resultado real del modelo VPS.' },
   col_pnl_fixed:   { t:'P&L con tamaño fijo', b:'Ganancia o pérdida en dólares usando siempre $3 de apuesta:\n• WIN: +$2.94 (= $3 × 0.98)\n• LOSS: −$3.00\nComparar la suma total de esta columna vs la de P&L VPS muestra si apostar más en señales confiables vale la pena.' },
+  col_retorno:     { t:'Retorno total (stake fijo)', b:'Cuánto dinero volvió al final de la operación (stake $3 incluido):\n• WIN: $3 apostado + $2.94 ganancia = $5.94 total\n• LOSS: $0.00 (se pierde todo lo apostado)\n• PENDING: — (mercado aún no resuelto)' },
   col_delta:       { t:'Δ Diferencia VPS − Fixed', b:'La diferencia de P&L entre el modelo VPS y el modelo Fixed en este trade específico:\n• Positivo (+) = VPS ganó más (o perdió menos) que Fixed → trade donde apostar más valió la pena\n• Negativo (−) = VPS perdió más (o ganó menos) → trade donde apostar más fue contraproducente\nLa suma de todos los Δ muestra si el modelo VPS supera al baseline.' },
   // Claude API
   claude_api:      { t:'Claude API — estado del modelo', b:'Indicador del estado de conexión con la API de Claude (Anthropic).\n• Verde ✓ = API conectada y respondiendo\n• Rojo ✗ = API sin respuesta o con error (los trades siguen siendo automáticos)\nHaz clic para forzar una verificación ahora.' },
@@ -7671,6 +7673,13 @@ function _vpsTradeRow(t) {
     <td style="color:${resColor};font-weight:600">${t.result||'PEND.'}</td>
     <td style="color:${t.pnl_vps!=null?(t.pnl_vps>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_vps != null ? (t.pnl_vps >= 0 ? `+$${t.pnl_vps.toFixed(2)}` : `$${t.pnl_vps.toFixed(2)}`) : '—'}</td>
     <td style="color:${t.pnl_fixed!=null?(t.pnl_fixed>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_fixed != null ? (t.pnl_fixed >= 0 ? `+$${t.pnl_fixed.toFixed(2)}` : `$${t.pnl_fixed.toFixed(2)}`) : '—'}</td>
+    <td style="font-weight:600;font-family:monospace">${(()=>{
+      if (t.result === 'WIN'  && t.position_size_fixed != null && t.pnl_fixed != null)
+        return `<span style="color:var(--green)">$${(t.position_size_fixed + t.pnl_fixed).toFixed(2)}</span>`;
+      if (t.result === 'LOSS' && t.position_size_fixed != null)
+        return `<span style="color:var(--red)">$0.00</span>`;
+      return '<span style="color:var(--muted)">—</span>';
+    })()}</td>
     <td style="color:${diffColor};font-weight:600">${pnlDiff}</td>
   </tr>`;
 }
