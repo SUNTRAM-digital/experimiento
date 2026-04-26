@@ -1757,6 +1757,9 @@ async def _scan_updown(interval_minutes: int):
         minutes_remaining=_mins_left,
     )
 
+    # TA disponible — usado para ajustar thresholds de lead cuando TradingView está caído
+    _ta_ok = bool(ta_data.get("available", True))
+
     # ── TRADING MODE (v9.6.0) — lead-based + CLOB flow ────────────────────
     # Señal primaria: BTC lead vs price_to_beat a partir de T=8min (matemática).
     # Señal secundaria: volumen CLOB UP vs DOWN (dónde apuesta el mercado).
@@ -1880,7 +1883,6 @@ async def _scan_updown(interval_minutes: int):
         # Fallback: TA signal cuando lead = NEUTRAL (mercado temprano).
         # Si TradingView está caído (429) bajamos el threshold de lead de 55% → 51%
         # para no desperdiciar cualquier edge matemático cuando TA no está disponible.
-        _ta_ok = bool(ta_data.get("available", True))
         _lead_threshold = 55.0 if _ta_ok else 51.0
         _using_lead = (
             _lead["direction"] in ("UP", "DOWN")
