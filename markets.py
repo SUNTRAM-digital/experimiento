@@ -483,9 +483,88 @@ async def get_live_price(token_id: str) -> Optional[float]:
             )
             if resp.status_code == 200:
                 data = resp.json()
-                return float(data.get("price", 0))
+                price = float(data.get("price", 0))
+                if price > 0:
+                    return price
     except Exception:
         pass
+
+    # Fallback: last-trade-price (funciona para mercados ya resueltos)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{CLOB_BASE}/last-trade-price",
+                params={"token_id": token_id},
+                headers=HEADERS,
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                price = float(data.get("price", 0))
+                if price > 0:
+                    return price
+    except Exception:
+        pass
+    return None
+
+
+async def get_official_outcome(up_token: str, slug: str) -> Optional[str]:
+    """
+    Obtiene el resultado oficial de un mercado UP/DOWN desde Polymarket.
+    Retorna "UP_WON", "DOWN_WON", o None si aún no está resuelto.
+
+    Método 1: last-trade-price del UP token (fuente más directa).
+    Método 2: outcomePrices del evento en Gamma API.
+    """
+    # Método 1: precio final del UP token
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{CLOB_BASE}/last-trade-price",
+                params={"token_id": up_token},
+                headers=HEADERS,
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                price = float(resp.json().get("price", 0))
+                if price >= 0.90:
+                    return "UP_WON"
+                if price <= 0.10:
+                    return "DOWN_WON"
+    except Exception:
+        pass
+
+    # Método 2: Gamma API outcomePrices
+    try:
+        event_slug = slug.split("btc-updown-")[1] if "btc-updown-" in slug else slug
+        # El slug del evento es el slug completo del mercado
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{GAMMA_BASE}/events",
+                params={"slug": slug},
+                headers=HEADERS,
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                events = resp.json()
+                for evt in events:
+                    for mkt in evt.get("markets", []):
+                        op = mkt.get("outcomePrices")
+                        if isinstance(op, str):
+                            try:
+                                op = __import__("json").loads(op)
+                            except Exception:
+                                continue
+                        if isinstance(op, list) and len(op) >= 2:
+                            up_price   = float(op[0])
+                            down_price = float(op[1])
+                            if up_price >= 0.90:
+                                return "UP_WON"
+                            if down_price >= 0.90:
+                                return "DOWN_WON"
+    except Exception:
+        pass
+
     return None
 
 

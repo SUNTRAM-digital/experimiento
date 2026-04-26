@@ -3017,6 +3017,21 @@ async def get_vps_trades(page: int = 0, limit: int = 50):
         return {"trades": [], "total": 0, "error": str(e)}
 
 
+@app.post("/api/vps-experiment/reverify-all")
+async def vps_reverify_all():
+    """
+    Re-verifica todos los trades resueltos contra Polymarket/Chainlink oficial.
+    Corrige discrepancias y reconstruye phantom_learner si hubo cambios.
+    Puede tardar 10-30s dependiendo del número de trades.
+    """
+    try:
+        from vps_experiment import reverify_all_resolved as _reverify
+        result = await _reverify()
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/api/vps-experiment/fix-trade")
 async def vps_fix_trade(body: dict):
     """

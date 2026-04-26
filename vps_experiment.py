@@ -353,6 +353,128 @@ def resolve_phantom_vps(slug: str, btc_end: float, won: bool, btc_final_price: O
         logger.warning(f"[VPS] Error generando daily summary: {e}")
 
 
+async def reverify_all_resolved() -> dict:
+    """
+    Re-verifica todos los trades resueltos contra Polymarket/Chainlink oficial.
+    Corrige cualquier discrepancia entre nuestro resultado almacenado y el real.
+    Retorna reporte de cuántos se corrigieron.
+    """
+    from markets import get_official_outcome as _get_official
+    import asyncio as _aio
+
+    data = _load()
+    resolved = [t for t in data["trades"] if t.get("result") in ("WIN", "LOSS") and t.get("up_token")]
+
+    corrections = []
+    unchanged   = 0
+
+    for trade in resolved:
+        up_token = trade["up_token"]
+        slug     = trade.get("slug", "")
+        signal   = trade.get("signal", "UP")
+        stored   = trade["result"]
+
+        try:
+            official = await _get_official(up_token, slug)
+            await _aio.sleep(0.3)  # evitar rate limit
+        except Exception:
+            continue
+
+        if official is None:
+            continue  # aún no resuelto o sin datos
+
+        correct = "WIN" if (signal == "UP") == (official == "UP_WON") else "LOSS"
+
+        if correct == stored:
+            unchanged += 1
+            continue
+
+        # Corregir
+        old_pnl_vps   = trade.get("pnl_vps",   0.0) or 0.0
+        old_pnl_fixed = trade.get("pnl_fixed",  0.0) or 0.0
+        payout = PAYOUT_WIN if correct == "WIN" else PAYOUT_LOSS
+
+        trade["result"]         = correct
+        trade["pnl_vps"]        = round(trade["position_size_vps"]  * payout, 4)
+        trade["pnl_fixed"]      = round(trade["position_size_fixed"] * payout, 4)
+        trade["pnl_difference"] = round(trade["pnl_vps"] - trade["pnl_fixed"], 4)
+
+        meta = data.setdefault("meta", {})
+        meta["virtual_balance_vps"]   = round(meta.get("virtual_balance_vps",   50.0) - old_pnl_vps   + trade["pnl_vps"],   4)
+        meta["virtual_balance_fixed"] = round(meta.get("virtual_balance_fixed", 50.0) - old_pnl_fixed + trade["pnl_fixed"], 4)
+
+        corrections.append({
+            "trade_id": trade["trade_id"],
+            "signal":   signal,
+            "was":      stored,
+            "now":      correct,
+            "official": official,
+            "slug":     slug[:40],
+        })
+        logger.info(f"[VPS] Trade #{trade['trade_id']} corregido: {stored}→{correct} ({official})")
+
+    _save(data)
+
+    # Reconstruir phantom_learner desde cero si hubo correcciones
+    if corrections:
+        try:
+            rebuild_phantom_learner_from_vps(data)
+        except Exception as e:
+            logger.warning(f"[VPS] Error reconstruyendo phantom_learner: {e}")
+
+    return {
+        "verified":    len(resolved),
+        "corrected":   len(corrections),
+        "unchanged":   unchanged,
+        "corrections": corrections,
+    }
+
+
+def rebuild_phantom_learner_from_vps(data: Optional[dict] = None) -> None:
+    """
+    Reconstruye phantom_learner_stats.json desde cero usando los trades del VPS.
+    Llama esto después de corregir resultados en batch.
+    """
+    import json as _json
+    import os as _os
+
+    if data is None:
+        data = _load()
+
+    resolved = [t for t in data["trades"] if t.get("result") in ("WIN", "LOSS")]
+
+    # Reconstruir conteos por intervalo
+    stats: dict = {}
+    for trade in resolved:
+        interval_key = "5" if trade.get("market") == "updown_5m" else "15"
+        s = stats.setdefault(interval_key, {"total": 0, "wins": 0, "losses": 0, "consec_losses": 0, "by_signal": {"weak": {"total":0,"wins":0}, "med": {"total":0,"wins":0}, "strong": {"total":0,"wins":0}}})
+        s["total"]  += 1
+        if trade["result"] == "WIN":
+            s["wins"] += 1
+            s["consec_losses"] = 0
+        else:
+            s["losses"] = s.get("losses", 0) + 1
+
+    # Cargar archivo existente y actualizar solo los conteos base (preservar otros campos)
+    pl_file = _os.path.join("data", "phantom_learner_stats.json")
+    try:
+        with open(pl_file, "r", encoding="utf-8") as f:
+            pl = _json.load(f)
+    except Exception:
+        pl = {}
+
+    for key, s in stats.items():
+        existing = pl.setdefault(key, {})
+        existing["total"] = s["total"]
+        existing["wins"]  = s["wins"]
+        existing["losses"] = s.get("losses", s["total"] - s["wins"])
+
+    with open(pl_file, "w", encoding="utf-8") as f:
+        _json.dump(pl, f, indent=2)
+
+    logger.info(f"[VPS] phantom_learner reconstruido: {stats}")
+
+
 def get_status() -> dict:
     """Retorna el estado actual del experimento con métricas calculadas en vivo."""
     data = _load()

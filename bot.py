@@ -2720,33 +2720,30 @@ async def _resolve_pending_updown_outcomes():
         up_token   = pending.get("up_token")
         down_token = pending.get("down_token")
 
-        # ── Fuente primaria: token UP en CLOB de Polymarket ─────────────────
-        # Después del cierre, UP token ~$1.00 = UP ganó, ~$0.00 = DOWN ganó.
-        # Es la misma fuente que Polymarket usa para resolver — elimina
-        # discrepancias con nuestros precios BTC de múltiples exchanges.
+        # ── Fuente primaria: resultado oficial de Polymarket/Chainlink ─────
+        # Usa get_official_outcome que consulta last-trade-price del UP token
+        # y como fallback outcomePrices del Gamma API.
+        # Polymarket usa el oráculo Chainlink para resolver — esta es la
+        # fuente de verdad. No usar precios BTC de exchanges como primaria.
         ph_won = None
         btc_end = None
         resolution_src = "btc_prices"
 
         if up_token and now_ts > end_ts + 30:
             try:
-                up_price = await get_live_price(up_token)
-                if up_price is not None:
-                    if up_price >= 0.95:
-                        up_won = True
-                        resolution_src = f"polymarket_clob (UP token=${up_price:.3f})"
-                    elif up_price <= 0.05:
-                        up_won = False
-                        resolution_src = f"polymarket_clob (UP token=${up_price:.3f})"
-                    else:
-                        up_won = None  # mercado aún resolviendo — esperar
-                    if up_won is not None:
-                        # ph_won = True si el lado apostado coincide con el lado ganador
-                        ph_won = (side == "UP") == up_won
+                from markets import get_official_outcome as _get_official
+                official = await _get_official(up_token, ph_slug)
+                if official == "UP_WON":
+                    ph_won = (side == "UP")
+                    resolution_src = "polymarket_official (UP_WON)"
+                elif official == "DOWN_WON":
+                    ph_won = (side == "DOWN")
+                    resolution_src = "polymarket_official (DOWN_WON)"
+                # else: None → aún no resuelto, continuar esperando
             except Exception:
                 pass
 
-        # ── Fallback: comparar precios BTC ───────────────────────────────────
+        # ── Fallback: comparar precios BTC (menos preciso para diffs pequeños)
         if ph_won is None:
             btc_end = await _get_btc_price_at_ts(end_ts)
             if not btc_end:
