@@ -5,6 +5,7 @@ Fuentes:
   - Volatilidad: Binance klines (log-retornos históricos)
   - TA: TradingView vía tradingview-ta (RSI, MACD, EMA, recomendación)
   - Market data: CoinMarketCap API (cambios %, volumen, market cap)
+  - Microestructura: Binance klines 1m — Taker OFI + Volume z-score
 """
 import asyncio
 import math
@@ -390,6 +391,71 @@ async def get_btc_funding_rate() -> dict:
             return result
     except Exception as e:
         logger.debug(f"Funding rate error: {e}")
+        return {"available": False}
+
+
+# ── Microestructura de mercado: Taker OFI + Volume strength ──────────────────
+
+_MICRO_CACHE: tuple[dict, float] = ({}, 0.0)
+_MICRO_CACHE_TTL = 30  # 30s — vela 1m cambia cada 60s; refrescar con margen
+
+
+async def get_btc_microstructure() -> dict:
+    """
+    Señales de microestructura desde Binance klines 1m (sin API key).
+
+    Taker OFI [-1, +1]:
+      kline[9] = takerBuyBaseAssetVolume (BTC comprado por takers = agredir asks).
+      kline[5] = volumen total BTC.
+      OFI = (2*buy - total) / total → +1 compradores agresivos, -1 vendedores.
+      Promedio sobre las 10 velas cerradas más recientes.
+
+    Volume z-score (kline[8] = numberOfTrades):
+      z-score sobre ventana de 29 velas cerradas.
+      z < -1.5 → mercado thin → señal TA poco confiable.
+    """
+    import time
+    global _MICRO_CACHE
+    cached, fetched_at = _MICRO_CACHE
+    if cached and (time.time() - fetched_at) < _MICRO_CACHE_TTL:
+        return cached
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=8) as client:
+            resp = await client.get(
+                f"{BINANCE_BASE}/klines",
+                params={"symbol": "BTCUSDT", "interval": "1m", "limit": 30},
+            )
+            if resp.status_code != 200:
+                return {"available": False}
+            klines = resp.json()
+            if len(klines) < 12:
+                return {"available": False}
+
+        closed = klines[:-1]  # excluir vela en curso
+
+        # Taker OFI: últimas 10 velas cerradas
+        ofi_vals = []
+        for k in closed[-10:]:
+            total = float(k[5])
+            buy   = float(k[9])
+            if total > 0:
+                ofi_vals.append((2 * buy - total) / total)
+        taker_ofi = round(sum(ofi_vals) / len(ofi_vals), 4) if ofi_vals else 0.0
+
+        # Volume z-score: todas las velas cerradas disponibles
+        n_trades = [float(k[8]) for k in closed]
+        mean_n   = sum(n_trades) / len(n_trades)
+        std_n    = math.sqrt(
+            sum((x - mean_n) ** 2 for x in n_trades) / len(n_trades)
+        ) if len(n_trades) > 1 else 0.0
+        vol_z = round((n_trades[-1] - mean_n) / std_n, 3) if std_n > 0 else 0.0
+
+        result = {"taker_ofi": taker_ofi, "volume_zscore": vol_z, "available": True}
+        _MICRO_CACHE = (result, time.time())
+        logger.debug(f"Microstructure: OFI={taker_ofi:+.4f} VolZ={vol_z:.2f}")
+        return result
+    except Exception as e:
+        logger.debug(f"Microstructure error: {e}")
         return {"available": False}
 
 

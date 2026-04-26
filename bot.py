@@ -1666,14 +1666,15 @@ async def _scan_updown(interval_minutes: int):
         ta_primary_interval = "5m"
         ta_extra_intervals  = ["15m", "1h"]
 
-    from price_feed import get_btc_ta_multi, get_btc_funding_rate
+    from price_feed import get_btc_ta_multi, get_btc_funding_rate, get_btc_microstructure
     _all_intervals = [ta_primary_interval] + ta_extra_intervals
     _results = await asyncio.gather(
         get_btc_ta_multi(_all_intervals),
         get_btc_funding_rate(),
+        get_btc_microstructure(),
         return_exceptions=True,
     )
-    ta_all, funding_data = _results[0], _results[1]
+    ta_all, funding_data, microstructure_data = _results[0], _results[1], _results[2]
 
     # Extraer TA principal y multi-TF
     if isinstance(ta_all, dict):
@@ -1684,11 +1685,17 @@ async def _scan_updown(interval_minutes: int):
         ta_multi = {}
     if not isinstance(funding_data, dict):
         funding_data = {"available": False}
+    if not isinstance(microstructure_data, dict):
+        microstructure_data = {"available": False}
 
     # Log de datos nuevos disponibles
     if funding_data.get("available"):
         _log("DEBUG", f"UpDown {interval_minutes}m | Funding rate: {funding_data.get('rate_pct',0):+.4f}% | "
              f"MTF disponible: {list(ta_multi.keys())}")
+    if microstructure_data.get("available"):
+        _log("DEBUG", f"UpDown {interval_minutes}m | Microestructura: "
+             f"TkrOFI={microstructure_data.get('taker_ofi',0):+.4f} "
+             f"VolZ={microstructure_data.get('volume_zscore',0):.2f}")
 
     if is_5m:
         state.updown_ta_5m = ta_data
@@ -1742,6 +1749,7 @@ async def _scan_updown(interval_minutes: int):
         adaptive_params=_ap,
         ta_multi=ta_multi,
         funding_data=funding_data,
+        microstructure=microstructure_data,
     )
 
     # ── Lead signal (v9.6.3) — siempre computar, usado por phantom y trading ──
@@ -1846,6 +1854,7 @@ async def _scan_updown(interval_minutes: int):
             btc_price_window_start=btc_ref_price, cmc_data=cmc_data,
             market=market, telonex_signals=telonex_signals,
             ta_multi=ta_multi, funding_data=funding_data,
+            microstructure=microstructure_data,
         )
     _log("INFO",
          f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
@@ -1857,13 +1866,18 @@ async def _scan_updown(interval_minutes: int):
     )
     _funding_str = f" Fund:{_sig.get('funding_sig',0):+.3f}" if funding_data and funding_data.get("available") else ""
     _mtf_str     = f" MTF:{_sig.get('mtf_sig',0):+.3f}(x{_sig.get('n_aligned',0)}tf)" if ta_multi else ""
+    _micro_str   = (
+        f" TkrOFI:{_sig.get('taker_ofi',0):+.4f}(z:{_sig.get('volume_zscore',0):.1f}"
+        + (" THIN" if _sig.get("volume_thin") else "") + ")"
+        if microstructure_data.get("available") else ""
+    )
     _log("INFO",
          f"UpDown {interval_minutes}m | Señales — "
          f"TA:{ta_data.get('recommendation','?')}({_sig.get('ta_raw',0):+.3f}) "
          f"RSI:{ta_data.get('rsi','?')} Stoch:{_sig.get('stoch_sig',0):+.3f} "
          f"BB:{_sig.get('bb_sig',0):+.3f}(w={_sig.get('bb_width',0):.3f}) "
          f"MACD:{_sig.get('macd_sig',0):+.3f} Mom:{_sig.get('momentum',0):+.3f}"
-         f"{_mtf_str}{_funding_str}{_tx_str}"
+         f"{_mtf_str}{_funding_str}{_micro_str}{_tx_str}"
          f" → COMBINADA:{_sig.get('combined',0):+.4f} ({_sig.get('direction','?')})")
 
     # ── Apuesta fantasma (siempre, haya o no señal real) ────────────────────

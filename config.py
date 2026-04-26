@@ -56,6 +56,11 @@ class BotParams:
         # >= hi → seguir tendencia | [lo, hi) → neutro | < lo → mean-reversion
         self.updown_displacement_hi_pct: float = 0.20  # >0.20% → follow trend
         self.updown_displacement_lo_pct: float = 0.10  # >0.10% → neutral
+        # Microestructura Binance klines 1m
+        # taker_ofi_weight: peso de la señal OFI comprador/vendedor en el combined
+        # volume_gate_zscore: umbral z-score bajo el cual el mercado se considera thin
+        self.updown_taker_ofi_weight: float = 0.10     # 10% del combined
+        self.updown_volume_gate_zscore: float = -1.5   # z < -1.5 → thin → penalizar
         # --- Telonex (Fase 11) ---
         self.telonex_enabled: bool = os.getenv("TELONEX_ENABLED", "true").lower() == "true"
         self.telonex_smart_wallet_weight: float = float(os.getenv("TELONEX_SMART_WALLET_WEIGHT", 0.10))
@@ -210,6 +215,8 @@ class BotParams:
             "updown_5m_momentum_gate":   self.updown_5m_momentum_gate,
             "updown_displacement_hi_pct": self.updown_displacement_hi_pct,
             "updown_displacement_lo_pct": self.updown_displacement_lo_pct,
+            "updown_taker_ofi_weight":    self.updown_taker_ofi_weight,
+            "updown_volume_gate_zscore":  self.updown_volume_gate_zscore,
             "telonex_enabled":               self.telonex_enabled,
             "telonex_smart_wallet_weight":   self.telonex_smart_wallet_weight,
             "telonex_real_ofi_weight":       self.telonex_real_ofi_weight,

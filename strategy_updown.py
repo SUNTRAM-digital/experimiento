@@ -306,6 +306,15 @@ def _order_book_imbalance(market: Optional[dict]) -> float:
     return max(-1.0, min(1.0, lean))
 
 
+def _taker_ofi_signal(taker_ofi: float) -> float:
+    """
+    Taker buy/sell OFI de Binance klines 1m.
+    OFI = (buy_vol - sell_vol) / total_vol, en [-1, +1].
+    Amplificar 2x porque el rango típico real es ±0.15-0.30.
+    """
+    return max(-1.0, min(1.0, taker_ofi * 2.0))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÑAL COMBINADA — MOTOR PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
@@ -319,6 +328,7 @@ def build_btc_direction_signal(
     telonex_signals: Optional[dict] = None,
     ta_multi: Optional[dict] = None,   # {"1m": ta, "15m": ta, "1h": ta}
     funding_data: Optional[dict] = None,
+    microstructure: Optional[dict] = None,   # Taker OFI + Volume z-score
 ) -> dict:
     """
     Motor de señal profesional v2 con régimen detection y multi-timeframe.
@@ -414,10 +424,27 @@ def build_btc_direction_signal(
     real_ofi    = float(telonex_signals.get("real_ofi", 0.0))   if use_telonex else 0.0
     smart_bias  = float(telonex_signals.get("smart_bias", 0.0)) if use_telonex else 0.0
 
+    # ── Microestructura Binance 1m ────────────────────────────────────────────
+    has_micro    = bool(microstructure and microstructure.get("available"))
+    taker_ofi_v  = float(microstructure.get("taker_ofi",     0.0)) if has_micro else 0.0
+    vol_zscore   = float(microstructure.get("volume_zscore", 0.0)) if has_micro else 0.0
+    taker_ofi_s  = _taker_ofi_signal(taker_ofi_v) if has_micro else 0.0
+    try:
+        _ofi_w    = float(getattr(bot_params, "updown_taker_ofi_weight",    0.10))
+        _vol_gate = float(getattr(bot_params, "updown_volume_gate_zscore", -1.5))
+    except Exception:
+        _ofi_w, _vol_gate = 0.10, -1.5
+    # Cuando Telonex está activo ya tenemos real_ofi on-chain — no duplicar con spot OFI
+    _use_taker_ofi = has_micro and not use_telonex
+    _vol_thin = has_micro and vol_zscore < _vol_gate
+
     # ── CONSTRUCCIÓN FINAL ponderada ─────────────────────────────────────────
     # Pesos base — ajustados según disponibilidad de datos
     has_mtf     = bool(ta_multi and any(v.get("available") for v in ta_multi.values()))
     has_funding = bool(funding_data and funding_data.get("available"))
+
+    _tofi = taker_ofi_s * _ofi_w if _use_taker_ofi else 0.0  # taker OFI contribution
+    _mom_adj = _ofi_w * 0.5 if _use_taker_ofi else 0.0       # reducir mom para compensar
 
     if use_telonex:
         combined = (
@@ -437,42 +464,50 @@ def build_btc_direction_signal(
             ta_composite  * 0.28
             + mtf_sig     * 0.15
             + bb_contribution
-            + mom_sig     * 0.18
+            + mom_sig     * (0.18 - _mom_adj)
             + funding_sig * 0.10
             + macro_sig   * 0.08
             + ofi_sig     * 0.07
             + mkt_sig     * 0.04
+            + _tofi
         )
     elif has_mtf:
         combined = (
             ta_composite  * 0.32
             + mtf_sig     * 0.18
             + bb_contribution
-            + mom_sig     * 0.20
+            + mom_sig     * (0.20 - _mom_adj)
             + macro_sig   * 0.10
             + ofi_sig     * 0.08
             + mkt_sig     * 0.04
+            + _tofi
         )
     elif has_funding:
         combined = (
             ta_composite  * 0.35
             + bb_contribution
-            + mom_sig     * 0.22
+            + mom_sig     * (0.22 - _mom_adj)
             + funding_sig * 0.12
             + macro_sig   * 0.10
             + ofi_sig     * 0.09
             + mkt_sig     * 0.04
+            + _tofi
         )
     else:
         # Modo clásico (sin MTF ni funding): igual que v1 pero con más indicadores en ta_composite
         combined = (
             ta_composite  * 0.40
             + bb_contribution
-            + mom_sig     * 0.25
+            + mom_sig     * (0.25 - _mom_adj)
             + macro_sig   * 0.12
             + ofi_sig     * 0.10
             + mkt_sig     * 0.05
+            + _tofi
         )
+
+    # Volume gate: mercado thin → penalizar confianza antes del MTF bonus
+    if _vol_thin:
+        combined *= 0.65
 
     # Escalar por alineación multi-TF (bonus máx +20% si todos alineados)
     if has_mtf and n_aligned >= 2:
@@ -532,6 +567,10 @@ def build_btc_direction_signal(
         "real_ofi":          round(real_ofi, 4),
         "smart_bias":        round(smart_bias, 4),
         "telonex_available": use_telonex,
+        "taker_ofi":         round(taker_ofi_v, 4),
+        "taker_ofi_sig":     round(taker_ofi_s, 4),
+        "volume_zscore":     round(vol_zscore, 3),
+        "volume_thin":       _vol_thin,
         "rsi":               rsi_val,
         "stoch_k":           stoch_k,
         "stoch_d":           stoch_d,
@@ -558,6 +597,7 @@ def evaluate_updown_market(
     telonex_signals: Optional[dict] = None,
     ta_multi: Optional[dict] = None,
     funding_data: Optional[dict] = None,
+    microstructure: Optional[dict] = None,
 ) -> tuple[Optional[dict], Optional[str]]:
     """
     Evalúa si hay condiciones para operar el mercado UP/DOWN.
@@ -617,6 +657,7 @@ def evaluate_updown_market(
         telonex_signals=telonex_signals,
         ta_multi=ta_multi,
         funding_data=funding_data,
+        microstructure=microstructure,
     )
 
     combined = sig["combined"]

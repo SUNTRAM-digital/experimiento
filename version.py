@@ -18,15 +18,16 @@ Historial de fases:
   Fase 9  (v9.0.0) — Phantom Bets + Claude Advisor Total: apuestas fantasma para aprendizaje, Claude con acceso completo de lectura + tool update_params, análisis proactivo, win rate fixes
   v9.6.0 — Late-entry strategy: BTC lead vs price_to_beat (T≥8min, matemática Browniana), CLOB volume flow, stakes dinámicos $3-$20 por tier de confianza
   v9.6.3 — Phantom usa lead signal (65-95% conf) en lugar de TA (30-50%) a T≥8min; TA/mom gate omitido para señal matemática
+  v9.6.7 — Taker OFI (kline[9]/kline[5], 10 velas 1m) + Volume z-score gate (<-1.5 → thin market penalty 35%)
 """
 
 MAJOR = 9
 MINOR = 6
-PATCH = 6
+PATCH = 7
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Resolución oficial Polymarket/Chainlink + tabla phantom real + lead fallback 429"
+PHASE_NAME = "Taker OFI + Volume strength filter — microestructura Binance 1m"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
