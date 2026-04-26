@@ -1744,6 +1744,19 @@ async def _scan_updown(interval_minutes: int):
         funding_data=funding_data,
     )
 
+    # ── Lead signal (v9.6.3) — siempre computar, usado por phantom y trading ──
+    # Matemática Browniana: conf=Φ(lead_pct / vol_per_min*√min_remaining).
+    # Fiable solo a partir de T=8min; antes devuelve NEUTRAL (50/50 puro).
+    from strategy_updown import calc_lead_confidence as _calc_lead
+    _elapsed   = float(market.get("elapsed_minutes", 0))
+    _mins_left = float(market.get("minutes_to_close", 0))
+    _lead = _calc_lead(
+        btc_now=btc_price_now or 0,
+        price_to_beat=btc_ref_price or 0,
+        elapsed_minutes=_elapsed,
+        minutes_remaining=_mins_left,
+    )
+
     # ── TRADING MODE (v9.6.0) — lead-based + CLOB flow ────────────────────
     # Señal primaria: BTC lead vs price_to_beat a partir de T=8min (matemática).
     # Señal secundaria: volumen CLOB UP vs DOWN (dónde apuesta el mercado).
@@ -1751,19 +1764,7 @@ async def _scan_updown(interval_minutes: int):
     if _trading_mode_active:
         try:
             from trading_runner import run_cycle as _trading_cycle
-            from strategy_updown import calc_lead_confidence as _calc_lead
             from markets import get_clob_flow as _get_clob_flow
-
-            _elapsed = float(market.get("elapsed_minutes", 0))
-            _mins_left = float(market.get("minutes_to_close", 0))
-
-            # Lead signal (principal cuando elapsed >= 8min)
-            _lead = _calc_lead(
-                btc_now=btc_price_now or 0,
-                price_to_beat=btc_ref_price or 0,
-                elapsed_minutes=_elapsed,
-                minutes_remaining=_mins_left,
-            )
 
             # CLOB flow — en paralelo con nada más que esperar (es rápido)
             _flow = await _get_clob_flow(
@@ -1874,10 +1875,18 @@ async def _scan_updown(interval_minutes: int):
     )
     _phantom_on = bool(getattr(bot_params, _phantom_attr, True))
     if _phantom_on and slug not in _updown_phantom_slugs:
-        # Phantom usa la MISMA señal que el bot real — ya incluye
-        # lógica de desplazamiento, régimen y mean-reversion correcta.
-        phantom_dir  = _sig["direction"]
-        phantom_conf = _sig["confidence"]
+        # Señal primaria: lead Browniano (T≥8min, conf 65-95%).
+        # Fallback: TA signal cuando lead = NEUTRAL (mercado temprano).
+        _using_lead = (
+            _lead["direction"] in ("UP", "DOWN")
+            and _lead["confidence"] >= 55.0
+        )
+        if _using_lead:
+            phantom_dir  = _lead["direction"]
+            phantom_conf = _lead["confidence"]
+        else:
+            phantom_dir  = _sig["direction"]
+            phantom_conf = _sig["confidence"]
 
         # Gate de zona muerta de confianza (filtro tier-skip — punto 4 v9.5.4)
         # Si conf cae en [min, max] configurada, no registramos phantom (sample previo
@@ -1923,12 +1932,13 @@ async def _scan_updown(interval_minutes: int):
                 (_ta_raw_v > 0.0 and _mom_raw_v > 0.0) or
                 (_ta_raw_v < 0.0 and _mom_raw_v < 0.0)
             )
-            _ph_mom_conflict = _ph_ta_mom_on and not _ta_mom_agree
+            _ph_mom_conflict = (not _using_lead) and _ph_ta_mom_on and not _ta_mom_agree
 
             # Gate 3: elapsed mínimo para 15m (entradas tempranas = 33% WR)
+            # Lead signal ya requiere elapsed>=8min internamente — saltar gate si lead activo
             _ph_min_el_15m = float(getattr(bot_params, "phantom_min_elapsed_15m", 8.0))
             _elapsed_now   = float(market.get("elapsed_minutes", 0) or 0)
-            _ph_too_early  = (not is_5m) and (_elapsed_now < _ph_min_el_15m)
+            _ph_too_early  = (not is_5m) and (not _using_lead) and (_elapsed_now < _ph_min_el_15m)
 
             if _ph_low_conf:
                 # NO añadir al set: la señal puede cambiar en el siguiente scan
@@ -1968,10 +1978,11 @@ async def _scan_updown(interval_minutes: int):
                     "btc_price_to_beat": market.get("btc_price_to_beat"),
                 }
                 _updown_phantom_slugs.add(slug)
+                _ph_src = "lead" if _using_lead else "TA"
                 _log(
                     "INFO",
                     f"UpDown {interval_minutes}m | [PHANTOM] ✦ {phantom_dir} registrado — "
-                    f"confianza {phantom_conf:.0f}% | combined={_sig['combined']:+.3f} | "
+                    f"confianza {phantom_conf:.0f}% [{_ph_src}] | combined={_sig['combined']:+.3f} | "
                     f"motivo_skip={_ph_reason}",
                 )
                 # ── Phantom REAL: ejecutar trade con dinero real cuando está habilitado ──

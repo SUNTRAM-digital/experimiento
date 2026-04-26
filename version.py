@@ -17,15 +17,16 @@ Historial de fases:
   Fase 8  (v8.0.0) — UpDown Markets + Performance Monitor: BTC 5m/15m up/down, learner adaptativo, resource dashboard
   Fase 9  (v9.0.0) — Phantom Bets + Claude Advisor Total: apuestas fantasma para aprendizaje, Claude con acceso completo de lectura + tool update_params, análisis proactivo, win rate fixes
   v9.6.0 — Late-entry strategy: BTC lead vs price_to_beat (T≥8min, matemática Browniana), CLOB volume flow, stakes dinámicos $3-$20 por tier de confianza
+  v9.6.3 — Phantom usa lead signal (65-95% conf) en lugar de TA (30-50%) a T≥8min; TA/mom gate omitido para señal matemática
 """
 
 MAJOR = 9
 MINOR = 6
-PATCH = 2
+PATCH = 3
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Late-entry T≥8min: lead BTC vs price-to-beat + CLOB flow + stakes dinámicos"
+PHASE_NAME = "Phantom lead signal T≥8min: conf 65-95% vs TA 30-50%"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
