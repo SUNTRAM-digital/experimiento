@@ -1781,7 +1781,8 @@ async def _scan_updown(interval_minutes: int):
 
             # Determinar señal final: lead tiene prioridad sobre TA
             _td_min_conf = float(getattr(bot_params, "phantom_min_conf_pct", 35.0))
-            if _lead["direction"] in ("UP", "DOWN") and _lead["confidence"] >= 55.0:
+            _td_lead_thr = 55.0 if _ta_ok else 51.0
+            if _lead["direction"] in ("UP", "DOWN") and _lead["confidence"] >= _td_lead_thr:
                 _market_for_trading["signal_direction"]  = _lead["direction"]
                 _market_for_trading["signal_confidence"] = _lead["confidence"]
             else:
@@ -1877,9 +1878,13 @@ async def _scan_updown(interval_minutes: int):
     if _phantom_on and slug not in _updown_phantom_slugs:
         # Señal primaria: lead Browniano (T≥8min, conf 65-95%).
         # Fallback: TA signal cuando lead = NEUTRAL (mercado temprano).
+        # Si TradingView está caído (429) bajamos el threshold de lead de 55% → 51%
+        # para no desperdiciar cualquier edge matemático cuando TA no está disponible.
+        _ta_ok = bool(ta_data.get("available", True))
+        _lead_threshold = 55.0 if _ta_ok else 51.0
         _using_lead = (
             _lead["direction"] in ("UP", "DOWN")
-            and _lead["confidence"] >= 55.0
+            and _lead["confidence"] >= _lead_threshold
         )
         if _using_lead:
             phantom_dir  = _lead["direction"]
