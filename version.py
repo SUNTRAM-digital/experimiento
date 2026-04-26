@@ -22,11 +22,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 6
-PATCH = 4
+PATCH = 6
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Fix resolución CLOB invertida + tabla phantom con stake/entrada/tipo/retorno real"
+PHASE_NAME = "Resolución oficial Polymarket/Chainlink + tabla phantom real + lead fallback 429"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"
