@@ -1996,8 +1996,9 @@ async def _scan_updown(interval_minutes: int):
                 # En ambos casos no hay trade real → phantom real puede tomar la posición.
                 # Si el bot real SÍ va a ejecutar (opp and not stopped) → no doblar exposición.
                 _real_will_trade = bool(opp and not stopped)
-                if bot_params.phantom_real_enabled and not _real_will_trade:
-                    # Solo ejecutar phantom real si el bot real no va a operar
+                _ph_real_always  = bool(getattr(bot_params, "phantom_real_always", False))
+                if bot_params.phantom_real_enabled and (not _real_will_trade or _ph_real_always):
+                    # phantom_real_always=True → opera siempre (no solo cuando el bot principal falla)
                     _ph_bucket_attr = (
                         "phantom_bucket_5m_usdc" if interval_minutes <= 5 else "phantom_bucket_15m_usdc"
                     )

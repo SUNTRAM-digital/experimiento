@@ -1884,6 +1884,13 @@
             style="padding:10px 22px;border-radius:8px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:700;font-size:.88rem;cursor:pointer;transition:all .2s">
             ● FICTICIO
           </button>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+            <button id="phantom-always-btn" onclick="togglePhantomAlways()"
+              style="padding:6px 14px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:600;font-size:.75rem;cursor:pointer;transition:all .2s">
+              SIEMPRE: OFF
+            </button>
+            <div style="font-size:.62rem;color:var(--muted);text-align:center;max-width:110px">Opera aunque el bot principal tenga señal</div>
+          </div>
         </div>
 
         <!-- Toggles de intervalos phantom (5m / 15m / 1d) -->
@@ -8900,6 +8907,16 @@ async function loadPhantom() {
       desc.style.color = 'var(--muted)';
     }
 
+    // Botón SIEMPRE
+    const alwaysBtn = document.getElementById('phantom-always-btn');
+    if (alwaysBtn) {
+      const always = s.phantom_real_always;
+      alwaysBtn.textContent = `SIEMPRE: ${always ? 'ON' : 'OFF'}`;
+      alwaysBtn.style.cssText = always
+        ? 'padding:6px 14px;border-radius:6px;border:2px solid #22c55e;background:#052e16;color:#4ade80;font-weight:600;font-size:.75rem;cursor:pointer;transition:all .2s'
+        : 'padding:6px 14px;border-radius:6px;border:2px solid #6b7280;background:#1f2937;color:#9ca3af;font-weight:600;font-size:.75rem;cursor:pointer;transition:all .2s';
+    }
+
     // Toggles por intervalo (5m / 15m / 1d)
     const _renderIvBtn = (id, label, on) => {
       const el = document.getElementById(id);
@@ -9120,6 +9137,25 @@ async function togglePhantomReal() {
     }).then(r => r.json());
     if (r.ok) loadPhantom();
     else alert('Error: ' + (r.error||'desconocido'));
+  } catch(e) { alert('Error de red: ' + e); }
+}
+
+async function togglePhantomAlways() {
+  const btn = document.getElementById('phantom-always-btn');
+  const isOn = btn.textContent.includes('ON');
+  const newState = !isOn;
+  if (newState) {
+    const ok = confirm('⚡ MODO SIEMPRE ACTIVO\n\nEl phantom usará dinero real en CADA señal válida, incluso cuando el bot principal también opere.\n\nAsegúrate de que el pool tiene capital suficiente.\n\n¿Confirmas activar?');
+    if (!ok) return;
+  }
+  try {
+    const r = await fetch('/api/phantom/toggle_always', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: newState})
+    }).then(r => r.json());
+    if (r.ok) loadPhantom();
+    else alert('Error: ' + (r.error || 'desconocido'));
   } catch(e) { alert('Error de red: ' + e); }
 }
 

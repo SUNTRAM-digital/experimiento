@@ -2837,6 +2837,7 @@ async def phantom_status():
 
         return {
             "phantom_real_enabled":    bot_params.phantom_real_enabled,
+            "phantom_real_always":     getattr(bot_params, "phantom_real_always", False),
             "phantom_cash_libre_usdc": cash_libre,
             "phantom_pool_usdc":       pool,
             "phantom_pool_max_usdc":   bot_params.phantom_pool_usdc,
@@ -2886,6 +2887,19 @@ async def phantom_toggle(body: dict):
         bot_params.save()
         mode = "REAL+FICTICIO" if enabled else "SOLO FICTICIO"
         return {"ok": True, "phantom_real_enabled": enabled, "mode": mode}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/phantom/toggle_always")
+async def phantom_toggle_always(body: dict):
+    """Activa o desactiva el modo 'phantom real siempre'. body: {enabled: bool}"""
+    try:
+        from bot import bot_params
+        enabled = bool(body.get("enabled", False))
+        bot_params.phantom_real_always = enabled
+        bot_params.save()
+        return {"ok": True, "phantom_real_always": enabled}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
