@@ -241,7 +241,8 @@ def tv_interval_for_horizon(hours_to_resolution: float) -> str:
 
 # Cache: interval → (result_dict, fetched_at_timestamp)
 _ta_cache: dict[str, tuple[dict, float]] = {}
-_TA_CACHE_TTL = 90  # segundos — no re-fetchar si el dato tiene menos de 90s
+_TA_CACHE_TTL     = 120   # segundos — no re-fetchar si el dato tiene menos de 2min
+_TA_CACHE_TTL_429 = 600   # 10min de backoff después de un 429
 
 
 def _get_btc_ta_sync(interval: str = "1m") -> dict:
@@ -251,7 +252,8 @@ def _get_btc_ta_sync(interval: str = "1m") -> dict:
     """
     import time
     cached, fetched_at = _ta_cache.get(interval, ({}, 0.0))
-    if cached and (time.time() - fetched_at) < _TA_CACHE_TTL:
+    ttl = _TA_CACHE_TTL_429 if (cached and not cached.get("available", True)) else _TA_CACHE_TTL
+    if cached and (time.time() - fetched_at) < ttl:
         return cached
 
     if not _TV_AVAILABLE:
@@ -321,9 +323,8 @@ def _get_btc_ta_sync(interval: str = "1m") -> dict:
     except Exception as e:
         logger.warning(f"TradingView TA error ({interval}): {e}")
         err = {"recommendation": "NEUTRAL", "signal": 0.0, "available": False, "error": str(e)}
-        # En caso de 429, backoff más largo para no seguir spameando
         if "429" in str(e):
-            _ta_cache[interval] = (err, time.time())  # no reintentar por otros 90s
+            _ta_cache[interval] = (err, time.time())
         return err
 
 
@@ -335,11 +336,14 @@ async def get_btc_ta(interval: str = "1m") -> dict:
 
 async def get_btc_ta_multi(intervals: list[str]) -> dict[str, dict]:
     """
-    Obtiene TA de múltiples timeframes en paralelo.
-    Retorna dict {interval: ta_data} con caché independiente por intervalo.
+    Obtiene TA de múltiples timeframes secuencialmente con pequeño delay.
+    Paralelo causaba 429 al golpear TradingView 3-4 veces simultáneas.
     """
     import asyncio as _aio
-    results = await _aio.gather(*[get_btc_ta(iv) for iv in intervals])
+    results = []
+    for iv in intervals:
+        results.append(await get_btc_ta(iv))
+        await _aio.sleep(0.4)
     return {iv: r for iv, r in zip(intervals, results)}
 
 
