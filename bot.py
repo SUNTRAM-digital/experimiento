@@ -2006,6 +2006,9 @@ async def _scan_updown(interval_minutes: int):
                     from vps_experiment import calculate_vps_size as _calc_vps
                     _ph_vps_size, _ph_tier = _calc_vps(float(phantom_conf))
                     _ph_size  = min(_ph_vps_size, _ph_avail)
+                    _log("DEBUG",
+                         f"[PHANTOM-REAL] diag: avail=${_ph_avail:.2f} vps=${_ph_vps_size:.2f} "
+                         f"size=${_ph_size:.2f} tier={_ph_tier} conf={phantom_conf:.0f}%")
                     if _ph_size >= 1.0:
                         _ph_entry_price = (
                             market.get("up_price",  0.50) if phantom_dir == "UP"
@@ -2015,7 +2018,11 @@ async def _scan_updown(interval_minutes: int):
                             market.get("up_token")  if phantom_dir == "UP"
                             else market.get("down_token")
                         )
-                        if _ph_token and _ph_entry_price > 0:
+                        if not _ph_token:
+                            _log("WARN", f"[PHANTOM-REAL] token_id es None para {slug} — trade cancelado")
+                        elif _ph_entry_price <= 0:
+                            _log("WARN", f"[PHANTOM-REAL] entry_price={_ph_entry_price} inválido — trade cancelado")
+                        else:
                             _ph_opp = {
                                 "token_id":       _ph_token,
                                 "entry_price":    _ph_entry_price,
@@ -2047,8 +2054,19 @@ async def _scan_updown(interval_minutes: int):
                                     # Guardar referencia al bucket para devolver stake en resolución
                                     _updown_phantom_pending[slug]["phantom_bucket_attr"] = _ph_bucket_attr
                                     _updown_phantom_pending[slug]["phantom_real_size"]   = _ph_size
+                                    # Registrar stake real en VPS para mostrar en tabla
+                                    try:
+                                        from vps_experiment import set_real_stake as _vps_set_stake
+                                        _vps_set_stake(slug, _ph_size)
+                                    except Exception:
+                                        pass
+                                else:
+                                    _log("WARN", f"[PHANTOM-REAL] _execute_trade retornó False — "
+                                                 f"clob={_clob_client is not None} token={_ph_token[:8] if _ph_token else None}")
                             except Exception as _ph_exec_err:
                                 _log("WARN", f"[PHANTOM-REAL] Error ejecutando trade: {_ph_exec_err}")
+                    else:
+                        _log("WARN", f"[PHANTOM-REAL] size ${_ph_size:.2f} < $1.00 — bucket insuficiente")
 
                 # ── Experimento VPS-Confianza ─────────────────────────────────────
                 try:
@@ -2715,12 +2733,16 @@ async def _resolve_pending_updown_outcomes():
                 up_price = await get_live_price(up_token)
                 if up_price is not None:
                     if up_price >= 0.95:
-                        ph_won = True
+                        up_won = True
                         resolution_src = f"polymarket_clob (UP token=${up_price:.3f})"
                     elif up_price <= 0.05:
-                        ph_won = False
+                        up_won = False
                         resolution_src = f"polymarket_clob (UP token=${up_price:.3f})"
-                    # else: precio intermedio, mercado aún resolviendo — esperar
+                    else:
+                        up_won = None  # mercado aún resolviendo — esperar
+                    if up_won is not None:
+                        # ph_won = True si el lado apostado coincide con el lado ganador
+                        ph_won = (side == "UP") == up_won
             except Exception:
                 pass
 

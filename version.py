@@ -22,11 +22,11 @@ Historial de fases:
 
 MAJOR = 9
 MINOR = 6
-PATCH = 3
+PATCH = 4
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom lead signal T≥8min: conf 65-95% vs TA 30-50%"
+PHASE_NAME = "Fix resolución CLOB invertida + tabla phantom con stake/entrada/tipo/retorno real"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

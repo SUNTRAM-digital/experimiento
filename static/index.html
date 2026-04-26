@@ -1859,11 +1859,11 @@
                   <th style="white-space:nowrap">Tier<span class="help-btn" onclick="showHelp('col_tier',event)">?</span></th>
                   <th style="white-space:nowrap">BTC Inicio</th>
                   <th style="white-space:nowrap">BTC Cierre</th>
-                  <th style="white-space:nowrap">Size VPS<span class="help-btn" onclick="showHelp('col_size_vps',event)">?</span></th>
-                  <th style="white-space:nowrap">Fixed<span class="help-btn" onclick="showHelp('col_fixed',event)">?</span></th>
+                  <th style="white-space:nowrap">Entrada<span class="help-btn" onclick="showHelp('col_entrada',event)">?</span></th>
+                  <th style="white-space:nowrap">Tipo<span class="help-btn" onclick="showHelp('col_tipo',event)">?</span></th>
+                  <th style="white-space:nowrap">Stake<span class="help-btn" onclick="showHelp('col_stake',event)">?</span></th>
                   <th style="white-space:nowrap">Resultado<span class="help-btn" onclick="showHelp('col_resultado',event)">?</span></th>
-                  <th style="white-space:nowrap">P&L VPS<span class="help-btn" onclick="showHelp('col_pnl_vps',event)">?</span></th>
-                  <th style="white-space:nowrap">P&L Fixed<span class="help-btn" onclick="showHelp('col_pnl_fixed',event)">?</span></th>
+                  <th style="white-space:nowrap">P&L<span class="help-btn" onclick="showHelp('col_pnl_vps',event)">?</span></th>
                   <th style="white-space:nowrap">Retorno<span class="help-btn" onclick="showHelp('col_retorno',event)">?</span></th>
                   <th style="white-space:nowrap">Δ<span class="help-btn" onclick="showHelp('col_delta',event)">?</span></th>
                 </tr></thead>
@@ -2880,12 +2880,15 @@ const HELP = {
   col_lado:        { t:'Lado (UP / DOWN)', b:'Dirección de la apuesta phantom:\n• UP ↑ = el bot predice que el precio de Bitcoin subirá antes del cierre\n• DOWN ↓ = predice que bajará\nEsta predicción viene de los indicadores técnicos (RSI, MACD, Bollinger Bands, volumen) en el momento de la señal.' },
   col_conf:        { t:'Confianza (%)', b:'Porcentaje de confianza del modelo en esta señal, calculado como promedio ponderado de indicadores técnicos.\n• 0-20% = señal débil (tier minimal)\n• 21-35% = tier moderate\n• 36-60% = tier high\n• >60% = tier aggressive\nUna confianza alta no siempre gana más — el análisis de patrones puede detectar correlación inversa.' },
   col_tier:        { t:'Tier de confianza', b:'Clasificación cualitativa del nivel de confianza:\n• minimal = señal débil, apuesta mínima ($3)\n• moderate = confianza media, apuesta $4\n• high = señal fuerte, apuesta $6\n• aggressive = señal muy fuerte, apuesta $10\nEl phantom ajusta estos umbrales según el historial de éxito por tier.' },
+  col_entrada:     { t:'Precio de entrada', b:'Precio al que se compró el token UP o DOWN, en centavos.\nEjemplo: 88¢ = pagaste $0.88 por cada share.\nSi ganas, recibes $1.00 por share (×0.98 después de fee Polymarket).\nEntrada más baja = mayor ganancia potencial si ganas.' },
+  col_tipo:        { t:'REAL o FICTICIO', b:'REAL = se apostó dinero real de Polymarket.\nFICT = apuesta ficticia (simulada, sin dinero real).\nEl bot puede hacer ambas al mismo tiempo con el modo SIEMPRE activado.' },
+  col_stake:       { t:'Stake apostado', b:'Cuánto USDC se puso en la apuesta.\n• FICT: tamaño simulado según el tier de confianza (VPS)\n• REAL: USDC reales gastados del pool phantom\nEl stake determina cuánto puedes ganar o perder.' },
   col_size_vps:    { t:'Tamaño VPS (USDC)', b:'Monto apostado en la simulación VPS (Variable Position Sizing): el tamaño varía según el tier de confianza.\nEs el modelo que el bot quiere validar — ¿tiene sentido apostar más cuando hay mayor confianza?' },
   col_fixed:       { t:'Tamaño Fixed (USDC)', b:'Monto apostado en la simulación de tamaño fijo ($3 siempre).\nEs el baseline de comparación: si el modelo VPS gana más que Fixed al final del experimento, la estrategia de tamaño variable tiene valor.' },
   col_resultado:   { t:'Resultado del trade', b:'Desenlace del trade phantom:\n• WIN ✓ = el mercado resolvió a favor de la predicción (UP ganó si subió, DOWN ganó si bajó)\n• LOSS ✗ = el mercado resolvió en contra\n• PENDING ⏳ = el mercado aún no ha cerrado' },
   col_pnl_vps:     { t:'P&L con tamaño VPS', b:'Ganancia o pérdida en dólares usando el tamaño variable:\n• WIN: +size × 0.98 (98¢ por dólar apostado, descontando fee Polymarket)\n• LOSS: −size (pierdes todo lo apostado)\nEs el resultado real del modelo VPS.' },
   col_pnl_fixed:   { t:'P&L con tamaño fijo', b:'Ganancia o pérdida en dólares usando siempre $3 de apuesta:\n• WIN: +$2.94 (= $3 × 0.98)\n• LOSS: −$3.00\nComparar la suma total de esta columna vs la de P&L VPS muestra si apostar más en señales confiables vale la pena.' },
-  col_retorno:     { t:'Retorno total (stake fijo)', b:'Cuánto dinero volvió al final de la operación (stake $3 incluido):\n• WIN: $3 apostado + $2.94 ganancia = $5.94 total\n• LOSS: $0.00 (se pierde todo lo apostado)\n• PENDING: — (mercado aún no resuelto)' },
+  col_retorno:     { t:'Retorno total', b:'Cuánto dinero volvió al final de la operación (incluyendo el stake).\nFórmula: (stake ÷ precio_entrada) × 0.98\n• WIN: ej. $4.41 ÷ 0.88 × 0.98 = $4.91 total (ganancia $0.50)\n• LOSS: $0.00 (se pierde todo lo apostado)\n• PENDING: — (mercado aún no resuelto)' },
   col_delta:       { t:'Δ Diferencia VPS − Fixed', b:'La diferencia de P&L entre el modelo VPS y el modelo Fixed en este trade específico:\n• Positivo (+) = VPS ganó más (o perdió menos) que Fixed → trade donde apostar más valió la pena\n• Negativo (−) = VPS perdió más (o ganó menos) → trade donde apostar más fue contraproducente\nLa suma de todos los Δ muestra si el modelo VPS supera al baseline.' },
   // Claude API
   claude_api:      { t:'Claude API — estado del modelo', b:'Indicador del estado de conexión con la API de Claude (Anthropic).\n• Verde ✓ = API conectada y respondiendo\n• Rojo ✗ = API sin respuesta o con error (los trades siguen siendo automáticos)\nHaz clic para forzar una verificación ahora.' },
@@ -7652,6 +7655,20 @@ function _vpsTradeRow(t) {
   const tc = ({aggressive:'#22c55e',high:'#84cc16',moderate:'#f59e0b',low_moderate:'#f97316',minimal:'#ef4444'})[t.confidence_tier] || 'var(--muted)';
   const ts = (t.timestamp || '').substring(0,19).replace('T',' ');
 
+  // Stake: para trades reales usar real_stake_usdc, para ficticios usar position_size_vps
+  const stake = t.real_stake_usdc ?? t.position_size_vps;
+  const stakeCell = stake != null ? `$${stake.toFixed(2)}` : '—';
+
+  // Tipo: REAL o FICTICIO
+  const tipoCell = t.used_real_money
+    ? `<span style="color:#fbbf24;font-weight:700;font-size:.68rem">REAL</span>`
+    : `<span style="color:var(--muted);font-size:.68rem">FICT</span>`;
+
+  // Precio de entrada en centavos (ej. 88¢)
+  const entradaCell = t.entry_price != null
+    ? `<span style="font-family:monospace">${Math.round(t.entry_price * 100)}¢</span>`
+    : '—';
+
   // BTC inicio / cierre — usar precios Chainlink (Polymarket) si disponibles, sino Binance
   const bs = t.btc_price_to_beat  ?? t.btc_start_price;
   const be = t.btc_final_price    ?? t.btc_end_price;
@@ -7667,6 +7684,24 @@ function _vpsTradeRow(t) {
     btcEndCell = `$${be.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   }
 
+  // P&L basado en stake real (no fixed baseline)
+  const pnlVps = t.pnl_vps;
+  const pnlCell = pnlVps != null
+    ? `<span style="color:${pnlVps>=0?'var(--green)':'var(--red)'}">${pnlVps>=0?'+':''}$${pnlVps.toFixed(2)}</span>`
+    : '—';
+
+  // Retorno real: stake/entry_price × 0.98 si WIN, $0 si LOSS
+  // Fórmula correcta: compraste stake/entry shares, cada una paga $1 × 0.98 fee
+  const retornoCell = (()=>{
+    if (t.result === 'WIN' && stake != null && t.entry_price > 0) {
+      const totalReturn = (stake / t.entry_price) * 0.98;
+      return `<span style="color:var(--green);font-weight:700">$${totalReturn.toFixed(2)}</span>`;
+    }
+    if (t.result === 'LOSS')
+      return `<span style="color:var(--red);font-weight:700">$0.00</span>`;
+    return '<span style="color:var(--muted)">—</span>';
+  })();
+
   return `<tr>
     <td style="white-space:nowrap;font-size:.68rem">${ts}</td>
     <td>${t.market||'—'}</td>
@@ -7675,18 +7710,12 @@ function _vpsTradeRow(t) {
     <td style="color:${tc};font-size:.68rem">${t.confidence_tier||'—'}</td>
     <td style="font-family:monospace;font-size:.68rem;color:var(--muted)">${btcStartCell}</td>
     <td style="font-family:monospace;font-size:.68rem">${btcEndCell}</td>
-    <td style="color:#a78bfa;font-weight:600">$${t.position_size_vps ?? '—'}</td>
-    <td style="color:var(--muted)">$${t.position_size_fixed ?? '—'}</td>
+    <td>${entradaCell}</td>
+    <td>${tipoCell}</td>
+    <td style="color:#a78bfa;font-weight:600">${stakeCell}</td>
     <td style="color:${resColor};font-weight:600">${t.result||'PEND.'}</td>
-    <td style="color:${t.pnl_vps!=null?(t.pnl_vps>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_vps != null ? (t.pnl_vps >= 0 ? `+$${t.pnl_vps.toFixed(2)}` : `$${t.pnl_vps.toFixed(2)}`) : '—'}</td>
-    <td style="color:${t.pnl_fixed!=null?(t.pnl_fixed>=0?'var(--green)':'var(--red)'):'var(--muted)'}">${t.pnl_fixed != null ? (t.pnl_fixed >= 0 ? `+$${t.pnl_fixed.toFixed(2)}` : `$${t.pnl_fixed.toFixed(2)}`) : '—'}</td>
-    <td style="font-weight:600;font-family:monospace">${(()=>{
-      if (t.result === 'WIN'  && t.position_size_fixed != null && t.pnl_fixed != null)
-        return `<span style="color:var(--green)">$${(t.position_size_fixed + t.pnl_fixed).toFixed(2)}</span>`;
-      if (t.result === 'LOSS' && t.position_size_fixed != null)
-        return `<span style="color:var(--red)">$0.00</span>`;
-      return '<span style="color:var(--muted)">—</span>';
-    })()}</td>
+    <td>${pnlCell}</td>
+    <td style="font-weight:600;font-family:monospace">${retornoCell}</td>
     <td style="color:${diffColor};font-weight:600">${pnlDiff}</td>
   </tr>`;
 }

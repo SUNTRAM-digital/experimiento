@@ -230,6 +230,15 @@ def record_phantom_vps(
     )
 
 
+def set_real_stake(slug: str, real_stake_usdc: float) -> None:
+    """Guarda el stake real ejecutado en el trade phantom (cuando se usó dinero real)."""
+    data = _load()
+    trade = next((t for t in data["trades"] if t.get("slug") == slug), None)
+    if trade:
+        trade["real_stake_usdc"] = round(real_stake_usdc, 4)
+        _save(data)
+
+
 def get_pending_for_restore() -> dict:
     """
     Retorna los trades PENDING del JSON en el formato de _updown_phantom_pending.
