@@ -2003,7 +2003,9 @@ async def _scan_updown(interval_minutes: int):
                         "phantom_bucket_5m_usdc" if interval_minutes <= 5 else "phantom_bucket_15m_usdc"
                     )
                     _ph_avail = getattr(bot_params, _ph_bucket_attr, 0.0)
-                    _ph_size  = min(bot_params.updown_max_usdc, _ph_avail)
+                    from vps_experiment import calculate_vps_size as _calc_vps
+                    _ph_vps_size, _ph_tier = _calc_vps(float(phantom_conf))
+                    _ph_size  = min(_ph_vps_size, _ph_avail)
                     if _ph_size >= 1.0:
                         _ph_entry_price = (
                             market.get("up_price",  0.50) if phantom_dir == "UP"
@@ -2039,7 +2041,8 @@ async def _scan_updown(interval_minutes: int):
                                     _log(
                                         "INFO",
                                         f"UpDown {interval_minutes}m | [PHANTOM-REAL] ✦ {phantom_dir} "
-                                        f"${_ph_size:.2f} @ {_ph_entry_price:.3f} ejecutado",
+                                        f"${_ph_size:.2f} [{_ph_tier}] @ {_ph_entry_price:.3f} | "
+                                        f"conf={phantom_conf:.0f}% | bucket_restante=${_ph_avail - _ph_size:.2f}",
                                     )
                                     # Guardar referencia al bucket para devolver stake en resolución
                                     _updown_phantom_pending[slug]["phantom_bucket_attr"] = _ph_bucket_attr
