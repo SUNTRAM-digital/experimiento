@@ -1912,6 +1912,7 @@ async def _scan_updown(interval_minutes: int):
         # Gate de zona muerta de confianza (filtro tier-skip — punto 4 v9.5.4)
         # Si conf cae en [min, max] configurada, no registramos phantom (sample previo
         # mostró que tier "low_moderate" 20-34% perdió 67% y consumió todo el PnL).
+        _elapsed_now = float(market.get("elapsed_minutes", 0) or 0)
         _dz_on   = bool(getattr(bot_params, "phantom_deadzone_enabled", False))
         _dz_min  = float(getattr(bot_params, "phantom_deadzone_min_conf", 20.0))
         _dz_max  = float(getattr(bot_params, "phantom_deadzone_max_conf", 34.0))
@@ -1961,7 +1962,6 @@ async def _scan_updown(interval_minutes: int):
             # Gate 3: elapsed mínimo para 15m (entradas tempranas = 33% WR)
             # Lead signal ya requiere elapsed>=8min internamente — saltar gate si lead activo
             _ph_min_el_15m = float(getattr(bot_params, "phantom_min_elapsed_15m", 8.0))
-            _elapsed_now   = float(market.get("elapsed_minutes", 0) or 0)
             _ph_too_early  = (not is_5m) and (not _using_lead) and (_elapsed_now < _ph_min_el_15m)
 
             if _ph_low_conf:
