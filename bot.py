@@ -1900,17 +1900,20 @@ async def _scan_updown(interval_minutes: int):
             and _dz_min <= float(phantom_conf) <= _dz_max
         )
         if _in_deadzone:
-            _updown_phantom_slugs.add(slug)
+            # Solo bloquear si ya pasaron los 8min — antes podría cambiar con lead signal
+            if _elapsed_now >= 8.0 or is_5m:
+                _updown_phantom_slugs.add(slug)
             _log(
-                "INFO",
+                "DEBUG",
                 f"UpDown {interval_minutes}m | [PHANTOM] ⊘ deadzone — conf {phantom_conf:.0f}% "
                 f"en [{_dz_min:.0f}-{_dz_max:.0f}] (skip)",
             )
         elif phantom_dir == "NEUTRAL":
-            # Señal neutral — phantom no se registra porque no hay dirección clara
-            _updown_phantom_slugs.add(slug)
+            # Solo bloquear si elapsed>=8min (lead no va a cambiar esto) o mercado 5m
+            if _elapsed_now >= 8.0 or is_5m:
+                _updown_phantom_slugs.add(slug)
             _log(
-                "INFO",
+                "DEBUG",
                 f"UpDown {interval_minutes}m | [PHANTOM] ✗ NEUTRAL — señal sin dirección clara "
                 f"(combined={_sig['combined']:+.3f} | TA:{_sig['ta_raw']:+.3f} "
                 f"RSI:{_sig.get('rsi','?')} Momentum:{_sig['momentum']:+.3f})",
@@ -2078,10 +2081,16 @@ async def _scan_updown(interval_minutes: int):
             f"UpDown {interval_minutes}m | [PHANTOM] — phantom {interval_minutes}m deshabilitado (skip)",
         )
     else:  # slug in _updown_phantom_slugs
-        _log(
-            "INFO",
-            f"UpDown {interval_minutes}m | [PHANTOM] ⟳ ya registrado para este slug — esperando resolución",
-        )
+        if slug in _updown_phantom_pending:
+            _log(
+                "DEBUG",
+                f"UpDown {interval_minutes}m | [PHANTOM] ⟳ ya registrado — esperando cierre del mercado",
+            )
+        else:
+            _log(
+                "DEBUG",
+                f"UpDown {interval_minutes}m | [PHANTOM] ⊘ slug procesado este ciclo (sin phantom activo)",
+            )
 
     if _trading_mode_active:
         return  # trading mode maneja entradas reales vía trading_runner
