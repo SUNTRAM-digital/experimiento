@@ -239,6 +239,15 @@ def record_phantom_result(interval_minutes: int, trade: dict, won: bool):
     if "phantom" not in s:
         s["phantom"] = _default_phantom_stats()
     p = s["phantom"]
+    # Migrar estructuras antiguas que faltan sub-claves
+    defaults = _default_phantom_stats()
+    for sub_key, default_val in defaults.items():
+        if sub_key not in p:
+            p[sub_key] = default_val
+        elif isinstance(default_val, dict) and isinstance(p[sub_key], dict):
+            for inner_key, inner_val in default_val.items():
+                if inner_key not in p[sub_key]:
+                    p[sub_key][inner_key] = inner_val
     w = 1 if won else 0
 
     p["total"] += 1
