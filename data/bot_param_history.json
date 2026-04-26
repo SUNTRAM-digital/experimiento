@@ -53,6 +53,24 @@
   ],
   "global": [
     {
+      "ts": "2026-04-26T00:32:47Z",
+      "tool": "update_params",
+      "params": {
+        "trading_real_max_consec_losses": 999,
+        "trading_real_daily_loss_limit_usdc": 999999,
+        "trading_real_max_exposure_usdc": 999999,
+        "trading_real_killed": false
+      },
+      "old": {
+        "trading_real_max_consec_losses": 10,
+        "trading_real_daily_loss_limit_usdc": 999999.0,
+        "trading_real_max_exposure_usdc": 1000.0,
+        "trading_real_killed": true
+      },
+      "reason": "Usuario solicita remover límites de seguridad para operar sin restricciones de kill-switch automático en trading mode real",
+      "ok": true
+    },
+    {
       "ts": "2026-04-24T13:43:23Z",
       "tool": "update_params",
       "params": {
