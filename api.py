@@ -3017,6 +3017,83 @@ async def get_vps_trades(page: int = 0, limit: int = 50):
         return {"trades": [], "total": 0, "error": str(e)}
 
 
+@app.post("/api/vps-experiment/fix-trade")
+async def vps_fix_trade(body: dict):
+    """
+    Corrige manualmente el resultado de un trade phantom.
+    Body: { "trade_id": int, "correct_result": "WIN" | "LOSS" }
+    Útil cuando Polymarket resuelve diferente a lo que calculamos.
+    """
+    import json as _json
+    try:
+        trade_id      = int(body.get("trade_id", 0))
+        new_result    = str(body.get("correct_result", "")).upper()
+        if new_result not in ("WIN", "LOSS"):
+            return {"ok": False, "error": "correct_result debe ser WIN o LOSS"}
+        if not trade_id:
+            return {"ok": False, "error": "trade_id requerido"}
+
+        vps_file = os.path.join("data", "vps_phantom_experiment.json")
+        with open(vps_file, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+
+        trade = next((t for t in data["trades"] if t.get("trade_id") == trade_id), None)
+        if not trade:
+            return {"ok": False, "error": f"trade_id {trade_id} no encontrado"}
+        if trade.get("result") not in ("WIN", "LOSS"):
+            return {"ok": False, "error": f"trade {trade_id} está en estado {trade.get('result')}, no se puede corregir"}
+        if trade["result"] == new_result:
+            return {"ok": True, "message": "Ya estaba correcto, sin cambios"}
+
+        PAYOUT_WIN  =  0.98
+        PAYOUT_LOSS = -1.00
+        old_result    = trade["result"]
+        old_pnl_vps   = trade.get("pnl_vps",   0.0) or 0.0
+        old_pnl_fixed = trade.get("pnl_fixed",  0.0) or 0.0
+
+        payout = PAYOUT_WIN if new_result == "WIN" else PAYOUT_LOSS
+        new_pnl_vps   = round(trade["position_size_vps"]   * payout, 4)
+        new_pnl_fixed = round(trade["position_size_fixed"]  * payout, 4)
+
+        trade["result"]         = new_result
+        trade["pnl_vps"]        = new_pnl_vps
+        trade["pnl_fixed"]      = new_pnl_fixed
+        trade["pnl_difference"] = round(new_pnl_vps - new_pnl_fixed, 4)
+
+        meta = data.setdefault("meta", {})
+        meta["virtual_balance_vps"]   = round(meta.get("virtual_balance_vps",   50.0) - old_pnl_vps   + new_pnl_vps,   4)
+        meta["virtual_balance_fixed"] = round(meta.get("virtual_balance_fixed", 50.0) - old_pnl_fixed + new_pnl_fixed, 4)
+
+        with open(vps_file, "w", encoding="utf-8") as f:
+            _json.dump(data, f, indent=2)
+
+        # Ajustar phantom_learner si el resultado cambió
+        try:
+            pl_file = os.path.join("data", "phantom_learner_stats.json")
+            with open(pl_file, "r", encoding="utf-8") as f:
+                pl = _json.load(f)
+            interval_key = "5" if trade.get("market") == "updown_5m" else "15"
+            s = pl.get(interval_key, {})
+            if old_result == "WIN" and new_result == "LOSS":
+                s["wins"] = max(0, s.get("wins", 0) - 1)
+            elif old_result == "LOSS" and new_result == "WIN":
+                s["wins"] = s.get("wins", 0) + 1
+            with open(pl_file, "w", encoding="utf-8") as f:
+                _json.dump(pl, f, indent=2)
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "trade_id": trade_id,
+            "old_result": old_result,
+            "new_result": new_result,
+            "pnl_vps": new_pnl_vps,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/api/vps-experiment/daily-summary")
 async def vps_daily_summary():
     """Fuerza generación del resumen del día actual del experimento VPS."""
