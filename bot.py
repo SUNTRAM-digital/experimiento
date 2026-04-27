@@ -1719,6 +1719,26 @@ async def _scan_updown(interval_minutes: int):
     # CMC data para señal de tendencia macro 1h
     cmc_data = state.btc_cmc if state.btc_cmc else None
 
+    # OHLC de la vela del período actual (para body ratio / gate de vela débil)
+    from price_feed import get_btc_window_ohlc as _get_window_ohlc
+    try:
+        window_candle = await _get_window_ohlc(market["window_start_ts"], interval_minutes)
+    except Exception:
+        window_candle = {"available": False}
+    if window_candle.get("available"):
+        _br = window_candle.get("body_ratio", 0)
+        _cw = float(getattr(bot_params, "updown_candle_weak_ratio", 0.30))
+        _strength = (
+            "FUERTE" if _br >= float(getattr(bot_params, "updown_candle_strong_ratio", 0.60))
+            else ("DÉBIL" if _br < _cw else "MODERADA")
+        )
+        _log("INFO", f"UpDown {interval_minutes}m | Vela: body={_br:.2f} {_strength} "
+             f"rango=${window_candle.get('range_usdc',0):.0f} "
+             f"cuerpo={window_candle.get('body_pct',0):.3f}% "
+             f"dir={window_candle.get('candle_direction','?')} "
+             f"wicks sup={window_candle.get('upper_wick_ratio',0):.2f} "
+             f"inf={window_candle.get('lower_wick_ratio',0):.2f}")
+
     # Telonex on-chain signals (OFI real + smart wallet bias)
     telonex_signals = None
     if bot_params.telonex_enabled:
@@ -1747,6 +1767,7 @@ async def _scan_updown(interval_minutes: int):
         ta_multi=ta_multi,
         funding_data=funding_data,
         microstructure=microstructure_data,
+        candle_data=window_candle,
     )
 
     # ── Lead signal (v9.6.3) — siempre computar, usado por phantom y trading ──
@@ -1852,6 +1873,7 @@ async def _scan_updown(interval_minutes: int):
             market=market, telonex_signals=telonex_signals,
             ta_multi=ta_multi, funding_data=funding_data,
             microstructure=microstructure_data,
+            candle_data=window_candle,
         )
     _log("INFO",
          f"UpDown {interval_minutes}m | Mercado: UP={market['up_price']:.2f} DOWN={market['down_price']:.2f} "
@@ -2027,7 +2049,17 @@ async def _scan_updown(interval_minutes: int):
                     _log("DEBUG",
                          f"[PHANTOM-REAL] diag: avail=${_ph_avail:.2f} vps=${_ph_vps_size:.2f} "
                          f"size=${_ph_size:.2f} tier={_ph_tier} conf={phantom_conf:.0f}%")
-                    if _ph_size >= 1.0:
+                    # Gate vela débil: no dinero real si el período es indeciso
+                    _ph_candle_ok = True
+                    if window_candle.get("available"):
+                        _ph_cw = float(getattr(bot_params, "updown_candle_weak_ratio", 0.30))
+                        _ph_br = float(window_candle.get("body_ratio", 1.0))
+                        if _ph_br < _ph_cw:
+                            _ph_candle_ok = False
+                            _log("WARN",
+                                 f"[PHANTOM-REAL] ⊘ vela débil body={_ph_br:.2f} < {_ph_cw:.2f} "
+                                 f"— dinero real bloqueado (mercado en indecisión)")
+                    if _ph_size >= 1.0 and _ph_candle_ok:
                         _ph_entry_price = (
                             market.get("up_price",  0.50) if phantom_dir == "UP"
                             else market.get("down_price", 0.50)

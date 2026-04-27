@@ -20,15 +20,16 @@ Historial de fases:
   v9.6.3 — Phantom usa lead signal (65-95% conf) en lugar de TA (30-50%) a T≥8min; TA/mom gate omitido para señal matemática
   v9.6.7 — Taker OFI (kline[9]/kline[5], 10 velas 1m) + Volume z-score gate (<-1.5 → thin market penalty 35%)
   v9.6.8 — Phantom auto-regla: activa dinero real con WR≥85%, desactiva con WR<80% (mín 20 trades)
+  v9.6.9 — Candle body gate: fetch OHLC ventana actual; skip mercado si body<0.30; block phantom real; penaliza confianza según cuerpo
 """
 
 MAJOR = 9
 MINOR = 6
-PATCH = 8
+PATCH = 9
 
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 PHASE   = f"Fase {MAJOR}"
-PHASE_NAME = "Phantom auto-regla WR≥85% activa / WR<80% desactiva dinero real"
+PHASE_NAME = "Candle body gate: skip velas débiles (body<0.30), block dinero real"
 
 FULL_LABEL  = f"v{VERSION} — {PHASE}: {PHASE_NAME}"
 SHORT_LABEL = f"v{VERSION}"

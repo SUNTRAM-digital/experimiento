@@ -459,6 +459,83 @@ async def get_btc_microstructure() -> dict:
         return {"available": False}
 
 
+# ── Vela de la ventana actual (OHLC del período del mercado) ─────────────────
+
+async def get_btc_window_ohlc(window_start_ts: int, interval_minutes: int) -> dict:
+    """
+    Fetch del OHLC de la vela BTC que corresponde al período actual del mercado.
+
+    window_start_ts: Unix timestamp (segundos) de apertura del mercado.
+    interval_minutes: 5 o 15.
+
+    Retorna:
+      open/high/low/close  — precios del período
+      body_ratio           — |close-open| / (high-low)  [0..1]
+                             0 = doji puro (sin movimiento neto)
+                             1 = marubozu (sin mechas, todo cuerpo)
+      body_pct             — |close-open| / open * 100 (magnitud del movimiento)
+      upper_wick_ratio     — mecha superior / rango total
+      lower_wick_ratio     — mecha inferior / rango total
+      candle_direction     — "UP" / "DOWN" según close vs open
+      available            — False si el fetch falló
+    """
+    interval_str = "5m" if interval_minutes <= 5 else "15m"
+    start_ms     = int(window_start_ts) * 1000
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=8) as client:
+            resp = await client.get(
+                f"{BINANCE_BASE}/klines",
+                params={
+                    "symbol":    "BTCUSDT",
+                    "interval":  interval_str,
+                    "startTime": start_ms,
+                    "limit":     1,
+                },
+            )
+            if resp.status_code != 200:
+                return {"available": False}
+            klines = resp.json()
+            if not klines:
+                return {"available": False}
+
+        k = klines[0]
+        o = float(k[1])   # open
+        h = float(k[2])   # high
+        lo = float(k[3])  # low
+        c  = float(k[4])  # close
+
+        total_range = h - lo
+        body        = abs(c - o)
+        body_ratio  = round(body / total_range, 3) if total_range > 0 else 0.0
+        body_pct    = round(body / o * 100, 4)     if o > 0 else 0.0
+
+        upper_wick = h - max(o, c)
+        lower_wick = min(o, c) - lo
+        uw_ratio   = round(upper_wick / total_range, 3) if total_range > 0 else 0.0
+        lw_ratio   = round(lower_wick / total_range, 3) if total_range > 0 else 0.0
+
+        logger.debug(
+            f"Window OHLC {interval_str}: O={o:.0f} H={h:.0f} L={lo:.0f} C={c:.0f} "
+            f"body={body_ratio:.2f} range={total_range:.0f}"
+        )
+        return {
+            "open":              o,
+            "high":              h,
+            "low":               lo,
+            "close":             c,
+            "body_ratio":        body_ratio,
+            "body_pct":          body_pct,
+            "upper_wick_ratio":  uw_ratio,
+            "lower_wick_ratio":  lw_ratio,
+            "candle_direction":  "UP" if c >= o else "DOWN",
+            "range_usdc":        round(total_range, 2),
+            "available":         True,
+        }
+    except Exception as e:
+        logger.debug(f"Window OHLC error: {e}")
+        return {"available": False}
+
+
 # ── CoinMarketCap ─────────────────────────────────────────────────────────────
 
 async def get_btc_market_data_cmc(api_key: str) -> dict:

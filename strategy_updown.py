@@ -315,6 +315,53 @@ def _taker_ofi_signal(taker_ofi: float) -> float:
     return max(-1.0, min(1.0, taker_ofi * 2.0))
 
 
+def candle_strength_penalty(body_ratio: float, candle_dir: str, signal_dir: str) -> tuple[float, str]:
+    """
+    Penalización / bonus de confianza basado en la forma de la vela del período.
+
+    body_ratio = |close - open| / (high - low)
+      < 0.15  → doji puro     → penalizar 55%  (mercado sin dirección, mechas largas)
+      < 0.30  → vela débil    → penalizar 35%  (spinning top / indecisión)
+      < 0.45  → vela moderada → penalizar 15%
+      >= 0.60 y dirección acuerda → bonus +15%
+
+    candle_dir / signal_dir: "UP" / "DOWN" — si discrepan añade penalización extra.
+
+    Retorna (factor_multiplicador, etiqueta_log).
+    """
+    try:
+        _weak   = float(getattr(bot_params, "updown_candle_weak_ratio",   0.30))
+        _strong = float(getattr(bot_params, "updown_candle_strong_ratio", 0.60))
+    except Exception:
+        _weak, _strong = 0.30, 0.60
+
+    disagree = (candle_dir not in ("", "NEUTRAL") and signal_dir not in ("", "NEUTRAL")
+                and candle_dir != signal_dir)
+
+    if body_ratio < 0.15:
+        factor = 0.45
+        label  = f"doji({body_ratio:.2f})"
+    elif body_ratio < _weak:
+        factor = 0.65
+        label  = f"débil({body_ratio:.2f})"
+    elif body_ratio < _weak + 0.15:      # zona intermedia
+        factor = 0.85
+        label  = f"moderada({body_ratio:.2f})"
+    elif body_ratio >= _strong and not disagree:
+        factor = 1.15
+        label  = f"fuerte({body_ratio:.2f})"
+    else:
+        factor = 1.0
+        label  = f"ok({body_ratio:.2f})"
+
+    # Penalización extra si la dirección de la vela discrepa con la señal
+    if disagree:
+        factor *= 0.80
+        label  += " DISCREPA"
+
+    return factor, label
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÑAL COMBINADA — MOTOR PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
@@ -329,6 +376,7 @@ def build_btc_direction_signal(
     ta_multi: Optional[dict] = None,   # {"1m": ta, "15m": ta, "1h": ta}
     funding_data: Optional[dict] = None,
     microstructure: Optional[dict] = None,   # Taker OFI + Volume z-score
+    candle_data: Optional[dict] = None,      # OHLC de la ventana actual
 ) -> dict:
     """
     Motor de señal profesional v2 con régimen detection y multi-timeframe.
@@ -535,12 +583,21 @@ def build_btc_direction_signal(
     window_abs = abs(window_pct)
     _lo = 0.10  # umbral bajo de desplazamiento
     if ta_consensus < 0.25 and window_abs < _lo:
-        # TA casi toda neutral y BTC sin movimiento claro → señal puro ruido
-        combined *= 0.50   # reducir señal al 50%
+        combined *= 0.50
         combined = max(-1.0, min(1.0, combined))
     elif ta_consensus < 0.35 and window_abs < _lo:
         combined *= 0.75
         combined = max(-1.0, min(1.0, combined))
+
+    # Penalización / bonus por forma de la vela del período actual
+    _candle_factor = 1.0
+    _candle_label  = "n/a"
+    if candle_data and candle_data.get("available"):
+        _body_r   = float(candle_data.get("body_ratio", 0.5))
+        _cand_dir = candle_data.get("candle_direction", "")
+        _sig_dir  = "UP" if combined > 0 else ("DOWN" if combined < 0 else "")
+        _candle_factor, _candle_label = candle_strength_penalty(_body_r, _cand_dir, _sig_dir)
+        combined = max(-1.0, min(1.0, combined * _candle_factor))
 
     return {
         "combined":          round(combined, 4),
@@ -571,6 +628,9 @@ def build_btc_direction_signal(
         "taker_ofi_sig":     round(taker_ofi_s, 4),
         "volume_zscore":     round(vol_zscore, 3),
         "volume_thin":       _vol_thin,
+        "candle_factor":     round(_candle_factor, 3),
+        "candle_label":      _candle_label,
+        "candle_body_ratio": round(candle_data.get("body_ratio", 0.0), 3) if (candle_data and candle_data.get("available")) else None,
         "rsi":               rsi_val,
         "stoch_k":           stoch_k,
         "stoch_d":           stoch_d,
@@ -598,6 +658,7 @@ def evaluate_updown_market(
     ta_multi: Optional[dict] = None,
     funding_data: Optional[dict] = None,
     microstructure: Optional[dict] = None,
+    candle_data: Optional[dict] = None,
 ) -> tuple[Optional[dict], Optional[str]]:
     """
     Evalúa si hay condiciones para operar el mercado UP/DOWN.
@@ -644,6 +705,23 @@ def evaluate_updown_market(
     if max_elapsed is not None and elapsed > max_elapsed:
         return None, f"Timing: ventana muy avanzada ({elapsed:.1f}min > máx {max_elapsed:.1f}min)"
 
+    # ── PASO 1b: Gate de vela débil ───────────────────────────────────────────
+    # Si el body_ratio de la vela del período es demasiado bajo, el mercado está
+    # en indecisión total (precio sube y baja pero cierra cerca del open).
+    # Estos mercados son impredecibles y se saltan completamente.
+    if candle_data and candle_data.get("available"):
+        try:
+            _cw = float(getattr(bot_params, "updown_candle_weak_ratio", 0.30))
+        except Exception:
+            _cw = 0.30
+        _br = float(candle_data.get("body_ratio", 1.0))
+        if _br < _cw:
+            return None, (
+                f"Vela débil: body_ratio={_br:.2f} < {_cw:.2f} "
+                f"(cuerpo={candle_data.get('body_pct',0):.3f}% | "
+                f"rango=${candle_data.get('range_usdc',0):.0f}) — mercado en indecisión"
+            )
+
     # ── PASO 2: Señal de dirección ────────────────────────────────────────────
 
     interval_min = market.get("interval_minutes", 15)
@@ -658,6 +736,7 @@ def evaluate_updown_market(
         ta_multi=ta_multi,
         funding_data=funding_data,
         microstructure=microstructure,
+        candle_data=candle_data,
     )
 
     combined = sig["combined"]

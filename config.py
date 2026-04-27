@@ -61,6 +61,12 @@ class BotParams:
         # volume_gate_zscore: umbral z-score bajo el cual el mercado se considera thin
         self.updown_taker_ofi_weight: float = 0.10     # 10% del combined
         self.updown_volume_gate_zscore: float = -1.5   # z < -1.5 → thin → penalizar
+        # Análisis de vela (body ratio = |close-open| / (high-low))
+        # body_ratio=0 → doji puro (sin dirección), body_ratio=1 → todo cuerpo
+        # Debajo de candle_weak_ratio la confianza se penaliza fuerte y se bloquea dinero real
+        # Encima de candle_strong_ratio la confianza se amplifica ligeramente
+        self.updown_candle_weak_ratio: float   = 0.30  # < 0.30 → vela débil (doji/spinning top)
+        self.updown_candle_strong_ratio: float = 0.60  # > 0.60 → vela fuerte (marubozu)
         # --- Telonex (Fase 11) ---
         self.telonex_enabled: bool = os.getenv("TELONEX_ENABLED", "true").lower() == "true"
         self.telonex_smart_wallet_weight: float = float(os.getenv("TELONEX_SMART_WALLET_WEIGHT", 0.10))
@@ -217,6 +223,8 @@ class BotParams:
             "updown_displacement_lo_pct": self.updown_displacement_lo_pct,
             "updown_taker_ofi_weight":    self.updown_taker_ofi_weight,
             "updown_volume_gate_zscore":  self.updown_volume_gate_zscore,
+            "updown_candle_weak_ratio":   self.updown_candle_weak_ratio,
+            "updown_candle_strong_ratio": self.updown_candle_strong_ratio,
             "telonex_enabled":               self.telonex_enabled,
             "telonex_smart_wallet_weight":   self.telonex_smart_wallet_weight,
             "telonex_real_ofi_weight":       self.telonex_real_ofi_weight,
