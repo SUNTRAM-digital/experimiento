@@ -1447,13 +1447,11 @@ def _refund_phantom_bucket(attr: str, amount: float) -> None:
 def _check_phantom_autorule() -> None:
     """
     Auto-regla de dinero real phantom:
-      - Si WR total 5m < 50% O WR total 15m < 50% → desactiva phantom_real_enabled
-        (cualquiera de los dos con mal rendimiento es suficiente para parar)
-      - Si WR total 5m > 70% Y WR total 15m > 70% → activa phantom_real_enabled
-        (ambos tienen que ser buenos para reactivar)
-      - Entre 50-70%: sin cambio (zona neutral)
-    Requiere al menos 10 trades por intervalo para activarse.
-    Si solo un intervalo tiene datos suficientes, se aplica la regla con ese solo.
+      - WR < 80% en cualquier intervalo con datos → desactiva phantom_real_enabled
+      - WR >= 85% en todos los intervalos con datos → activa phantom_real_enabled
+      - Entre 80-85%: zona neutral, sin cambio
+    Requiere al menos 20 trades por intervalo para que el umbral sea estadístico.
+    Si solo un intervalo tiene datos suficientes, se aplica con ese solo.
     """
     try:
         from updown_learner import _stats as _ul_stats
@@ -1461,33 +1459,32 @@ def _check_phantom_autorule() -> None:
         def _ul_phantom_wr(key: str):
             ph = _ul_stats.get(key, {}).get("phantom", {})
             t = ph.get("total", 0)
-            if t < 10:
+            if t < 20:
                 return None
             return ph.get("wins", 0) / t
 
         wr5  = _ul_phantom_wr("5")
         wr15 = _ul_phantom_wr("15")
 
-        # Necesitamos al menos uno con datos
         if wr5 is None and wr15 is None:
             return
 
         current = bot_params.phantom_real_enabled
 
-        # Desactivar: cualquiera de los dos bajo 50%
+        # Desactivar: cualquiera de los dos bajo 80%
         should_disable = (
-            (wr5  is not None and wr5  < 0.50) or
-            (wr15 is not None and wr15 < 0.50)
+            (wr5  is not None and wr5  < 0.80) or
+            (wr15 is not None and wr15 < 0.80)
         )
-        # Activar: ambos sobre 70% (si solo hay datos de uno, ese debe estar >70%)
+        # Activar: todos los intervalos con datos >= 85%
         should_enable = (
-            (wr5  is None or wr5  > 0.70) and
-            (wr15 is None or wr15 > 0.70) and
+            (wr5  is None or wr5  >= 0.85) and
+            (wr15 is None or wr15 >= 0.85) and
             (wr5 is not None or wr15 is not None)
         )
 
-        wr5_str  = f"{wr5:.0%}"  if wr5  is not None else "N/A"
-        wr15_str = f"{wr15:.0%}" if wr15 is not None else "N/A"
+        wr5_str  = f"{wr5:.0%}"  if wr5  is not None else "N/A(<20)"
+        wr15_str = f"{wr15:.0%}" if wr15 is not None else "N/A(<20)"
 
         if should_disable:
             if current:
@@ -1495,18 +1492,18 @@ def _check_phantom_autorule() -> None:
                 bot_params.save()
                 _log("WARN",
                      f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — "
-                     f"alguno < 50% → dinero real DESACTIVADO automáticamente")
+                     f"alguno < 80% → dinero real DESACTIVADO automáticamente")
             else:
-                logger.debug(f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — ya estaba desactivado")
+                logger.debug(f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — ya desactivado")
         elif should_enable:
             if not current:
                 bot_params.phantom_real_enabled = True
                 bot_params.save()
                 _log("INFO",
                      f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — "
-                     f"ambos > 70% → dinero real ACTIVADO automáticamente")
+                     f"todos >= 85% → dinero real ACTIVADO automáticamente")
         else:
-            logger.debug(f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — zona neutral, sin cambio")
+            logger.debug(f"[PHANTOM AUTO-REGLA] WR 5m={wr5_str} | 15m={wr15_str} — zona neutral [80-85%], sin cambio")
     except Exception as _ar_err:
         logger.debug(f"[PHANTOM AUTO-REGLA] Error: {_ar_err}")
 
