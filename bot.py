@@ -2049,17 +2049,7 @@ async def _scan_updown(interval_minutes: int):
                     _log("DEBUG",
                          f"[PHANTOM-REAL] diag: avail=${_ph_avail:.2f} vps=${_ph_vps_size:.2f} "
                          f"size=${_ph_size:.2f} tier={_ph_tier} conf={phantom_conf:.0f}%")
-                    # Gate vela débil: no dinero real si el período es indeciso
-                    _ph_candle_ok = True
-                    if window_candle.get("available"):
-                        _ph_cw = float(getattr(bot_params, "updown_candle_weak_ratio", 0.30))
-                        _ph_br = float(window_candle.get("body_ratio", 1.0))
-                        if _ph_br < _ph_cw:
-                            _ph_candle_ok = False
-                            _log("WARN",
-                                 f"[PHANTOM-REAL] ⊘ vela débil body={_ph_br:.2f} < {_ph_cw:.2f} "
-                                 f"— dinero real bloqueado (mercado en indecisión)")
-                    if _ph_size >= 1.0 and _ph_candle_ok:
+                    if _ph_size >= 1.0:
                         _ph_entry_price = (
                             market.get("up_price",  0.50) if phantom_dir == "UP"
                             else market.get("down_price", 0.50)
